@@ -1,0 +1,13 @@
+# Vivado temporary files
+.Xil
+*.cache
+*.gen
+*.hw
+*.ip_user_files
+*.runs
+*.sim
+*.srcs
+vivado_pid*.str
+*.dmp
+*.log
+*.jou
