@@ -48,17 +48,12 @@
 //
 //-----------------------------------------------------------------------------
 //
-// Project    : UltraScale+ FPGA PCI Express v4.0 Integrated Block
+// Project    : The Xilinx PCI Express DMA 
 // File       : sys_clk_gen.v
-// Version    : 1.3 
+// Version    : 4.1
 //-----------------------------------------------------------------------------
-//-----------------------------------------------------------------------------
-//
-// Project    : Ultrascale FPGA Gen4 Integrated Block for PCI Express
-// File       : sys_clk_gen.v
-// Version    : 1.0 
-//-----------------------------------------------------------------------------
-
+//--
+//--------------------------------------------------------------------------------
 `timescale 1ps/1ps
 
 module sys_clk_gen (sys_clk);
@@ -68,7 +63,7 @@ output	sys_clk;
 reg		sys_clk;
 
 parameter        offset = 0;
-parameter        halfcycle = 500;
+parameter        halfcycle = 5000;
 
 initial begin
 

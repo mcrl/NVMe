@@ -11,3 +11,6 @@ vivado_pid*.str
 *.dmp
 *.log
 *.jou
+
+# temporary files
+*.swp

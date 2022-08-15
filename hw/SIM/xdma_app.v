@@ -141,7 +141,7 @@ module xdma_app #(
   assign leds[3] = user_clk_heartbeat[25];
 
 	  // Block ram for the AXI interface
-	  blk_mem_gen_0 blk_mem_xdma_inst(
+	  blk_mem_gen_1 blk_mem_xdma_inst(
 	    .s_aclk          (user_clk),
 	    .s_aresetn       (user_resetn),
 	    .s_axi_awid      (s_axi_awid),
