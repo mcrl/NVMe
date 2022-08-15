@@ -1,0 +1,504 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<wave_config>
+   <wave_state>
+   </wave_state>
+   <db_ref_list>
+      <db_ref path="tb_behav.wdb" id="1">
+         <top_modules>
+            <top_module name="\$unit_xdma_0_dma_bram_wrap_sv " />
+            <top_module name="glbl" />
+            <top_module name="tb" />
+         </top_modules>
+      </db_ref>
+   </db_ref_list>
+   <zoom_setting>
+      <ZoomStartTime time="0.000000000 us"></ZoomStartTime>
+      <ZoomEndTime time="2,780.000000001 us"></ZoomEndTime>
+      <Cursor1Time time="186.000000000 us"></Cursor1Time>
+   </zoom_setting>
+   <column_width_setting>
+      <NameColumnWidth column_width="274"></NameColumnWidth>
+      <ValueColumnWidth column_width="165"></ValueColumnWidth>
+   </column_width_setting>
+   <WVObjectSize size="120" />
+   <wvobject type="array" fp_name="/tb/i">
+      <obj_property name="ElementShortName">i[31:0]</obj_property>
+      <obj_property name="ObjectShortName">i[31:0]</obj_property>
+   </wvobject>
+   <wvobject type="logic" fp_name="/tb/RC/sys_clk">
+      <obj_property name="ElementShortName">sys_clk</obj_property>
+      <obj_property name="ObjectShortName">sys_clk</obj_property>
+   </wvobject>
+   <wvobject type="logic" fp_name="/tb/RC/sys_reset">
+      <obj_property name="ElementShortName">sys_reset</obj_property>
+      <obj_property name="ObjectShortName">sys_reset</obj_property>
+   </wvobject>
+   <wvobject type="logic" fp_name="/tb/RC/csr_inst/user_clk">
+      <obj_property name="ElementShortName">user_clk</obj_property>
+      <obj_property name="ObjectShortName">user_clk</obj_property>
+   </wvobject>
+   <wvobject type="logic" fp_name="/tb/RC/csr_inst/user_reset">
+      <obj_property name="ElementShortName">user_reset</obj_property>
+      <obj_property name="ObjectShortName">user_reset</obj_property>
+   </wvobject>
+   <wvobject type="logic" fp_name="/tb/RC/csr_inst/user_lnk_up">
+      <obj_property name="ElementShortName">user_lnk_up</obj_property>
+      <obj_property name="ObjectShortName">user_lnk_up</obj_property>
+   </wvobject>
+   <wvobject type="logic" fp_name="/tb/RC/pcie_rc_inst/sys_clk_gt">
+      <obj_property name="ElementShortName">sys_clk_gt</obj_property>
+      <obj_property name="ObjectShortName">sys_clk_gt</obj_property>
+   </wvobject>
+   <wvobject type="logic" fp_name="/tb/RC/pcie_rc_inst/sys_reset">
+      <obj_property name="ElementShortName">sys_reset</obj_property>
+      <obj_property name="ObjectShortName">sys_reset</obj_property>
+   </wvobject>
+   <wvobject type="logic" fp_name="/tb/RC/pcie_rc_inst/phy_rdy_out">
+      <obj_property name="ElementShortName">phy_rdy_out</obj_property>
+      <obj_property name="ObjectShortName">phy_rdy_out</obj_property>
+   </wvobject>
+   <wvobject type="logic" fp_name="/tb/RC/pcie_rc_inst/sys_clk">
+      <obj_property name="ElementShortName">sys_clk</obj_property>
+      <obj_property name="ObjectShortName">sys_clk</obj_property>
+   </wvobject>
+   <wvobject type="array" fp_name="/tb/RC/pcie_rc_inst/s_axis_rq_tdata">
+      <obj_property name="ElementShortName">s_axis_rq_tdata[63:0]</obj_property>
+      <obj_property name="ObjectShortName">s_axis_rq_tdata[63:0]</obj_property>
+   </wvobject>
+   <wvobject type="array" fp_name="/tb/RC/pcie_rc_inst/s_axis_rq_tkeep">
+      <obj_property name="ElementShortName">s_axis_rq_tkeep[1:0]</obj_property>
+      <obj_property name="ObjectShortName">s_axis_rq_tkeep[1:0]</obj_property>
+   </wvobject>
+   <wvobject type="logic" fp_name="/tb/RC/pcie_rc_inst/s_axis_rq_tlast">
+      <obj_property name="ElementShortName">s_axis_rq_tlast</obj_property>
+      <obj_property name="ObjectShortName">s_axis_rq_tlast</obj_property>
+   </wvobject>
+   <wvobject type="array" fp_name="/tb/RC/pcie_rc_inst/s_axis_rq_tready">
+      <obj_property name="ElementShortName">s_axis_rq_tready[3:0]</obj_property>
+      <obj_property name="ObjectShortName">s_axis_rq_tready[3:0]</obj_property>
+   </wvobject>
+   <wvobject type="array" fp_name="/tb/RC/pcie_rc_inst/s_axis_rq_tuser">
+      <obj_property name="ElementShortName">s_axis_rq_tuser[61:0]</obj_property>
+      <obj_property name="ObjectShortName">s_axis_rq_tuser[61:0]</obj_property>
+   </wvobject>
+   <wvobject type="logic" fp_name="/tb/RC/pcie_rc_inst/s_axis_rq_tvalid">
+      <obj_property name="ElementShortName">s_axis_rq_tvalid</obj_property>
+      <obj_property name="ObjectShortName">s_axis_rq_tvalid</obj_property>
+   </wvobject>
+   <wvobject type="array" fp_name="/tb/RC/pcie_rc_inst/m_axis_rc_tdata">
+      <obj_property name="ElementShortName">m_axis_rc_tdata[63:0]</obj_property>
+      <obj_property name="ObjectShortName">m_axis_rc_tdata[63:0]</obj_property>
+   </wvobject>
+   <wvobject type="array" fp_name="/tb/RC/pcie_rc_inst/m_axis_rc_tkeep">
+      <obj_property name="ElementShortName">m_axis_rc_tkeep[1:0]</obj_property>
+      <obj_property name="ObjectShortName">m_axis_rc_tkeep[1:0]</obj_property>
+   </wvobject>
+   <wvobject type="logic" fp_name="/tb/RC/pcie_rc_inst/m_axis_rc_tlast">
+      <obj_property name="ElementShortName">m_axis_rc_tlast</obj_property>
+      <obj_property name="ObjectShortName">m_axis_rc_tlast</obj_property>
+   </wvobject>
+   <wvobject type="logic" fp_name="/tb/RC/pcie_rc_inst/m_axis_rc_tready">
+      <obj_property name="ElementShortName">m_axis_rc_tready</obj_property>
+      <obj_property name="ObjectShortName">m_axis_rc_tready</obj_property>
+   </wvobject>
+   <wvobject type="array" fp_name="/tb/RC/pcie_rc_inst/m_axis_rc_tuser">
+      <obj_property name="ElementShortName">m_axis_rc_tuser[74:0]</obj_property>
+      <obj_property name="ObjectShortName">m_axis_rc_tuser[74:0]</obj_property>
+   </wvobject>
+   <wvobject type="logic" fp_name="/tb/RC/pcie_rc_inst/m_axis_rc_tvalid">
+      <obj_property name="ElementShortName">m_axis_rc_tvalid</obj_property>
+      <obj_property name="ObjectShortName">m_axis_rc_tvalid</obj_property>
+   </wvobject>
+   <wvobject type="array" fp_name="/tb/RC/pcie_rc_inst/m_axis_cq_tdata">
+      <obj_property name="ElementShortName">m_axis_cq_tdata[63:0]</obj_property>
+      <obj_property name="ObjectShortName">m_axis_cq_tdata[63:0]</obj_property>
+   </wvobject>
+   <wvobject type="array" fp_name="/tb/RC/pcie_rc_inst/m_axis_cq_tkeep">
+      <obj_property name="ElementShortName">m_axis_cq_tkeep[1:0]</obj_property>
+      <obj_property name="ObjectShortName">m_axis_cq_tkeep[1:0]</obj_property>
+   </wvobject>
+   <wvobject type="logic" fp_name="/tb/RC/pcie_rc_inst/m_axis_cq_tlast">
+      <obj_property name="ElementShortName">m_axis_cq_tlast</obj_property>
+      <obj_property name="ObjectShortName">m_axis_cq_tlast</obj_property>
+   </wvobject>
+   <wvobject type="logic" fp_name="/tb/RC/pcie_rc_inst/m_axis_cq_tready">
+      <obj_property name="ElementShortName">m_axis_cq_tready</obj_property>
+      <obj_property name="ObjectShortName">m_axis_cq_tready</obj_property>
+   </wvobject>
+   <wvobject type="array" fp_name="/tb/RC/pcie_rc_inst/m_axis_cq_tuser">
+      <obj_property name="ElementShortName">m_axis_cq_tuser[87:0]</obj_property>
+      <obj_property name="ObjectShortName">m_axis_cq_tuser[87:0]</obj_property>
+   </wvobject>
+   <wvobject type="logic" fp_name="/tb/RC/pcie_rc_inst/m_axis_cq_tvalid">
+      <obj_property name="ElementShortName">m_axis_cq_tvalid</obj_property>
+      <obj_property name="ObjectShortName">m_axis_cq_tvalid</obj_property>
+   </wvobject>
+   <wvobject type="array" fp_name="/tb/RC/pcie_rc_inst/s_axis_cc_tdata">
+      <obj_property name="ElementShortName">s_axis_cc_tdata[63:0]</obj_property>
+      <obj_property name="ObjectShortName">s_axis_cc_tdata[63:0]</obj_property>
+   </wvobject>
+   <wvobject type="array" fp_name="/tb/RC/pcie_rc_inst/s_axis_cc_tkeep">
+      <obj_property name="ElementShortName">s_axis_cc_tkeep[1:0]</obj_property>
+      <obj_property name="ObjectShortName">s_axis_cc_tkeep[1:0]</obj_property>
+   </wvobject>
+   <wvobject type="logic" fp_name="/tb/RC/pcie_rc_inst/s_axis_cc_tlast">
+      <obj_property name="ElementShortName">s_axis_cc_tlast</obj_property>
+      <obj_property name="ObjectShortName">s_axis_cc_tlast</obj_property>
+   </wvobject>
+   <wvobject type="array" fp_name="/tb/RC/pcie_rc_inst/s_axis_cc_tready">
+      <obj_property name="ElementShortName">s_axis_cc_tready[3:0]</obj_property>
+      <obj_property name="ObjectShortName">s_axis_cc_tready[3:0]</obj_property>
+   </wvobject>
+   <wvobject type="array" fp_name="/tb/RC/pcie_rc_inst/s_axis_cc_tuser">
+      <obj_property name="ElementShortName">s_axis_cc_tuser[32:0]</obj_property>
+      <obj_property name="ObjectShortName">s_axis_cc_tuser[32:0]</obj_property>
+   </wvobject>
+   <wvobject type="logic" fp_name="/tb/RC/pcie_rc_inst/s_axis_cc_tvalid">
+      <obj_property name="ElementShortName">s_axis_cc_tvalid</obj_property>
+      <obj_property name="ObjectShortName">s_axis_cc_tvalid</obj_property>
+   </wvobject>
+   <wvobject type="array" fp_name="/tb/RC/pcie_rc_inst/pcie_rq_seq_num0">
+      <obj_property name="ElementShortName">pcie_rq_seq_num0[5:0]</obj_property>
+      <obj_property name="ObjectShortName">pcie_rq_seq_num0[5:0]</obj_property>
+   </wvobject>
+   <wvobject type="logic" fp_name="/tb/RC/pcie_rc_inst/pcie_rq_seq_num_vld0">
+      <obj_property name="ElementShortName">pcie_rq_seq_num_vld0</obj_property>
+      <obj_property name="ObjectShortName">pcie_rq_seq_num_vld0</obj_property>
+   </wvobject>
+   <wvobject type="array" fp_name="/tb/RC/pcie_rc_inst/pcie_rq_seq_num1">
+      <obj_property name="ElementShortName">pcie_rq_seq_num1[5:0]</obj_property>
+      <obj_property name="ObjectShortName">pcie_rq_seq_num1[5:0]</obj_property>
+   </wvobject>
+   <wvobject type="logic" fp_name="/tb/RC/pcie_rc_inst/pcie_rq_seq_num_vld1">
+      <obj_property name="ElementShortName">pcie_rq_seq_num_vld1</obj_property>
+      <obj_property name="ObjectShortName">pcie_rq_seq_num_vld1</obj_property>
+   </wvobject>
+   <wvobject type="array" fp_name="/tb/RC/pcie_rc_inst/pcie_rq_tag0">
+      <obj_property name="ElementShortName">pcie_rq_tag0[7:0]</obj_property>
+      <obj_property name="ObjectShortName">pcie_rq_tag0[7:0]</obj_property>
+   </wvobject>
+   <wvobject type="array" fp_name="/tb/RC/pcie_rc_inst/pcie_rq_tag1">
+      <obj_property name="ElementShortName">pcie_rq_tag1[7:0]</obj_property>
+      <obj_property name="ObjectShortName">pcie_rq_tag1[7:0]</obj_property>
+   </wvobject>
+   <wvobject type="array" fp_name="/tb/RC/pcie_rc_inst/pcie_rq_tag_av">
+      <obj_property name="ElementShortName">pcie_rq_tag_av[3:0]</obj_property>
+      <obj_property name="ObjectShortName">pcie_rq_tag_av[3:0]</obj_property>
+   </wvobject>
+   <wvobject type="logic" fp_name="/tb/RC/pcie_rc_inst/pcie_rq_tag_vld0">
+      <obj_property name="ElementShortName">pcie_rq_tag_vld0</obj_property>
+      <obj_property name="ObjectShortName">pcie_rq_tag_vld0</obj_property>
+   </wvobject>
+   <wvobject type="logic" fp_name="/tb/RC/pcie_rc_inst/pcie_rq_tag_vld1">
+      <obj_property name="ElementShortName">pcie_rq_tag_vld1</obj_property>
+      <obj_property name="ObjectShortName">pcie_rq_tag_vld1</obj_property>
+   </wvobject>
+   <wvobject type="array" fp_name="/tb/RC/pcie_rc_inst/pcie_tfc_nph_av">
+      <obj_property name="ElementShortName">pcie_tfc_nph_av[3:0]</obj_property>
+      <obj_property name="ObjectShortName">pcie_tfc_nph_av[3:0]</obj_property>
+   </wvobject>
+   <wvobject type="array" fp_name="/tb/RC/pcie_rc_inst/pcie_tfc_npd_av">
+      <obj_property name="ElementShortName">pcie_tfc_npd_av[3:0]</obj_property>
+      <obj_property name="ObjectShortName">pcie_tfc_npd_av[3:0]</obj_property>
+   </wvobject>
+   <wvobject type="array" fp_name="/tb/RC/pcie_rc_inst/pcie_cq_np_req">
+      <obj_property name="ElementShortName">pcie_cq_np_req[1:0]</obj_property>
+      <obj_property name="ObjectShortName">pcie_cq_np_req[1:0]</obj_property>
+   </wvobject>
+   <wvobject type="array" fp_name="/tb/RC/pcie_rc_inst/pcie_cq_np_req_count">
+      <obj_property name="ElementShortName">pcie_cq_np_req_count[5:0]</obj_property>
+      <obj_property name="ObjectShortName">pcie_cq_np_req_count[5:0]</obj_property>
+   </wvobject>
+   <wvobject type="logic" fp_name="/tb/RC/pcie_rc_inst/cfg_phy_link_down">
+      <obj_property name="ElementShortName">cfg_phy_link_down</obj_property>
+      <obj_property name="ObjectShortName">cfg_phy_link_down</obj_property>
+   </wvobject>
+   <wvobject type="array" fp_name="/tb/RC/pcie_rc_inst/cfg_phy_link_status">
+      <obj_property name="ElementShortName">cfg_phy_link_status[1:0]</obj_property>
+      <obj_property name="ObjectShortName">cfg_phy_link_status[1:0]</obj_property>
+   </wvobject>
+   <wvobject type="array" fp_name="/tb/RC/pcie_rc_inst/cfg_negotiated_width">
+      <obj_property name="ElementShortName">cfg_negotiated_width[2:0]</obj_property>
+      <obj_property name="ObjectShortName">cfg_negotiated_width[2:0]</obj_property>
+   </wvobject>
+   <wvobject type="array" fp_name="/tb/RC/pcie_rc_inst/cfg_current_speed">
+      <obj_property name="ElementShortName">cfg_current_speed[1:0]</obj_property>
+      <obj_property name="ObjectShortName">cfg_current_speed[1:0]</obj_property>
+   </wvobject>
+   <wvobject type="array" fp_name="/tb/RC/pcie_rc_inst/cfg_max_payload">
+      <obj_property name="ElementShortName">cfg_max_payload[1:0]</obj_property>
+      <obj_property name="ObjectShortName">cfg_max_payload[1:0]</obj_property>
+   </wvobject>
+   <wvobject type="array" fp_name="/tb/RC/pcie_rc_inst/cfg_max_read_req">
+      <obj_property name="ElementShortName">cfg_max_read_req[2:0]</obj_property>
+      <obj_property name="ObjectShortName">cfg_max_read_req[2:0]</obj_property>
+   </wvobject>
+   <wvobject type="array" fp_name="/tb/RC/pcie_rc_inst/cfg_function_status">
+      <obj_property name="ElementShortName">cfg_function_status[15:0]</obj_property>
+      <obj_property name="ObjectShortName">cfg_function_status[15:0]</obj_property>
+   </wvobject>
+   <wvobject type="array" fp_name="/tb/RC/pcie_rc_inst/cfg_function_power_state">
+      <obj_property name="ElementShortName">cfg_function_power_state[11:0]</obj_property>
+      <obj_property name="ObjectShortName">cfg_function_power_state[11:0]</obj_property>
+   </wvobject>
+   <wvobject type="array" fp_name="/tb/RC/pcie_rc_inst/cfg_vf_status">
+      <obj_property name="ElementShortName">cfg_vf_status[503:0]</obj_property>
+      <obj_property name="ObjectShortName">cfg_vf_status[503:0]</obj_property>
+   </wvobject>
+   <wvobject type="array" fp_name="/tb/RC/pcie_rc_inst/cfg_vf_power_state">
+      <obj_property name="ElementShortName">cfg_vf_power_state[755:0]</obj_property>
+      <obj_property name="ObjectShortName">cfg_vf_power_state[755:0]</obj_property>
+   </wvobject>
+   <wvobject type="array" fp_name="/tb/RC/pcie_rc_inst/cfg_link_power_state">
+      <obj_property name="ElementShortName">cfg_link_power_state[1:0]</obj_property>
+      <obj_property name="ObjectShortName">cfg_link_power_state[1:0]</obj_property>
+   </wvobject>
+   <wvobject type="array" fp_name="/tb/RC/pcie_rc_inst/cfg_mgmt_addr">
+      <obj_property name="ElementShortName">cfg_mgmt_addr[9:0]</obj_property>
+      <obj_property name="ObjectShortName">cfg_mgmt_addr[9:0]</obj_property>
+   </wvobject>
+   <wvobject type="array" fp_name="/tb/RC/pcie_rc_inst/cfg_mgmt_function_number">
+      <obj_property name="ElementShortName">cfg_mgmt_function_number[7:0]</obj_property>
+      <obj_property name="ObjectShortName">cfg_mgmt_function_number[7:0]</obj_property>
+   </wvobject>
+   <wvobject type="logic" fp_name="/tb/RC/pcie_rc_inst/cfg_mgmt_write">
+      <obj_property name="ElementShortName">cfg_mgmt_write</obj_property>
+      <obj_property name="ObjectShortName">cfg_mgmt_write</obj_property>
+   </wvobject>
+   <wvobject type="array" fp_name="/tb/RC/pcie_rc_inst/cfg_mgmt_write_data">
+      <obj_property name="ElementShortName">cfg_mgmt_write_data[31:0]</obj_property>
+      <obj_property name="ObjectShortName">cfg_mgmt_write_data[31:0]</obj_property>
+   </wvobject>
+   <wvobject type="array" fp_name="/tb/RC/pcie_rc_inst/cfg_mgmt_byte_enable">
+      <obj_property name="ElementShortName">cfg_mgmt_byte_enable[3:0]</obj_property>
+      <obj_property name="ObjectShortName">cfg_mgmt_byte_enable[3:0]</obj_property>
+   </wvobject>
+   <wvobject type="logic" fp_name="/tb/RC/pcie_rc_inst/cfg_mgmt_read">
+      <obj_property name="ElementShortName">cfg_mgmt_read</obj_property>
+      <obj_property name="ObjectShortName">cfg_mgmt_read</obj_property>
+   </wvobject>
+   <wvobject type="array" fp_name="/tb/RC/pcie_rc_inst/cfg_mgmt_read_data">
+      <obj_property name="ElementShortName">cfg_mgmt_read_data[31:0]</obj_property>
+      <obj_property name="ObjectShortName">cfg_mgmt_read_data[31:0]</obj_property>
+   </wvobject>
+   <wvobject type="logic" fp_name="/tb/RC/pcie_rc_inst/cfg_mgmt_read_write_done">
+      <obj_property name="ElementShortName">cfg_mgmt_read_write_done</obj_property>
+      <obj_property name="ObjectShortName">cfg_mgmt_read_write_done</obj_property>
+   </wvobject>
+   <wvobject type="logic" fp_name="/tb/RC/pcie_rc_inst/cfg_mgmt_debug_access">
+      <obj_property name="ElementShortName">cfg_mgmt_debug_access</obj_property>
+      <obj_property name="ObjectShortName">cfg_mgmt_debug_access</obj_property>
+   </wvobject>
+   <wvobject type="logic" fp_name="/tb/RC/pcie_rc_inst/cfg_err_cor_out">
+      <obj_property name="ElementShortName">cfg_err_cor_out</obj_property>
+      <obj_property name="ObjectShortName">cfg_err_cor_out</obj_property>
+   </wvobject>
+   <wvobject type="logic" fp_name="/tb/RC/pcie_rc_inst/cfg_err_nonfatal_out">
+      <obj_property name="ElementShortName">cfg_err_nonfatal_out</obj_property>
+      <obj_property name="ObjectShortName">cfg_err_nonfatal_out</obj_property>
+   </wvobject>
+   <wvobject type="logic" fp_name="/tb/RC/pcie_rc_inst/cfg_err_fatal_out">
+      <obj_property name="ElementShortName">cfg_err_fatal_out</obj_property>
+      <obj_property name="ObjectShortName">cfg_err_fatal_out</obj_property>
+   </wvobject>
+   <wvobject type="logic" fp_name="/tb/RC/pcie_rc_inst/cfg_local_error_valid">
+      <obj_property name="ElementShortName">cfg_local_error_valid</obj_property>
+      <obj_property name="ObjectShortName">cfg_local_error_valid</obj_property>
+   </wvobject>
+   <wvobject type="array" fp_name="/tb/RC/pcie_rc_inst/cfg_local_error_out">
+      <obj_property name="ElementShortName">cfg_local_error_out[4:0]</obj_property>
+      <obj_property name="ObjectShortName">cfg_local_error_out[4:0]</obj_property>
+   </wvobject>
+   <wvobject type="array" fp_name="/tb/RC/pcie_rc_inst/cfg_ltssm_state">
+      <obj_property name="ElementShortName">cfg_ltssm_state[5:0]</obj_property>
+      <obj_property name="ObjectShortName">cfg_ltssm_state[5:0]</obj_property>
+   </wvobject>
+   <wvobject type="array" fp_name="/tb/RC/pcie_rc_inst/cfg_rx_pm_state">
+      <obj_property name="ElementShortName">cfg_rx_pm_state[1:0]</obj_property>
+      <obj_property name="ObjectShortName">cfg_rx_pm_state[1:0]</obj_property>
+   </wvobject>
+   <wvobject type="array" fp_name="/tb/RC/pcie_rc_inst/cfg_tx_pm_state">
+      <obj_property name="ElementShortName">cfg_tx_pm_state[1:0]</obj_property>
+      <obj_property name="ObjectShortName">cfg_tx_pm_state[1:0]</obj_property>
+   </wvobject>
+   <wvobject type="array" fp_name="/tb/RC/pcie_rc_inst/cfg_rcb_status">
+      <obj_property name="ElementShortName">cfg_rcb_status[3:0]</obj_property>
+      <obj_property name="ObjectShortName">cfg_rcb_status[3:0]</obj_property>
+   </wvobject>
+   <wvobject type="array" fp_name="/tb/RC/pcie_rc_inst/cfg_obff_enable">
+      <obj_property name="ElementShortName">cfg_obff_enable[1:0]</obj_property>
+      <obj_property name="ObjectShortName">cfg_obff_enable[1:0]</obj_property>
+   </wvobject>
+   <wvobject type="logic" fp_name="/tb/RC/pcie_rc_inst/cfg_pl_status_change">
+      <obj_property name="ElementShortName">cfg_pl_status_change</obj_property>
+      <obj_property name="ObjectShortName">cfg_pl_status_change</obj_property>
+   </wvobject>
+   <wvobject type="array" fp_name="/tb/RC/pcie_rc_inst/cfg_tph_requester_enable">
+      <obj_property name="ElementShortName">cfg_tph_requester_enable[3:0]</obj_property>
+      <obj_property name="ObjectShortName">cfg_tph_requester_enable[3:0]</obj_property>
+   </wvobject>
+   <wvobject type="array" fp_name="/tb/RC/pcie_rc_inst/cfg_tph_st_mode">
+      <obj_property name="ElementShortName">cfg_tph_st_mode[11:0]</obj_property>
+      <obj_property name="ObjectShortName">cfg_tph_st_mode[11:0]</obj_property>
+   </wvobject>
+   <wvobject type="array" fp_name="/tb/RC/pcie_rc_inst/cfg_vf_tph_requester_enable">
+      <obj_property name="ElementShortName">cfg_vf_tph_requester_enable[251:0]</obj_property>
+      <obj_property name="ObjectShortName">cfg_vf_tph_requester_enable[251:0]</obj_property>
+   </wvobject>
+   <wvobject type="array" fp_name="/tb/RC/pcie_rc_inst/cfg_vf_tph_st_mode">
+      <obj_property name="ElementShortName">cfg_vf_tph_st_mode[755:0]</obj_property>
+      <obj_property name="ObjectShortName">cfg_vf_tph_st_mode[755:0]</obj_property>
+   </wvobject>
+   <wvobject type="logic" fp_name="/tb/RC/pcie_rc_inst/cfg_msg_received">
+      <obj_property name="ElementShortName">cfg_msg_received</obj_property>
+      <obj_property name="ObjectShortName">cfg_msg_received</obj_property>
+   </wvobject>
+   <wvobject type="array" fp_name="/tb/RC/pcie_rc_inst/cfg_msg_received_data">
+      <obj_property name="ElementShortName">cfg_msg_received_data[7:0]</obj_property>
+      <obj_property name="ObjectShortName">cfg_msg_received_data[7:0]</obj_property>
+   </wvobject>
+   <wvobject type="array" fp_name="/tb/RC/pcie_rc_inst/cfg_msg_received_type">
+      <obj_property name="ElementShortName">cfg_msg_received_type[4:0]</obj_property>
+      <obj_property name="ObjectShortName">cfg_msg_received_type[4:0]</obj_property>
+   </wvobject>
+   <wvobject type="logic" fp_name="/tb/RC/pcie_rc_inst/cfg_msg_transmit">
+      <obj_property name="ElementShortName">cfg_msg_transmit</obj_property>
+      <obj_property name="ObjectShortName">cfg_msg_transmit</obj_property>
+   </wvobject>
+   <wvobject type="array" fp_name="/tb/RC/pcie_rc_inst/cfg_msg_transmit_type">
+      <obj_property name="ElementShortName">cfg_msg_transmit_type[2:0]</obj_property>
+      <obj_property name="ObjectShortName">cfg_msg_transmit_type[2:0]</obj_property>
+   </wvobject>
+   <wvobject type="array" fp_name="/tb/RC/pcie_rc_inst/cfg_msg_transmit_data">
+      <obj_property name="ElementShortName">cfg_msg_transmit_data[31:0]</obj_property>
+      <obj_property name="ObjectShortName">cfg_msg_transmit_data[31:0]</obj_property>
+   </wvobject>
+   <wvobject type="logic" fp_name="/tb/RC/pcie_rc_inst/cfg_msg_transmit_done">
+      <obj_property name="ElementShortName">cfg_msg_transmit_done</obj_property>
+      <obj_property name="ObjectShortName">cfg_msg_transmit_done</obj_property>
+   </wvobject>
+   <wvobject type="array" fp_name="/tb/RC/pcie_rc_inst/cfg_fc_ph">
+      <obj_property name="ElementShortName">cfg_fc_ph[7:0]</obj_property>
+      <obj_property name="ObjectShortName">cfg_fc_ph[7:0]</obj_property>
+   </wvobject>
+   <wvobject type="array" fp_name="/tb/RC/pcie_rc_inst/cfg_fc_pd">
+      <obj_property name="ElementShortName">cfg_fc_pd[11:0]</obj_property>
+      <obj_property name="ObjectShortName">cfg_fc_pd[11:0]</obj_property>
+   </wvobject>
+   <wvobject type="array" fp_name="/tb/RC/pcie_rc_inst/cfg_fc_nph">
+      <obj_property name="ElementShortName">cfg_fc_nph[7:0]</obj_property>
+      <obj_property name="ObjectShortName">cfg_fc_nph[7:0]</obj_property>
+   </wvobject>
+   <wvobject type="array" fp_name="/tb/RC/pcie_rc_inst/cfg_fc_npd">
+      <obj_property name="ElementShortName">cfg_fc_npd[11:0]</obj_property>
+      <obj_property name="ObjectShortName">cfg_fc_npd[11:0]</obj_property>
+   </wvobject>
+   <wvobject type="array" fp_name="/tb/RC/pcie_rc_inst/cfg_fc_cplh">
+      <obj_property name="ElementShortName">cfg_fc_cplh[7:0]</obj_property>
+      <obj_property name="ObjectShortName">cfg_fc_cplh[7:0]</obj_property>
+   </wvobject>
+   <wvobject type="array" fp_name="/tb/RC/pcie_rc_inst/cfg_fc_cpld">
+      <obj_property name="ElementShortName">cfg_fc_cpld[11:0]</obj_property>
+      <obj_property name="ObjectShortName">cfg_fc_cpld[11:0]</obj_property>
+   </wvobject>
+   <wvobject type="array" fp_name="/tb/RC/pcie_rc_inst/cfg_fc_sel">
+      <obj_property name="ElementShortName">cfg_fc_sel[2:0]</obj_property>
+      <obj_property name="ObjectShortName">cfg_fc_sel[2:0]</obj_property>
+   </wvobject>
+   <wvobject type="array" fp_name="/tb/RC/pcie_rc_inst/cfg_dsn">
+      <obj_property name="ElementShortName">cfg_dsn[63:0]</obj_property>
+      <obj_property name="ObjectShortName">cfg_dsn[63:0]</obj_property>
+   </wvobject>
+   <wvobject type="array" fp_name="/tb/RC/pcie_rc_inst/cfg_bus_number">
+      <obj_property name="ElementShortName">cfg_bus_number[7:0]</obj_property>
+      <obj_property name="ObjectShortName">cfg_bus_number[7:0]</obj_property>
+   </wvobject>
+   <wvobject type="logic" fp_name="/tb/RC/pcie_rc_inst/cfg_power_state_change_ack">
+      <obj_property name="ElementShortName">cfg_power_state_change_ack</obj_property>
+      <obj_property name="ObjectShortName">cfg_power_state_change_ack</obj_property>
+   </wvobject>
+   <wvobject type="logic" fp_name="/tb/RC/pcie_rc_inst/cfg_power_state_change_interrupt">
+      <obj_property name="ElementShortName">cfg_power_state_change_interrupt</obj_property>
+      <obj_property name="ObjectShortName">cfg_power_state_change_interrupt</obj_property>
+   </wvobject>
+   <wvobject type="logic" fp_name="/tb/RC/pcie_rc_inst/cfg_err_cor_in">
+      <obj_property name="ElementShortName">cfg_err_cor_in</obj_property>
+      <obj_property name="ObjectShortName">cfg_err_cor_in</obj_property>
+   </wvobject>
+   <wvobject type="logic" fp_name="/tb/RC/pcie_rc_inst/cfg_err_uncor_in">
+      <obj_property name="ElementShortName">cfg_err_uncor_in</obj_property>
+      <obj_property name="ObjectShortName">cfg_err_uncor_in</obj_property>
+   </wvobject>
+   <wvobject type="array" fp_name="/tb/RC/pcie_rc_inst/cfg_flr_in_process">
+      <obj_property name="ElementShortName">cfg_flr_in_process[3:0]</obj_property>
+      <obj_property name="ObjectShortName">cfg_flr_in_process[3:0]</obj_property>
+   </wvobject>
+   <wvobject type="array" fp_name="/tb/RC/pcie_rc_inst/cfg_flr_done">
+      <obj_property name="ElementShortName">cfg_flr_done[3:0]</obj_property>
+      <obj_property name="ObjectShortName">cfg_flr_done[3:0]</obj_property>
+   </wvobject>
+   <wvobject type="array" fp_name="/tb/RC/pcie_rc_inst/cfg_vf_flr_in_process">
+      <obj_property name="ElementShortName">cfg_vf_flr_in_process[251:0]</obj_property>
+      <obj_property name="ObjectShortName">cfg_vf_flr_in_process[251:0]</obj_property>
+   </wvobject>
+   <wvobject type="array" fp_name="/tb/RC/pcie_rc_inst/cfg_vf_flr_func_num">
+      <obj_property name="ElementShortName">cfg_vf_flr_func_num[7:0]</obj_property>
+      <obj_property name="ObjectShortName">cfg_vf_flr_func_num[7:0]</obj_property>
+   </wvobject>
+   <wvobject type="array" fp_name="/tb/RC/pcie_rc_inst/cfg_vf_flr_done">
+      <obj_property name="ElementShortName">cfg_vf_flr_done[0:0]</obj_property>
+      <obj_property name="ObjectShortName">cfg_vf_flr_done[0:0]</obj_property>
+   </wvobject>
+   <wvobject type="logic" fp_name="/tb/RC/pcie_rc_inst/cfg_link_training_enable">
+      <obj_property name="ElementShortName">cfg_link_training_enable</obj_property>
+      <obj_property name="ObjectShortName">cfg_link_training_enable</obj_property>
+   </wvobject>
+   <wvobject type="array" fp_name="/tb/RC/pcie_rc_inst/cfg_interrupt_int">
+      <obj_property name="ElementShortName">cfg_interrupt_int[3:0]</obj_property>
+      <obj_property name="ObjectShortName">cfg_interrupt_int[3:0]</obj_property>
+   </wvobject>
+   <wvobject type="array" fp_name="/tb/RC/pcie_rc_inst/cfg_interrupt_pending">
+      <obj_property name="ElementShortName">cfg_interrupt_pending[3:0]</obj_property>
+      <obj_property name="ObjectShortName">cfg_interrupt_pending[3:0]</obj_property>
+   </wvobject>
+   <wvobject type="logic" fp_name="/tb/RC/pcie_rc_inst/cfg_interrupt_sent">
+      <obj_property name="ElementShortName">cfg_interrupt_sent</obj_property>
+      <obj_property name="ObjectShortName">cfg_interrupt_sent</obj_property>
+   </wvobject>
+   <wvobject type="logic" fp_name="/tb/RC/pcie_rc_inst/cfg_pm_aspm_l1_entry_reject">
+      <obj_property name="ElementShortName">cfg_pm_aspm_l1_entry_reject</obj_property>
+      <obj_property name="ObjectShortName">cfg_pm_aspm_l1_entry_reject</obj_property>
+   </wvobject>
+   <wvobject type="logic" fp_name="/tb/RC/pcie_rc_inst/cfg_pm_aspm_tx_l0s_entry_disable">
+      <obj_property name="ElementShortName">cfg_pm_aspm_tx_l0s_entry_disable</obj_property>
+      <obj_property name="ObjectShortName">cfg_pm_aspm_tx_l0s_entry_disable</obj_property>
+   </wvobject>
+   <wvobject type="logic" fp_name="/tb/RC/pcie_rc_inst/cfg_hot_reset_out">
+      <obj_property name="ElementShortName">cfg_hot_reset_out</obj_property>
+      <obj_property name="ObjectShortName">cfg_hot_reset_out</obj_property>
+   </wvobject>
+   <wvobject type="logic" fp_name="/tb/RC/pcie_rc_inst/cfg_config_space_enable">
+      <obj_property name="ElementShortName">cfg_config_space_enable</obj_property>
+      <obj_property name="ObjectShortName">cfg_config_space_enable</obj_property>
+   </wvobject>
+   <wvobject type="logic" fp_name="/tb/RC/pcie_rc_inst/cfg_req_pm_transition_l23_ready">
+      <obj_property name="ElementShortName">cfg_req_pm_transition_l23_ready</obj_property>
+      <obj_property name="ObjectShortName">cfg_req_pm_transition_l23_ready</obj_property>
+   </wvobject>
+   <wvobject type="logic" fp_name="/tb/RC/pcie_rc_inst/cfg_hot_reset_in">
+      <obj_property name="ElementShortName">cfg_hot_reset_in</obj_property>
+      <obj_property name="ObjectShortName">cfg_hot_reset_in</obj_property>
+   </wvobject>
+   <wvobject type="array" fp_name="/tb/RC/pcie_rc_inst/cfg_ds_port_number">
+      <obj_property name="ElementShortName">cfg_ds_port_number[7:0]</obj_property>
+      <obj_property name="ObjectShortName">cfg_ds_port_number[7:0]</obj_property>
+   </wvobject>
+   <wvobject type="array" fp_name="/tb/RC/pcie_rc_inst/cfg_ds_bus_number">
+      <obj_property name="ElementShortName">cfg_ds_bus_number[7:0]</obj_property>
+      <obj_property name="ObjectShortName">cfg_ds_bus_number[7:0]</obj_property>
+   </wvobject>
+   <wvobject type="array" fp_name="/tb/RC/pcie_rc_inst/cfg_ds_device_number">
+      <obj_property name="ElementShortName">cfg_ds_device_number[4:0]</obj_property>
+      <obj_property name="ObjectShortName">cfg_ds_device_number[4:0]</obj_property>
+   </wvobject>
+</wave_config>
