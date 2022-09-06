@@ -7,13 +7,6 @@ module RootComplex #(
   input   wire  sys_clk,
   input   wire  sys_reset,
 
-  // Host to FPGA, FPGA to Host Interface
-  input   wire          h2f_csr_read,
-  input   wire          h2f_csr_write,
-  input   wire  [31:0]  h2f_csr_addr,  
-  input   wire  [511:0] h2f_csr_wrData,
-  output  wire  [511:0] f2h_csr_rdData,
-
   // PCIe serial Interface
   output  wire  [PCIE_LINK_WIDTH-1:0]   pci_exp_txp,
   output  wire  [PCIE_LINK_WIDTH-1:0]   pci_exp_txn,
@@ -21,12 +14,49 @@ module RootComplex #(
   input   wire  [PCIE_LINK_WIDTH-1:0]   pci_exp_rxn
 );
 
-  // Wires 
+
+  // ------------------------
+  // Wires and Regs
+  // ------------------------
+
   // User Interface
   wire user_clk;
   wire user_reset;
   wire user_lnk_up;
   
+  // Configuration Management
+  wire  [9:0]   cfg_mgmt_addr;
+  wire  [7:0]   cfg_mgmt_function_number;
+  wire          cfg_mgmt_write;
+  wire  [31:0]  cfg_mgmt_write_data;
+  wire  [3:0]   cfg_mgmt_byte_enable;
+  wire          cfg_mgmt_read;
+  wire  [31:0]  cfg_mgmt_read_data;
+  wire          cfg_mgmt_read_write_done;
+  wire          cfg_mgmt_debug_access;
+  
+  // PCIe Controller -> CFG signals
+  wire          ctr2cfg_mgmt_write;
+  wire          ctr2cfg_mgmt_read;
+  wire  [31:0]  ctr2cfg_mgmt_addr;
+  wire  [31:0]  ctr2cfg_mgmt_write_data;
+  wire  [3:0]   ctr2cfg_mgmt_byte_enable;
+
+  // CFG -> PCIe Controller signals
+  wire  [31:0]  cfg2ctr_mgmt_read_data;
+  wire          cfg2ctr_mgmt_write_done;
+  wire          cfg2ctr_mgmt_read_done;
+
+  // Controller -> TX
+  wire          ctr2tx_type0_cfg_read;
+  wire  [7:0]   ctr2tx_type0_cfg_read_tag;
+  wire  [11:0]  ctr2tx_type0_cfg_read_reg_addr;
+  wire  [3:0]   ctr2tx_type0_cfg_read_first_dw_be;
+
+  // TX -> Controller
+  wire          tx2ctr_type0_cfg_read_done;
+
+  /*
   // AXI-Stream Interface
   wire  [63:0]  s_axis_rq_tdata;
   wire  [1:0]   s_axis_rq_tkeep;
@@ -55,30 +85,8 @@ module RootComplex #(
   wire  [3:0]   s_axis_cc_tready;
   wire  [61:0]  s_axis_cc_tuser;
   wire          s_axis_cc_tvalid;
+*/
 
-  // Configuration Management
-  wire  [9:0]   cfg_mgmt_addr;
-  wire  [7:0]   cfg_mgmt_function_number;
-  wire          cfg_mgmt_write;
-  wire  [31:0]  cfg_mgmt_write_data;
-  wire  [3:0]   cfg_mgmt_byte_enable;
-  wire          cfg_mgmt_read;
-  wire  [31:0]  cfg_mgmt_read_data;
-  wire          cfg_mgmt_read_write_done;
-  wire          cfg_mgmt_debug_access;
-  
-  // CSR to CFG_MGMT signals
-  wire          csr_cfg_mgmt_write;
-  wire          csr_cfg_mgmt_read;
-  wire  [31:0]  csr_cfg_mgmt_addr;
-  wire  [31:0]  csr_cfg_mgmt_write_data;
-  wire  [3:0]   csr_cfg_mgmt_byte_enable;
-
-  // CSR to RootComplex signals
-  wire          csr_cfg_link_training_enable;
-
-  // RootComplex to CSR signals
-  wire          phy_rdy_out;
 
   // ------------------------
   // PCIe RootComplex IP
@@ -210,7 +218,7 @@ module RootComplex #(
     .cfg_vf_flr_in_process(cfg_vf_flr_in_process),                        // output wire [251 : 0] cfg_vf_flr_in_process
     .cfg_vf_flr_func_num(cfg_vf_flr_func_num),                            // input wire [7 : 0] cfg_vf_flr_func_num
     .cfg_vf_flr_done(cfg_vf_flr_done),                                    // input wire [0 : 0] cfg_vf_flr_done
-    .cfg_link_training_enable(csr_cfg_link_training_enable),              // input wire cfg_link_training_enable
+    .cfg_link_training_enable(ctr2cfg_link_training_enable),              // input wire cfg_link_training_enable
     .cfg_interrupt_int(cfg_interrupt_int),                                // input wire [3 : 0] cfg_interrupt_int
     .cfg_interrupt_pending(cfg_interrupt_pending),                        // input wire [3 : 0] cfg_interrupt_pending
     .cfg_interrupt_sent(cfg_interrupt_sent),                              // output wire cfg_interrupt_sent
@@ -226,61 +234,54 @@ module RootComplex #(
     .phy_rdy_out(phy_rdy_out)                                             // output wire phy_rdy_out
   );
 
-  csr csr_inst(
+  pcie_controller pcie_controller_inst(
     // User Interface
     .user_clk(user_clk),                                                  // input  wire user_clk
     .user_reset(user_reset),                                              // input  wire user_reset
     .user_lnk_up(user_lnk_up),                                            // input  wire user_lnk_up
 
-    // Host to FPGA signals
-    .h2f_csr_read(h2f_csr_read),                                          // input  wire          h2f_csr_read
-    .h2f_csr_write(h2f_csr_write),                                        // input  wire          h2f_csr_write
-    .h2f_csr_addr(h2f_csr_addr),                                          // input  wire [31:0]   h2f_csr_addr
-    .h2f_csr_wrData(h2f_csr_wrData),                                      // input  wire [511:0]  h2f_csr_wrData
-    
-    // FPGA to Host signals
-    .f2h_csr_rdData(f2h_csr_rdData),                                      // output reg  [511:0]  f2h_csr_rdData
+    // Controller -> CFG
+    .ctr2cfg_mgmt_addr(ctr2cfg_mgmt_addr),                                    // output wire [9 : 0] cfg_mgmt_addr
+    .ctr2cfg_mgmt_function_number(ctr2cfg_mgmt_function_number),              // output wire [7 : 0] cfg_mgmt_function_number
+    .ctr2cfg_mgmt_write(ctr2cfg_mgmt_write),                                  // output wire cfg_mgmt_write
+    .ctr2cfg_mgmt_write_data(ctr2cfg_mgmt_write_data),                        // output wire [31 : 0] cfg_mgmt_write_data
+    .ctr2cfg_mgmt_byte_enable(ctr2cfg_mgmt_byte_enable),                      // output wire [3 : 0] cfg_mgmt_byte_enable
+    .ctr2cfg_mgmt_read(ctr2cfg_mgmt_read),                                    // output wire cfg_mgmt_read
+    .ctr2cfg_mgmt_debug_access(ctr2cfg_mgmt_debug_access),                    // output wire cfg_mgmt_debug_access
 
-    // CSR to cfg_mgmt signals
-    .csr_cfg_mgmt_write(csr_cfg_mgmt_write),                              // output  wire csr_cfg_mgmt_write
-    .csr_cfg_mgmt_read(csr_cfg_mgmt_read),                                // output  wire csr_cfg_mgmt_read
-    .csr_cfg_mgmt_addr(csr_cfg_mgmt_addr),                                // output  wire [31:0] csr_cfg_mgmt_addr
-    .csr_cfg_mgmt_write_data(csr_cfg_mgmt_write_data),                    // output  wire [31:0] csr_cfg_mgmt_write_data
-    .csr_cfg_mgmt_byte_enable(csr_cfg_mgmt_byte_enable),                  // output  wire [3:0]  csr_cfg_mgmt_byte_enable
+    // CFG -> Controller
+    .cfg2ctr_mgmt_read_data(cfg2ctr_mgmt_read_data),                      // input wire [31:0] cfg2ctr_mgmt_read_data
+    .cfg2ctr_mgmt_write_done(cfg2ctr_mgmt_write_done),                    // input wire cfg2ctr_mgmt_write_done
+    .cfg2ctr_mgmt_read_done(cfg2ctr_mgmt_read_done),                      // input wire cfg2ctr_mgmt_read_done
 
-    // CSR to RootComplex signals
-    .csr_cfg_msg_transmit(cfg_msg_transmit),                                  // output reg cfg_msg_transmit
-    .csr_cfg_msg_transmit_type(cfg_msg_transmit_type),                        // output reg [2 : 0] cfg_msg_transmit_type
-    .csr_cfg_msg_transmit_data(cfg_msg_transmit_data),                        // output reg [31 : 0] cfg_msg_transmit_data
-    .csr_cfg_fc_sel(cfg_fc_sel),                                              // output reg [2 : 0] cfg_fc_sel
-    .csr_cfg_dsn(cfg_dsn),                                                    // output reg [63 : 0] cfg_dsn
-    .csr_cfg_power_state_change_ack(cfg_power_state_change_ack),              // output reg cfg_power_state_change_ack
-    .csr_cfg_err_cor_in(cfg_err_cor_in),                                      // output reg cfg_err_cor_in
-    .csr_cfg_err_uncor_in(cfg_err_uncor_in),                                  // output reg cfg_err_uncor_in
-    .csr_cfg_flr_done(cfg_flr_done),                                          // output reg [3 : 0] cfg_flr_done
-    .csr_cfg_vf_flr_done(cfg_vf_flr_done),                                    // output reg [0 : 0] cfg_vf_flr_done
-    .csr_cfg_link_training_enable(csr_cfg_link_training_enable),              // output reg cfg_link_training_enable
-    .csr_cfg_hot_reset_in(cfg_hot_reset_in),                                  // output reg cfg_hot_reset_in
-    .csr_cfg_ds_port_number(cfg_ds_port_number),                              // output reg [7 : 0] cfg_ds_port_number
-    .csr_cfg_ds_bus_number(cfg_ds_bus_number),                                // output reg [7 : 0] cfg_ds_bus_number
-    .csr_cfg_ds_device_number(cfg_ds_device_number)                           // output reg [4 : 0] cfg_ds_device_number
+    // Controller -> TX
+    .ctr2tx_type0_cfg_read(ctr2tx_type0_cfg_read),
+    .ctr2tx_type0_cfg_read_tag(ctr2tx_type0_cfg_read_tag),
+    .ctr2tx_type0_cfg_read_reg_addr(ctr2tx_type0_cfg_read_reg_addr),
+    .ctr2tx_type0_cfg_read_first_dw_be(ctr2tx_type0_cfg_read_first_dw_be)
   );
 
-/*
-  cfg_mgmt cfg_mgmt_inst(
+  cfg cfg_inst(
     // User Interface
-    .user_clk(user_clk),                                                  // input  wire user_clk
-    .user_reset(user_reset),                                              // input  wire user_reset
-    .user_lnk_up(user_lnk_up),                                            // input  wire user_lnk_up
+    .user_clk(user_clk),                                                  // input wire user_clk
+    .user_reset(user_reset),                                              // input wire user_reset
+    .user_lnk_up(user_lnk_up),                                            // input wire user_lnk_up
 
-    // CSR
-    .csr_cfg_mgmt_write(csr_cfg_mgmt_write),                              // input  wire csr_cfg_mgmt_write
-    .csr_cfg_mgmt_read(csr_cfg_mgmt_read),                                // input  wire csr_cfg_mgmt_read
-    .csr_cfg_mgmt_addr(csr_cfg_mgmt_addr),                                // input  wire [31:0] csr_cfg_mgmt_addr
-    .csr_cfg_mgmt_write_data(csr_cfg_mgmt_write_data),                    // input  wire [31:0] csr_cfg_mgmt_write_data
-    .csr_cfg_mgmt_byte_enable(csr_cfg_mgmt_byte_enable),                  // input  wire [3:0]  csr_cfg_mgmt_byte_enable
+    // Controller -> CFG
+    .ctr2cfg_mgmt_addr(ctr2cfg_mgmt_addr),                                // input wire [9 : 0] cfg_mgmt_addr
+    .ctr2cfg_mgmt_function_number(ctr2cfg_mgmt_function_number),          // input wire [7 : 0] cfg_mgmt_function_number
+    .ctr2cfg_mgmt_write(ctr2cfg_mgmt_write),                              // input wire cfg_mgmt_write
+    .ctr2cfg_mgmt_write_data(ctr2cfg_mgmt_write_data),                    // input wire [31 : 0] cfg_mgmt_write_data
+    .ctr2cfg_mgmt_byte_enable(ctr2cfg_mgmt_byte_enable),                  // input wire [3 : 0] cfg_mgmt_byte_enable
+    .ctr2cfg_mgmt_read(ctr2cfg_mgmt_read),                                // input wire cfg_mgmt_read
+    .ctr2cfg_mgmt_debug_access(ctr2cfg_mgmt_debug_access),                // input wire cfg_mgmt_debug_access
 
-    // PCIe Configuration Management
+    // CFG -> Controller
+    .cfg2ctr_mgmt_write_done(cfg2ctr_mgmt_write_done),                    // output reg cfg2ctr_mgmt_write_done
+    .cfg2ctr_mgmt_read_done(cfg2ctr_mgmt_read_done),                      // output reg cfg2ctr_mgmt_read_done
+    .cfg2ctr_mgmt_read_data(cfg2ctr_mgmt_read_data),                      // output reg [31:0] cfg2ctr_mgmt_read_data
+
+    // PCIe Configuration Management (CFG -> PCIe IP)
     .cfg_mgmt_addr(cfg_mgmt_addr),                                        // output wire [9 : 0] cfg_mgmt_addr
     .cfg_mgmt_function_number(cfg_mgmt_function_number),                  // output wire [7 : 0] cfg_mgmt_function_number
     .cfg_mgmt_write(cfg_mgmt_write),                                      // output wire cfg_mgmt_write
@@ -291,10 +292,9 @@ module RootComplex #(
     .cfg_mgmt_read_write_done(cfg_mgmt_read_write_done),                  // input  wire cfg_mgmt_read_write_done
     .cfg_mgmt_debug_access(cfg_mgmt_debug_access)                         // output wire cfg_mgmt_debug_access
   );
-*/
 
-/*
-  PCIe_Requester pcie_requester_inst(
+
+  pcie_tx pcie_tx_inst(
     // User Interface
     .user_clk(user_clk),                                                  // input  wire user_clk
     .user_reset(user_reset),                                              // input  wire user_reset
@@ -308,15 +308,27 @@ module RootComplex #(
     .s_axis_rq_tready(s_axis_rq_tready),                                  // output wire [3 : 0] s_axis_rq_tready
     .s_axis_rq_tuser(s_axis_rq_tuser),                                    // input wire [61 : 0] s_axis_rq_tuser
     .s_axis_rq_tvalid(s_axis_rq_tvalid),                                  // input wire s_axis_rq_tvalid
-    
-    // PCIe Requester Completion
-    .m_axis_rc_tdata(m_axis_rc_tdata),                                    // output wire [63 : 0] m_axis_rc_tdata
-    .m_axis_rc_tkeep(m_axis_rc_tkeep),                                    // output wire [1 : 0] m_axis_rc_tkeep
-    .m_axis_rc_tlast(m_axis_rc_tlast),                                    // output wire m_axis_rc_tlast
-    .m_axis_rc_tready(m_axis_rc_tready),                                  // input wire m_axis_rc_tready
-    .m_axis_rc_tuser(m_axis_rc_tuser),                                    // output wire [74 : 0] m_axis_rc_tuser
-    .m_axis_rc_tvalid(m_axis_rc_tvalid)                                   // output wire m_axis_rc_tvalid
+
+    // TX -> Controller
+    .tx2ctr_type0_cfg_read_done(tx2ctr_type0_cfg_read_done)               // output reg tx2ctr_type0_cfg_read_done
   );
-*/  
+
+
+  pcie_rx pcie_rx_inst(
+    // User Interface
+    .user_clk(user_clk),                                                  // input  wire user_clk
+    .user_reset(user_reset),                                              // input  wire user_reset
+    .user_lnk_up(user_lnk_up),                                            // input  wire user_lnk_up
+    
+    // AXI-Steram Interface
+    // PCIe Requester reQuester
+    .m_axis_rc_tdata(m_axis_rc_tdata),                                    // input wire [63 : 0] m_axis_rc_tdata
+    .m_axis_rc_tkeep(m_axis_rc_tkeep),                                    // input wire [1 : 0] m_axis_rc_tkeep
+    .m_axis_rc_tlast(m_axis_rc_tlast),                                    // input wire m_axis_rc_tlast
+    .m_axis_rc_tready(m_axis_rc_tready),                                  // output reg m_axis_rc_tready
+    .m_axis_rc_tuser(m_axis_rc_tuser),                                    // input wire [74 : 0] m_axis_rc_tuser
+    .m_axis_rc_tvalid(m_axis_rc_tvalid)                                   // input wire m_axis_rc_tvalid
+  );
+
 
 endmodule
