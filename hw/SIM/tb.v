@@ -92,10 +92,11 @@ module tb;
 
 
   // PCI-Express Model Root Port Instance
-  RootComplex RC (
+  pcie_rp_top RP (
     // SYS Inteface
-    .sys_clk(rp_sys_clk_p),
-    .sys_reset(sys_reset),
+    .sys_clk_p(rp_sys_clk_p),
+    .sys_clk_n(rp_sys_clk_n),
+    .sys_rst_n(!sys_reset),
 
     // PCI-Express Serial Interface
     .pci_exp_txn(rp_pci_exp_txn),
