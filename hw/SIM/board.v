@@ -69,7 +69,7 @@
 
 module board;
 
-  parameter          REF_CLK_FREQ       = 1 ;      // 0 - 100 MHz, 1 - 125 MHz,  2 - 250 MHz
+  parameter          REF_CLK_FREQ       = 0 ;      // 0 - 100 MHz, 1 - 125 MHz,  2 - 250 MHz
   parameter    [4:0] LINK_WIDTH         = 5'd4;
   `ifdef LINKSPEED
   localparam   [3:0] LINK_SPEED_US      = 4'h`LINKSPEED;

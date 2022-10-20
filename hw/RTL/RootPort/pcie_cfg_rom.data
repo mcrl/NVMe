@@ -1,0 +1,50 @@
+//  1:  Send SET_SLOT_PWR_LIMIT message with value = 25 Watts
+//  2:  Read from Device ID Reg to set Bus/Device to 1/0
+//  3:  Write 0x8000_0000 to BAR0
+//  4:  Read back BAR0
+//  5:  Write 0x0041 to Link Control Reg (Enable L0s and Common CLock)
+//  6:  Write 0x0006 to Command Reg (Enable Memory and Bus-master)
+//
+// Bit layout:
+//   All TLPs:
+//     Unused - bits 31-18
+//     Type - bits 17-16: 00=CfgRd, 01=CfgWr, 10=Msg, 11=MsgD
+//   Cfg TLPs:
+//     Function Number (2 LSb) - bits 15-14
+//     Register Number - bits 13-4
+//     1DW BE - bits 3-0
+//   Msg TLPs:
+//     Unused - bits 15-11
+//     Message Routing - bits 10-8
+//     Message Code - bits 7-0
+//     Payload Data - bits 31-0
+//
+// TLP #1 - SET_SLOT_PWR_LIMIT MsgD TLP - 25W
+   0000000000000110000010001010000
+   00000000000000000000000000011001  // Scale = 0 (1.0x), Data = 25
+//
+// TLP #2 - CfgRd from Device ID (sets Bus/Dev number) for Func 0
+//
+   0000000000000000000000000001111
+   00000000000000000000000000000000  // Data unused
+//
+// TLP #3 - CfgWr to BAR0 - assign base address h80000000 to 64-bit BAR
+//
+   0000000000000010000000001001111 // DW Addr 4 = BAR0
+   10000000000000000000000000000000  // Data = h80000000
+//
+// TLP #4 - CfgRd from BAR0 (64-bit Mem)
+//
+   0000000000000000000000001001111 // DW Addr 4 = BAR0
+   00000000000000000000000000000000  // Data unused
+//
+// TLP #5 - CfgWr to Link Ctl Reg - Enable ASPM L0s and Common Clock
+//
+   0000000000000010000001101000001 // DW Addr 52 = Link Control Reg
+   01000001000000000000000000000000  // Data = h41000000
+//
+// TLP #6 - CfgWr to Command Reg - Enable IO, Mem, and Bus Master
+//
+   0000000000000010000000000010001 // DW Addr 1 = Command Reg
+   00000000000000000000000000000011  // Data = h06000000
+
