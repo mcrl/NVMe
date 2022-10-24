@@ -32,8 +32,6 @@ module user_tlp_encoder #(
   localparam [2:0] TYPE_MEMWR32 = 3'b001;
   localparam [2:0] TYPE_MEMRD64 = 3'b010;
   localparam [2:0] TYPE_MEMWR64 = 3'b011;
-  localparam [2:0] TYPE_IORD    = 3'b100;
-  localparam [2:0] TYPE_IOWR    = 3'b101;
 
   // State encoding
   localparam [1:0] ST_IDLE   = 2'd0;
@@ -49,9 +47,6 @@ module user_tlp_encoder #(
   reg [3:0]   pkt_type;
 
 
-  // 128-bit Packet Generator State-machine - responsible for hand-shake
-  // with Controller module and selecting which QW of the packet is
-  // transmitted
   always @(posedge user_clk) begin
     if (reset) begin
       pkt_state     <= ST_IDLE;
@@ -69,7 +64,7 @@ module user_tlp_encoder #(
         ST_CYC1: begin : beat_1
           // First Double-Quad-word - wait for data to be accepted by core
           if (s_axis_rq_tready) begin
-            if ((tx_type == TYPE_MEMWR64) || (tx_type == TYPE_MEMWR32) || (tx_type == TYPE_IOWR)) begin
+            if ((tx_type == TYPE_MEMWR64) || (tx_type == TYPE_MEMWR32)) begin
               pkt_state    <= ST_CYC2;
             end else begin
               pkt_state  <= ST_IDLE;
@@ -116,14 +111,6 @@ module user_tlp_encoder #(
           pkt_attr <= 3'b010;
           pkt_type <= 4'b0001;
         end
-        TYPE_IORD: begin
-          pkt_attr <= 3'b000;
-          pkt_type <= 4'b0010;
-        end
-        TYPE_IOWR: begin
-          pkt_attr <= 3'b000;
-          pkt_type <= 4'b0011;
-        end
         default: begin
           pkt_attr <= 3'b000;
           pkt_type <= 4'b0000;
@@ -132,8 +119,7 @@ module user_tlp_encoder #(
     end
   end
 
-  // Packet generation output - combinatorial output using current state to
-  // select which fields to output
+  // Packet generation output
   always @* begin
     case (pkt_state)
       ST_IDLE: begin
@@ -147,7 +133,7 @@ module user_tlp_encoder #(
       ST_CYC1: begin
         // First 2 QW's (4 DW's) of TLP
 
-        s_axis_rq_tlast  = ((tx_type == TYPE_MEMWR64) ||(tx_type == TYPE_MEMWR32) || (tx_type == TYPE_IOWR)) ? 1'b0 : 1'b1;
+        s_axis_rq_tlast  = ((tx_type == TYPE_MEMWR64) ||(tx_type == TYPE_MEMWR32)) ? 1'b0 : 1'b1;
         s_axis_rq_tuser  = {32'b0,
                             
                             4'b1010,      // Seq Number

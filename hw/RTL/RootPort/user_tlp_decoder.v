@@ -13,13 +13,13 @@ module user_tlp_decoder #(
 
     // Rx - AXI-S Requester Completion Interface
     input  [C_DATA_WIDTH-1:0]   m_axis_rc_tdata,
-    input  [KEEP_WIDTH-1:0]     m_axis_rc_tkeep, // N/A
+    input  [KEEP_WIDTH-1:0]     m_axis_rc_tkeep,
     input                       m_axis_rc_tlast,
     input                       m_axis_rc_tvalid,
     input  [AXI4_RC_TUSER_WIDTH-1:0] m_axis_rc_tuser,
 
     // Controller interface
-    input wire                  rx_type, // see RX_TYPE_* below for encoding
+    input wire                  rx_type, 
     input wire [7:0]            rx_tag,
     input wire [31:0]           rx_data,
     output reg                  rx_good,

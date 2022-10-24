@@ -8,7 +8,7 @@ module user_controller
     parameter           BAR_A_ENABLED = 1,
     parameter           BAR_A_64BIT = 0,
     parameter           BAR_A_IO = 0,
-    parameter [31:0]    BAR_A_BASE = 32'h1000_0000, // Base Address 
+    parameter [31:0]    BAR_A_BASE = 32'hFFFF_0000, // Base Address 
     parameter           BAR_A_SIZE = 1024           // Size in DW
   )
   (
@@ -40,7 +40,7 @@ module user_controller
     input wire          rx_bad,
 
     // for Debugging
-    input wire [7:0]   addr_offset
+    input wire [11:0]   addr_offset
   );
 
   // TLP type encoding for tx_type
@@ -65,9 +65,6 @@ module user_controller
   localparam [3:0] ST_READ_CPL_WAIT = 4'd6;
   localparam [3:0] ST_DONE          = 4'd7;
   localparam [3:0] ST_ERROR         = 4'd8;
-
-  // Data used for checking each memory aperture
-  localparam [31:0] BAR_A_DATA   = 32'h1234_5678;
 
 
   // Start Configurator after link comes up
@@ -178,16 +175,15 @@ module user_controller
       // New control information is latched out only in these two states
       if (ctl_state == ST_WRITE || ctl_state == ST_READ) begin
         tx_type    <= (ctl_state == ST_WRITE) ? TX_TYPE_MEMWR32 : TX_TYPE_MEMRD32;
-        tx_data    <= BAR_A_DATA;
-        //tx_addr    <= BAR_A_BASE;
-        tx_addr    <= 32'h8000_0000 + {24'd0,addr_offset};
+        tx_data    <= 32'h1234_5678;
+        tx_addr    <= BAR_A_BASE + {20'd0,addr_offset};
         rx_type    <= (ctl_state == ST_READ) ? RX_TYPE_CPLD : RX_TYPE_CPL;
-        rx_data    <= BAR_A_DATA;
+        rx_data    <= 32'h1234_5678;
         tx_tag     <= tx_tag + 1'b1;  // Tag is incremented for each TLP sent
-        tx_start       <= 1'b1; // Pulse tx_start for one cycle as state machine passes through ST_WRITE or ST_READ
+        tx_start   <= 1'b1; // Pulse tx_start for one cycle as state machine passes through ST_WRITE or ST_READ
       end
       else begin
-        tx_start       <= 1'b0; 
+        tx_start   <= 1'b0; 
       end
     end
   end
@@ -195,18 +191,6 @@ module user_controller
   // tx_tag and rx_tag are always the same
   assign rx_tag = tx_tag;
 
-
-
-  // For debugging
-  always @(posedge user_clk) begin
-    if (reset) begin
-      pio_test_finished     <= 1'b0;
-      pio_test_failed       <= 1'b0;
-    end else begin
-      pio_test_finished     <= (ctl_state == ST_DONE);
-      pio_test_failed       <= (ctl_state == ST_ERROR);
-    end
-  end
 
 
 endmodule 

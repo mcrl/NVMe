@@ -47,7 +47,7 @@ module user_top #(
     input                     m_axis_rc_tvalid,
     input [AXI4_RC_TUSER_WIDTH-1:0] m_axis_rc_tuser,
 
-    input [7:0]  addr_offset    
+    input [11:0]  addr_offset    
   );
 
   // Controller <-> Packet Generator
@@ -174,7 +174,18 @@ module user_top #(
     .probe8(m_axis_rc_tkeep),   // 4bit
     .probe9(m_axis_rc_tlast),   // 1bit
     .probe10(m_axis_rc_tvalid), // 1bit
-    .probe11(m_axis_rc_tuser)   // 75bit
+    .probe11(m_axis_rc_tuser),  // 75bit
+    .probe12(tx_type),  // 3bit
+    .probe13(tx_tag),   // 8bit
+    .probe14(tx_addr),  // 64bit
+    .probe15(tx_data),  // 32bit
+    .probe16(tx_start), // 1bit
+    .probe17(tx_done),  // 1bit
+    .probe18(rx_type),  // 1bit
+    .probe19(rx_tag),   // 8bit
+    .probe20(rx_data),  // 32bit
+    .probe21(rx_good),  // 1bit
+    .probe22(rx_bad)    // 1bit
   );
 
 endmodule // pio_master
