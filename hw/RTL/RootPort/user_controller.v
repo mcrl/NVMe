@@ -25,7 +25,8 @@ module user_controller
     output reg [2:0]    tx_type,  
     output reg [7:0]    tx_tag,
     output reg [63:0]   tx_addr,
-    output reg [31:0]   tx_data,
+    output reg [127:0]  tx_data,
+    output reg [10:0]   tx_length,
     output reg          tx_start,
     input wire          tx_done,
 
@@ -196,17 +197,18 @@ module user_controller
     if (reset) begin
       tx_type          <= 3'b000;
       tx_addr          <= 64'd0;
-      tx_data          <= 32'd0;
+      tx_data          <= 128'd0;
+      tx_length        <= 11'd0;
       tx_tag           <= 8'd0;
       tx_start         <= 1'b0;
       rx_type          <= 1'b0;
       rx_data          <= 32'd0;
     end 
     else begin
-      // New control information is latched out only in these two states
       if (ctl_state == ST_WRITE || ctl_state == ST_READ) begin
         tx_type    <= (ctl_state == ST_WRITE) ? TX_TYPE_MEMWR32 : TX_TYPE_MEMRD32;
-        tx_data    <= 32'h1234_5678;
+        tx_data    <= 128'h1234_5678_90ab_cdef_1234_5678_90ab_cdef;
+        tx_length  <= 11'd1;  // DWord count
         tx_addr    <= BAR_A_BASE + {18'h0, test_count, 2'b00};
         rx_type    <= (ctl_state == ST_READ) ? RX_TYPE_CPLD : RX_TYPE_CPL;
         rx_data    <= 32'h1234_5678;

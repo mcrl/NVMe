@@ -22,7 +22,8 @@ module user_tlp_encoder #(
     input wire [2:0]          tx_type,  
     input wire [7:0]          tx_tag,
     input wire [63:0]         tx_addr,
-    input wire [31:0]         tx_data,
+    input wire [127:0]        tx_data,
+    input wire [10:0]         tx_length,
     input wire                tx_start,
     output reg                tx_done
   );
@@ -119,6 +120,38 @@ module user_tlp_encoder #(
     end
   end
 
+
+  //-------------------------------------------------------    
+  // Requester reQuest Descriptor Format
+  //-------------------------------------------------------    
+  // 127     = force ECRC
+  // 126:124 = attributes
+  // 123:121 = transaction class
+  // 120     = requester id enable (1 for root port)
+  // 119:104 = completer id
+  // 103:96  = tag
+  // 95:88   = requester bus
+  // 87:80   = requester function/device
+  // 79      = poisoned request
+  // 78:75   = request type
+  // 74:64   = dword count
+  // 63:0    = Address[63:2], Address Type[1:0]    
+
+  //-------------------------------------------------------    
+  // s_axis_rq_tuser Sideband Signal Descriptions
+  //-------------------------------------------------------    
+  // 59:28   = parity of tdata (if enabled)
+  // 27:24   = seq_num for tracking progress in tx pipeline
+  // 23:16   = TPH steering tag
+  // 15      = TPH indirect tag enable
+  // 14:13   = TPH type
+  // 12      = TPH present
+  // 11      = discontinue
+  // 10:8    = addr_offset[2:0]
+  // 7:4     = last_be[3:0]
+  // 3:0     = first_be[3:0]
+
+
   // Packet generation output
   always @* begin
     case (pkt_state)
@@ -131,45 +164,58 @@ module user_tlp_encoder #(
       end // ST_IDLE
 
       ST_CYC1: begin
-        // First 2 QW's (4 DW's) of TLP
-
         s_axis_rq_tlast  = ((tx_type == TYPE_MEMWR64) ||(tx_type == TYPE_MEMWR32)) ? 1'b0 : 1'b1;
-        s_axis_rq_tuser  = {32'b0,
-                            
-                            4'b1010,      // Seq Number
-                            8'h00,        // TPH Steering Tag
-                            1'b0,         // TPH indirect Tag Enable
-                            2'b0,         // TPH Type
-                            1'b0,         // TPH Present
-                            1'b0,         // Discontinue
-                            3'b000,       // Byte Lane number in case of Address Aligned mode
-                            4'b0000,      //last_dw_be_,    // Last BE of the Read Data
-                            4'b1111};     //first_dw_be_ }; // First BE of the Read Data
+        s_axis_rq_tuser  = {
+                            32'b0,    // Parity of tdata
+                            4'b1010,  // Seq Number
+                            8'h00,    // TPH Steering Tag
+                            1'b0,     // TPH indirect Tag Enable
+                            2'b0,     // TPH Type
+                            1'b0,     // TPH Present
+                            1'b0,     // Discontinue
+                            3'b000,   // Byte Lane number in case of Address Aligned mode
+                            4'b0000,  // Last BE of the Read Data
+                            4'b1111   // First BE of the Read Data
+                          }; 
+        s_axis_rq_tdata  = {
+                            // DESC 3
+                            1'b0,                           // Force ECRC
+                            pkt_attr,                       // Attr
+                            3'b0,                           // TC
+                            1'b0,                           // Requester ID Enable
+                            REQUESTER_ID,                   // Completer ID
+                            tx_tag,                         // Tag
 
-        s_axis_rq_tdata  = {1'b0,
-                            pkt_attr,                                    // Attr
-                            3'b0,                                        // TC
-                            1'b0,                                        // RID Enable
-                            REQUESTER_ID, //16'b0,                       // Completer ID
-                            tx_tag,                                      // Tag
-                            16'h00AF,//REQUESTER_ID,                     // Requester ID
-                            1'b0,                                        // Poisoned Req
-                            pkt_type,                                    // Type
-                            11'd1,                                       // Length
-                            {32'b0, tx_addr[31:2], 2'b00}                // 32-bit address
-                            };
+                            // DESC 2
+                            16'h00AF,                       // Requester ID
+                            1'b0,                           // Poisoned Req
+                            pkt_type,                       // Type
+                            //11'd1,                          // DWord count
+                            tx_length,                      // DWord count
+
+                            // DESC 1
+                            32'h0,                          // Address[63:32]
+
+                            // DESC 0
+                            {tx_addr[31:2], 2'b00}          // Address[31:0]
+                          };
         s_axis_rq_tkeep  = {KEEP_WIDTH{1'b1}};
         s_axis_rq_tvalid = 1'b1;
       end // ST_CYC1
 
+      // state for MemWr
       ST_CYC2: begin
-        // Second 2 QW's of TLP (64-bit MWR only)
-        s_axis_rq_tdata[31:0]   = tx_data;
-        s_axis_rq_tdata[63:32]  = 32'h00000000;
-        s_axis_rq_tdata[95:64]  = 32'h00000000;
-        s_axis_rq_tdata[127:96] = 32'h00000000;
+        s_axis_rq_tdata = tx_data;
+        /*
+        s_axis_rq_tdata[31:0]   = tx_data[31:0];
+        s_axis_rq_tdata[63:32]  = tx_data[63:32]; //32'h00000000;
+        s_axis_rq_tdata[95:64]  = tx_data[95:64]; //32'h00000000;
+        s_axis_rq_tdata[127:96] = tx_data[127:96]; //32'h00000000;
+        */
         s_axis_rq_tuser  = {AXI4_RQ_TUSER_WIDTH{1'b0}};
-        s_axis_rq_tkeep  = 4'b0001;
+        s_axis_rq_tkeep  =  (tx_length == 11'd1)? 4'b0001 : 
+                            (tx_length == 11'd2)? 4'b0011 :
+                            (tx_length == 11'd3)? 4'b0111 : 4'b1111;
         s_axis_rq_tvalid = 1'b1;
         s_axis_rq_tlast  = 1'b1;
       end // ST_CYC2

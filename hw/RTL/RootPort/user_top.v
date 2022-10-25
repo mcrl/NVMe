@@ -43,6 +43,7 @@ module user_top #(
     input [AXI4_RC_TUSER_WIDTH-1:0] m_axis_rc_tuser,
 
     input [11:0]  addr_offset,
+    input [1:0]   vio_length,
     output        icq_full    
   );
 
@@ -50,7 +51,8 @@ module user_top #(
   wire [2:0]    tx_type;
   wire [7:0]    tx_tag;
   wire [63:0]   tx_addr;
-  wire [31:0]   tx_data;
+  wire [127:0]  tx_data;
+  wire [10:0]   tx_length;
   wire          tx_start;
   wire          tx_done;
 
@@ -99,6 +101,8 @@ module user_top #(
     .tx_tag             (tx_tag),
     .tx_addr            (tx_addr),
     .tx_data            (tx_data),
+    //.tx_length          (tx_length),
+    .tx_length          ({9'd0, vio_length}),
     .tx_start           (tx_start),
     .tx_done            (tx_done),
 
@@ -131,12 +135,12 @@ module user_top #(
     .s_axis_rq_tlast        (wr_s_axis_rq_tlast ),
     .s_axis_rq_tvalid       (wr_s_axis_rq_tvalid ),
 
-
     // Controller interface
     .tx_type                (tx_type),
     .tx_tag                 (tx_tag),
     .tx_addr                (tx_addr),
     .tx_data                (tx_data),
+    .tx_length              (tx_length),
     .tx_start               (tx_start),
     .tx_done                (tx_done)
   );
@@ -228,7 +232,7 @@ module user_top #(
     .probe12(tx_type),  // 3bit
     .probe13(tx_tag),   // 8bit
     .probe14(tx_addr),  // 64bit
-    .probe15(tx_data),  // 32bit
+    .probe15(tx_data[31:0]),  // 32bit
     .probe16(tx_start), // 1bit
     .probe17(tx_done),  // 1bit
     .probe18(rx_type),  // 1bit
