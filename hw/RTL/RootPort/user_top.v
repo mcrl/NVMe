@@ -22,11 +22,6 @@ module user_top #(
     input wire                reset,
     input wire                user_lnk_up,
 
-    // System information
-    input wire                pio_test_restart,
-    output wire               pio_test_finished,
-    output wire               pio_test_failed,
-
     // Control configuration process
     output wire               start_config,
     input wire                finished_config,
@@ -63,8 +58,8 @@ module user_top #(
   wire          rx_type;
   wire [7:0]    rx_tag;
   wire [31:0]   rx_data;
-  wire          rx_good;
-  wire          rx_bad;
+  wire          rx_success;
+  wire          rx_fail;
 
   // Encoder <-> I/O Submission Queue
   wire [C_DATA_WIDTH-1:0]         wr_s_axis_rq_tdata;
@@ -111,8 +106,8 @@ module user_top #(
     .rx_type            (rx_type),
     .rx_tag             (rx_tag),
     .rx_data            (rx_data),
-    .rx_good            (rx_good),
-    .rx_bad             (rx_bad),
+    .rx_success            (rx_success),
+    .rx_fail             (rx_fail),
     
     // for debugging
     .addr_offset (addr_offset)
@@ -188,8 +183,8 @@ module user_top #(
     .rx_type                (rx_type),
     .rx_tag                 (rx_tag),
     .rx_data                (rx_data),
-    .rx_good                (rx_good),
-    .rx_bad                 (rx_bad)
+    .rx_success                (rx_success),
+    .rx_fail                 (rx_fail)
   );
 
 
@@ -239,10 +234,10 @@ module user_top #(
     .probe18(rx_type),  // 1bit
     .probe19(rx_tag),   // 8bit
     .probe20(rx_data),  // 32bit
-    .probe21(rx_good),  // 1bit
-    .probe22(rx_bad)    // 1bit
+    .probe21(rx_success),  // 1bit
+    .probe22(rx_fail)    // 1bit
   );
 
-endmodule // pio_master
+endmodule
 
 

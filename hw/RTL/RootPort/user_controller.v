@@ -33,8 +33,8 @@ module user_controller
     output reg          rx_type, 
     output wire [7:0]   rx_tag,
     output reg [31:0]   rx_data,
-    input wire          rx_good,
-    input wire          rx_bad,
+    input wire          rx_success,
+    input wire          rx_fail,
 
     // for Debugging
     input wire [11:0]   addr_offset
@@ -159,12 +159,12 @@ module user_controller
 
         ST_READ_CPL_WAIT: begin
           // If there was something wrong with the completion, finish with an error condition
-          if (rx_bad) begin
+          if (rx_fail) begin
             ctl_state      <= ST_ERROR;
           end 
 
           // If completion was good and targeted aperture was the last one enabled, finish with a success condition
-          else if (rx_good) begin
+          else if (rx_success) begin
               ctl_state    <= ST_DONE;
           end
         end // ST_READ_CPL_WAIT

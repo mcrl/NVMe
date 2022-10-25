@@ -22,8 +22,8 @@ module user_tlp_decoder #(
     input wire                  rx_type, 
     input wire [7:0]            rx_tag,
     input wire [31:0]           rx_data,
-    output reg                  rx_good,
-    output reg                  rx_bad
+    output reg                  rx_success,
+    output reg                  rx_fail
   );
 
   // Bit-slicing positions
@@ -126,26 +126,26 @@ module user_tlp_decoder #(
   // After TLP is processed, check whether all fields matched expected and output results
   always @(posedge user_clk) begin
     if (reset) begin
-      rx_good           <= 1'b0;
-      rx_bad            <= 1'b0;
+      rx_success           <= 1'b0;
+      rx_fail            <= 1'b0;
     end else begin
       if (cpl_detect) begin
         if (cpl_type_match && cpl_status_good) begin
           if (cpl_data_match || (rx_type == RX_TYPE_CPL)) begin
             // Header and data match, or header match and no data expected
-            rx_good      <= 1'b1;
+            rx_success      <= 1'b1;
           end else begin
             // Data mismatch
-            rx_bad       <= 1'b1;
+            rx_fail       <= 1'b1;
           end
         end else begin
           // Header mismatch
-          rx_bad         <= 1'b1;
+          rx_fail         <= 1'b1;
         end
       end else begin
         // Not checking this cycle
-        rx_good          <= 1'b0;
-        rx_bad           <= 1'b0;
+        rx_success          <= 1'b0;
+        rx_fail           <= 1'b0;
       end
     end
   end

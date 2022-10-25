@@ -86,6 +86,11 @@ module oculink_port # (
   wire                                       m_axis_rc_tvalid;
 
 
+
+  //-------------------------------------------------------  
+  //  Virtual I/O for debugging
+  //-------------------------------------------------------  
+
   wire [15:0] probe_in0;
   wire [15:0] probe_out0;
   wire        vio_reset_n;
@@ -108,7 +113,6 @@ module oculink_port # (
                     };  
 
   assign addr_offset      = probe_out0[13:2];
-  assign pio_test_restart = probe_out0[1];
   assign vio_reset_n      = probe_out0[0];
   assign perst_n          = vio_reset_n;
 
@@ -117,6 +121,11 @@ module oculink_port # (
     .probe_in0  (probe_in0), // input  wire [15 : 0] probe_in0
     .probe_out0 (probe_out0) // output wire [15 : 0] probe_out0
   );
+
+
+  //-------------------------------------------------------  
+  //  PCIe TOP : PCIe IP + PCIe Endpoint Configurator
+  //-------------------------------------------------------  
 
   pcie_top #(
     .ROM_FILE                       (ROM_FILE),
@@ -146,9 +155,11 @@ module oculink_port # (
     // 2. User Interface
     //-------------------------------------------------------
     
+    // status of Configurator
     .start_config                             (start_config),
     .finished_config                          (finished_config),
     .failed_config                            (failed_config),
+
     .user_clk_out                             (user_clk),
     .user_reset_out                           (user_reset),
     .user_lnk_up                              (user_lnk_up),
@@ -175,6 +186,10 @@ module oculink_port # (
 
 
 
+  //-------------------------------------------------------  
+  //  User TOP : NVMe I/O Queue + Controller + other stuffs
+  //------------------------------------------------------- 
+
   // BAR A: 2 MB, 32-bit Memory BAR using BAR0
   user_top #(
     .REQUESTER_ID                   (REQUESTER_ID),  
@@ -192,12 +207,7 @@ module oculink_port # (
     .reset                  (user_reset),
     .user_lnk_up            (user_lnk_up),
 
-    // Board-level control/status
-    .pio_test_restart       (pio_test_restart),
-    .pio_test_finished      (pio_test_finished),
-    .pio_test_failed        (pio_test_failed),
-
-    // Control of Configurator
+    // status of Configurator
     .start_config           (start_config),
     .finished_config        (finished_config),
     .failed_config          (failed_config),
