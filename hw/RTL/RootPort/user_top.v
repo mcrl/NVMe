@@ -65,6 +65,14 @@ module user_top #(
   wire          rx_good;
   wire          rx_bad;
 
+  // Encoder <-> I/O Submission Queue
+  wire [C_DATA_WIDTH-1:0]         wr_s_axis_rq_tdata;
+  wire [KEEP_WIDTH-1:0]           wr_s_axis_rq_tkeep;
+  wire                            wr_s_axis_rq_tlast;
+  wire                            wr_s_axis_rq_tvalid;
+  wire [AXI4_RQ_TUSER_WIDTH-1:0]  wr_s_axis_rq_tuser;
+
+
   // User Module Controller - controls the read/write/verify process
   user_controller #(
     .BAR_A_ENABLED (BAR_A_ENABLED),
@@ -77,11 +85,6 @@ module user_top #(
     .user_clk           (user_clk),
     .reset              (reset),
     .user_lnk_up        (user_lnk_up),
-
-    // Board-level control/status
-    .pio_test_restart   (pio_test_restart),
-    .pio_test_finished  (pio_test_finished),
-    .pio_test_failed    (pio_test_failed),
 
     // Control of Configurator
     .start_config       (start_config),
@@ -119,11 +122,11 @@ module user_top #(
 
     // Tx - AXI-S Requester Request Interface
     .s_axis_rq_tready       (s_axis_rq_tready ),
-    .s_axis_rq_tdata        (s_axis_rq_tdata ),
-    .s_axis_rq_tkeep        (s_axis_rq_tkeep ),
-    .s_axis_rq_tuser        (s_axis_rq_tuser ),
-    .s_axis_rq_tlast        (s_axis_rq_tlast ),
-    .s_axis_rq_tvalid       (s_axis_rq_tvalid ),
+    .s_axis_rq_tdata        (wr_s_axis_rq_tdata ),
+    .s_axis_rq_tkeep        (wr_s_axis_rq_tkeep ),
+    .s_axis_rq_tuser        (wr_s_axis_rq_tuser ),
+    .s_axis_rq_tlast        (wr_s_axis_rq_tlast ),
+    .s_axis_rq_tvalid       (wr_s_axis_rq_tvalid ),
 
 
     // Controller interface
@@ -133,6 +136,27 @@ module user_top #(
     .tx_data                (tx_data),
     .tx_start               (tx_start),
     .tx_done                (tx_done)
+  );
+
+  user_isq #(
+    .AXI4_RQ_TUSER_WIDTH  (AXI4_RQ_TUSER_WIDTH),
+    .C_DATA_WIDTH         (C_DATA_WIDTH),
+    .KEEP_WIDTH           (KEEP_WIDTH)
+  ) user_isq_inst (
+    .user_clk(user_clk),
+    .user_reset(user_reset),
+    .user_lnk_up(user_lnk_up),
+    .s_axis_rq_tready(s_axis_rq_tready),
+    .wr_s_axis_rq_tdata  (wr_s_axis_rq_tdata),
+    .wr_s_axis_rq_tkeep  (wr_s_axis_rq_tkeep),
+    .wr_s_axis_rq_tlast  (wr_s_axis_rq_tlast),
+    .wr_s_axis_rq_tvalid (wr_s_axis_rq_tvalid),
+    .wr_s_axis_rq_tuser  (wr_s_axis_rq_tuser),
+    .rd_s_axis_rq_tdata  (s_axis_rq_tdata),
+    .rd_s_axis_rq_tkeep  (s_axis_rq_tkeep),
+    .rd_s_axis_rq_tlast  (s_axis_rq_tlast),
+    .rd_s_axis_rq_tvalid (s_axis_rq_tvalid),
+    .rd_s_axis_rq_tuser  (s_axis_rq_tuser)
   );
 
 
