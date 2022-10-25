@@ -31,7 +31,9 @@ module pcie_cfg_tlp_decoder #(
     output reg          cpl_crs,
     output reg          cpl_ca,
     output reg [31:0]   cpl_data,
-    output reg          cpl_mismatch
+    output reg          cpl_mismatch,
+
+    input icq_full
   );
 
   localparam EXTRA_PIPELINE = 1;
@@ -76,9 +78,9 @@ module pcie_cfg_tlp_decoder #(
 
   wire        sop;                   // Start of packet
   wire        check_cpl_cpld;
- 
-  // Dst rdy and rNP OK are always asserted to Root Port wrapper
-  assign rport_m_axis_rc_tready = 1'b1;
+
+  // If I/O Completion Queue is not full, completion can be received
+  assign rport_m_axis_rc_tready = !icq_full;
 
   // start of packet generation
   assign sop = (rport_m_axis_rc_tuser[32] && rport_m_axis_rc_tvalid);

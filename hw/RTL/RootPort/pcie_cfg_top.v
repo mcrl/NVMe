@@ -61,7 +61,9 @@ module pcie_cfg_top #(
     output [ROM_ADDR_WIDTH-1:0] ctl_addr,
     output [31:0]               ctl_data,
     output                      ctl_last_cfg,
-    output                      ctl_skip_cpl
+    output                      ctl_skip_cpl,
+
+    input icq_full
   );
 
   // Controller <-> All modules
@@ -237,7 +239,9 @@ module pcie_cfg_top #(
     .cpl_crs                  (cpl_crs),
     .cpl_ca                   (cpl_ca),
     .cpl_data                 (cpl_data),
-    .cpl_mismatch             (cpl_mismatch)
+    .cpl_mismatch             (cpl_mismatch),
+
+    .icq_full(icq_full)
   );
 
 

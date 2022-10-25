@@ -90,6 +90,7 @@ module oculink_port # (
   wire [15:0] probe_out0;
   wire        vio_reset_n;
   wire [11:0]  addr_offset;
+  wire icq_full;
 
   // cfg_ltssm_state L0 is 6'h10
   assign probe_in0 = {
@@ -167,7 +168,9 @@ module oculink_port # (
     .m_axis_rc_tkeep                          ( m_axis_rc_tkeep ),
     .m_axis_rc_tlast                          ( m_axis_rc_tlast ),
     .m_axis_rc_tvalid                         ( m_axis_rc_tvalid ),
-    .m_axis_rc_tuser                          ( m_axis_rc_tuser )
+    .m_axis_rc_tuser                          ( m_axis_rc_tuser ),
+
+    .icq_full(icq_full)
   );
 
 
@@ -216,7 +219,8 @@ module oculink_port # (
     .m_axis_rc_tuser        (m_axis_rc_tuser),
 
     // for debugging
-    .addr_offset(addr_offset)
+    .addr_offset(addr_offset),
+    .icq_full(icq_full)
   );
 
 

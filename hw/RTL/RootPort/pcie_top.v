@@ -65,7 +65,9 @@ module pcie_top
     output  [KEEP_WIDTH-1:0]                      m_axis_rc_tkeep,
     output                                        m_axis_rc_tlast,
     output                                        m_axis_rc_tvalid,
-    output  [AXI4_RC_TUSER_WIDTH-1:0]             m_axis_rc_tuser
+    output  [AXI4_RC_TUSER_WIDTH-1:0]             m_axis_rc_tuser,
+
+    input icq_full
 );
 
   //-------------------------------------------------------
@@ -378,7 +380,8 @@ module pcie_top
     .ctl_data(ctl_data),
     .ctl_last_cfg(ctl_last_cfg),
     .ctl_skip_cpl(ctl_skip_cpl),
-    .ctl_addr(ctl_addr)
+    .ctl_addr(ctl_addr),
+    .icq_full(icq_full)
   );
 
 

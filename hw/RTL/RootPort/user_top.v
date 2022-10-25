@@ -47,7 +47,8 @@ module user_top #(
     input                     m_axis_rc_tvalid,
     input [AXI4_RC_TUSER_WIDTH-1:0] m_axis_rc_tuser,
 
-    input [11:0]  addr_offset    
+    input [11:0]  addr_offset,
+    output        icq_full    
   );
 
   // Controller <-> Packet Generator
@@ -71,6 +72,13 @@ module user_top #(
   wire                            wr_s_axis_rq_tlast;
   wire                            wr_s_axis_rq_tvalid;
   wire [AXI4_RQ_TUSER_WIDTH-1:0]  wr_s_axis_rq_tuser;
+
+  // Encoder <-> I/O Completion Queue
+  wire [C_DATA_WIDTH-1:0]         rd_m_axis_rc_tdata;
+  wire [KEEP_WIDTH-1:0]           rd_m_axis_rc_tkeep;
+  wire                            rd_m_axis_rc_tlast;
+  wire                            rd_m_axis_rc_tvalid;
+  wire [AXI4_RC_TUSER_WIDTH-1:0]  rd_m_axis_rc_tuser;
 
 
   // User Module Controller - controls the read/write/verify process
@@ -170,11 +178,11 @@ module user_top #(
     .reset                  (reset),
 
     // Rx - AXI-S Requester Completion Interface
-    .m_axis_rc_tdata        (m_axis_rc_tdata ),
-    .m_axis_rc_tkeep        (m_axis_rc_tkeep ),
-    .m_axis_rc_tlast        (m_axis_rc_tlast ),
-    .m_axis_rc_tvalid       (m_axis_rc_tvalid ),
-    .m_axis_rc_tuser        (m_axis_rc_tuser ),
+    .m_axis_rc_tdata        (rd_m_axis_rc_tdata ),
+    .m_axis_rc_tkeep        (rd_m_axis_rc_tkeep ),
+    .m_axis_rc_tlast        (rd_m_axis_rc_tlast ),
+    .m_axis_rc_tvalid       (rd_m_axis_rc_tvalid ),
+    .m_axis_rc_tuser        (rd_m_axis_rc_tuser ),
 
     // Controller interface
     .rx_type                (rx_type),
@@ -183,6 +191,29 @@ module user_top #(
     .rx_good                (rx_good),
     .rx_bad                 (rx_bad)
   );
+
+
+  user_icq #(
+    .AXI4_RC_TUSER_WIDTH  (AXI4_RC_TUSER_WIDTH),
+    .C_DATA_WIDTH         (C_DATA_WIDTH),
+    .KEEP_WIDTH           (KEEP_WIDTH)
+  ) user_icq_inst (
+    .user_clk(user_clk),
+    .user_reset(user_reset),
+    .user_lnk_up(user_lnk_up),
+    .wr_m_axis_rc_tdata  (m_axis_rc_tdata),
+    .wr_m_axis_rc_tkeep  (m_axis_rc_tkeep),
+    .wr_m_axis_rc_tlast  (m_axis_rc_tlast),
+    .wr_m_axis_rc_tvalid (m_axis_rc_tvalid),
+    .wr_m_axis_rc_tuser  (m_axis_rc_tuser),
+    .rd_m_axis_rc_tdata  (rd_m_axis_rc_tdata),
+    .rd_m_axis_rc_tkeep  (rd_m_axis_rc_tkeep),
+    .rd_m_axis_rc_tlast  (rd_m_axis_rc_tlast),
+    .rd_m_axis_rc_tvalid (rd_m_axis_rc_tvalid),
+    .rd_m_axis_rc_tuser  (rd_m_axis_rc_tuser),
+    .icq_full            (icq_full)
+  );
+
 
   
   ila_1 ila_1_inst (
