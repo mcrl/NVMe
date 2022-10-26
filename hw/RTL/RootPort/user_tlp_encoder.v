@@ -47,6 +47,18 @@ module user_tlp_encoder #(
   reg [2:0]   pkt_attr;
   reg [3:0]   pkt_type;
 
+  reg [10:0]  tx_count;
+  always@(posedge user_clk) begin
+    if(reset) begin
+      tx_count <= 11'd0;
+    end
+    else begin
+      if(pkt_state == ST_CYC2) begin
+        tx_count <= tx_count + 11'd1;
+      end
+    end
+  end
+  
 
   always @(posedge user_clk) begin
     if (reset) begin
@@ -77,8 +89,8 @@ module user_tlp_encoder #(
         ST_CYC2: begin : beat_2
           // Second Quad-word - wait for data to be accepted by core
           if (s_axis_rq_tready) begin
-            pkt_state  <= ST_IDLE;
-            tx_done    <= 1'b1;
+            pkt_state <= (tx_count == {2'b00, tx_length[10:2]}-11'd1 ) ? ST_IDLE : ST_CYC2;
+            tx_done    <= (tx_count == {2'b00, tx_length[10:2]}-11'd1 ) ? 1'b1 : 1'b0;
           end
         end // ST_CYC2
 
@@ -174,8 +186,9 @@ module user_tlp_encoder #(
                             1'b0,     // TPH Present
                             1'b0,     // Discontinue
                             3'b000,   // Byte Lane number in case of Address Aligned mode
-                            4'b0000,  // Last BE of the Read Data
-                            4'b1111   // First BE of the Read Data
+                            //4'b0000,  // Last BE
+                            (tx_length == 11'd1)? 4'b0000 : 4'b1111, // Last BE
+                            4'b1111   // First BE
                           }; 
         s_axis_rq_tdata  = {
                             // DESC 3
@@ -191,7 +204,8 @@ module user_tlp_encoder #(
                             1'b0,                           // Poisoned Req
                             pkt_type,                       // Type
                             //11'd1,                          // DWord count
-                            tx_length,                      // DWord count
+                            //11'b111_1111_1111,                      // DWord count
+                            tx_length,
 
                             // DESC 1
                             32'h0,                          // Address[63:32]
@@ -206,18 +220,12 @@ module user_tlp_encoder #(
       // state for MemWr
       ST_CYC2: begin
         s_axis_rq_tdata = tx_data;
-        /*
-        s_axis_rq_tdata[31:0]   = tx_data[31:0];
-        s_axis_rq_tdata[63:32]  = tx_data[63:32]; //32'h00000000;
-        s_axis_rq_tdata[95:64]  = tx_data[95:64]; //32'h00000000;
-        s_axis_rq_tdata[127:96] = tx_data[127:96]; //32'h00000000;
-        */
         s_axis_rq_tuser  = {AXI4_RQ_TUSER_WIDTH{1'b0}};
         s_axis_rq_tkeep  =  (tx_length == 11'd1)? 4'b0001 : 
-                            (tx_length == 11'd2)? 4'b0011 :
-                            (tx_length == 11'd3)? 4'b0111 : 4'b1111;
+                            ((tx_length == 11'd2)? 4'b0011 :
+                            ((tx_length == 11'd3)? 4'b0111 : 4'b1111));
         s_axis_rq_tvalid = 1'b1;
-        s_axis_rq_tlast  = 1'b1;
+        s_axis_rq_tlast  = (tx_count == {2'b00, tx_length[10:2]}-11'd1 ) ? 1'b1 : 1'b0;
       end // ST_CYC2
 
       default: begin

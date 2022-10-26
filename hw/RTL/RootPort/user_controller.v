@@ -208,8 +208,9 @@ module user_controller
       if (ctl_state == ST_WRITE || ctl_state == ST_READ) begin
         tx_type    <= (ctl_state == ST_WRITE) ? TX_TYPE_MEMWR32 : TX_TYPE_MEMRD32;
         tx_data    <= 128'h1234_5678_90ab_cdef_1234_5678_90ab_cdef;
-        tx_length  <= 11'd1;  // DWord count
-        tx_addr    <= BAR_A_BASE + {18'h0, test_count, 2'b00};
+        tx_length  <= 11'b001_0000_0000;  // DWord count (Write MAX : 256)
+        //tx_addr    <= BAR_A_BASE + {18'h0, test_count, 2'b00};
+        tx_addr   <= BAR_A_BASE + {18'h0, addr_offset, 2'b00};
         rx_type    <= (ctl_state == ST_READ) ? RX_TYPE_CPLD : RX_TYPE_CPL;
         rx_data    <= 32'h1234_5678;
         tx_tag     <= tx_tag + 1'b1;  // Tag is incremented for each TLP sent

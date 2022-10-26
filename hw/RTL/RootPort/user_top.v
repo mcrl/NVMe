@@ -101,8 +101,7 @@ module user_top #(
     .tx_tag             (tx_tag),
     .tx_addr            (tx_addr),
     .tx_data            (tx_data),
-    //.tx_length          (tx_length),
-    .tx_length          ({9'd0, vio_length}),
+    .tx_length          (tx_length),
     .tx_start           (tx_start),
     .tx_done            (tx_done),
 
@@ -110,8 +109,8 @@ module user_top #(
     .rx_type            (rx_type),
     .rx_tag             (rx_tag),
     .rx_data            (rx_data),
-    .rx_success            (rx_success),
-    .rx_fail             (rx_fail),
+    .rx_success         (rx_success),
+    .rx_fail            (rx_fail),
     
     // for debugging
     .addr_offset (addr_offset)
@@ -140,7 +139,8 @@ module user_top #(
     .tx_tag                 (tx_tag),
     .tx_addr                (tx_addr),
     .tx_data                (tx_data),
-    .tx_length              (tx_length),
+    //.tx_length              ({9'd0, vio_length}),
+    .tx_length            (tx_length),
     .tx_start               (tx_start),
     .tx_done                (tx_done)
   );
@@ -187,8 +187,8 @@ module user_top #(
     .rx_type                (rx_type),
     .rx_tag                 (rx_tag),
     .rx_data                (rx_data),
-    .rx_success                (rx_success),
-    .rx_fail                 (rx_fail)
+    .rx_success             (rx_success),
+    .rx_fail                (rx_fail)
   );
 
 
