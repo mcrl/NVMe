@@ -8,7 +8,7 @@ module user_controller
     parameter           BAR_A_ENABLED = 1,
     parameter           BAR_A_64BIT = 0,
     parameter           BAR_A_IO = 0,
-    parameter [31:0]    BAR_A_BASE = 32'h1000_0000, // Base Address 
+    parameter [63:0]    BAR_A_BASE = 64'h0000_0010_0000_0004, // Base Address 
     parameter           BAR_A_SIZE = 1024           // Size in DW
   )
   (
@@ -38,7 +38,8 @@ module user_controller
     input wire          rx_fail,
 
     // for Debugging
-    input wire [11:0]   addr_offset
+    input wire [2:0]   addr_offset,
+    input wire [10:0]   vio_length
   );
 
   // TLP type encoding for tx_type
@@ -190,8 +191,6 @@ module user_controller
   end
 
 
-
-
   // Generate outputs to packet generator and checker
   always @(posedge user_clk) begin
     if (reset) begin
@@ -208,9 +207,10 @@ module user_controller
       if (ctl_state == ST_WRITE || ctl_state == ST_READ) begin
         tx_type    <= (ctl_state == ST_WRITE) ? TX_TYPE_MEMWR32 : TX_TYPE_MEMRD32;
         tx_data    <= 128'h1234_5678_90ab_cdef_1234_5678_90ab_cdef;
-        tx_length  <= 11'b001_0000_0000;  // DWord count (Write MAX : 256)
+        //tx_length  <= 11'b000_0000_0100;  // DWord count (Write MAX : 256)
+        tx_length <= vio_length;
         //tx_addr    <= BAR_A_BASE + {18'h0, test_count, 2'b00};
-        tx_addr   <= BAR_A_BASE + {18'h0, addr_offset, 2'b00};
+        tx_addr   <= BAR_A_BASE + {59'h0, addr_offset, 2'b00};
         rx_type    <= (ctl_state == ST_READ) ? RX_TYPE_CPLD : RX_TYPE_CPL;
         rx_data    <= 32'h1234_5678;
         tx_tag     <= tx_tag + 1'b1;  // Tag is incremented for each TLP sent

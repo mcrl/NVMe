@@ -12,7 +12,6 @@ module pcie_top
                                                               (ROM_SIZE-1 < 8  )  ? 3 :
                                                               (ROM_SIZE-1 < 16 )  ? 4 :
                                                               (ROM_SIZE-1 < 32 )  ? 5 : 6,
-
     // PCIe Parameters
     parameter [2:0]  PL_LINK_CAP_MAX_LINK_SPEED             = 3'h4,  // 1- GEN1, 2 - GEN2, 4 - GEN3
     parameter [4:0]  PL_LINK_CAP_MAX_LINK_WIDTH             = 5'h8,  // 1- X1, 2 - X2, 4 - X4, 8 - X8

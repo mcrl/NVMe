@@ -15,7 +15,7 @@ module oculink_port # (
   // Configurator Parameters
   parameter [15:0]   REQUESTER_ID                 = 16'h0100,
   parameter          ROM_FILE                     = "pcie_cfg_rom.data",
-  parameter          ROM_SIZE                     = 12,
+  parameter          ROM_SIZE                     = 38,
 
   // AXIS Parameters
   parameter        AXISTEN_IF_RQ_ALIGNMENT_MODE   = "FALSE",
@@ -94,8 +94,8 @@ module oculink_port # (
   wire [15:0] probe_in0;
   wire [15:0] probe_out0;
   wire        vio_reset_n;
-  wire [11:0]  addr_offset;
-  wire [1:0]  vio_length;
+  wire [2:0]  addr_offset;
+  wire [10:0]  vio_length;
   wire icq_full;
 
   // cfg_ltssm_state L0 is 6'h10
@@ -113,8 +113,8 @@ module oculink_port # (
                       6'h0               // [ 5: 0]
                     };  
 
-  assign vio_length       = probe_out0[15:14];
-  assign addr_offset      = probe_out0[13:2];
+  assign vio_length       = probe_out0[14:4];
+  assign addr_offset      = probe_out0[3:1];
   assign vio_reset_n      = probe_out0[0];
   assign perst_n          = vio_reset_n;
 
@@ -198,7 +198,7 @@ module oculink_port # (
     .BAR_A_ENABLED  (1),
     .BAR_A_64BIT    (0),
     .BAR_A_IO       (0),
-    .BAR_A_BASE     (32'h1000_0000),
+    .BAR_A_BASE     (64'h0000_0010_0000_0004),
     .BAR_A_SIZE     (1024/4),
     .C_DATA_WIDTH   (C_DATA_WIDTH),
     .KEEP_WIDTH     (KEEP_WIDTH)

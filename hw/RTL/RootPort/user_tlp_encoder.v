@@ -186,7 +186,6 @@ module user_tlp_encoder #(
                             1'b0,     // TPH Present
                             1'b0,     // Discontinue
                             3'b000,   // Byte Lane number in case of Address Aligned mode
-                            //4'b0000,  // Last BE
                             (tx_length == 11'd1)? 4'b0000 : 4'b1111, // Last BE
                             4'b1111   // First BE
                           }; 
@@ -204,14 +203,14 @@ module user_tlp_encoder #(
                             1'b0,                           // Poisoned Req
                             pkt_type,                       // Type
                             //11'd1,                          // DWord count
-                            //11'b111_1111_1111,                      // DWord count
+                            //11'b111_1111_1111,             // DWord count
                             tx_length,
 
                             // DESC 1
-                            32'h0,                          // Address[63:32]
+                            //32'h0,                          // Address[63:32]
 
-                            // DESC 0
-                            {tx_addr[31:2], 2'b00}          // Address[31:0]
+                            // DESC 1,0
+                            {tx_addr[63:2], 2'b00}          // Address[31:0]
                           };
         s_axis_rq_tkeep  = {KEEP_WIDTH{1'b1}};
         s_axis_rq_tvalid = 1'b1;
@@ -221,11 +220,17 @@ module user_tlp_encoder #(
       ST_CYC2: begin
         s_axis_rq_tdata = tx_data;
         s_axis_rq_tuser  = {AXI4_RQ_TUSER_WIDTH{1'b0}};
-        s_axis_rq_tkeep  =  (tx_length == 11'd1)? 4'b0001 : 
-                            ((tx_length == 11'd2)? 4'b0011 :
-                            ((tx_length == 11'd3)? 4'b0111 : 4'b1111));
         s_axis_rq_tvalid = 1'b1;
-        s_axis_rq_tlast  = (tx_count == {2'b00, tx_length[10:2]}-11'd1 ) ? 1'b1 : 1'b0;
+        if(tx_count == {2'b00, tx_length[10:2]}-11'd1 ) begin
+          s_axis_rq_tlast  = 1'b1;
+          s_axis_rq_tkeep  =  (tx_length[1:0] == 2'b01)? 4'b0001 : 
+                              ((tx_length[1:0] == 2'b10)? 4'b0011 :
+                              ((tx_length[1:0] == 2'b11)? 4'b0111 : 4'b1111));
+        end
+        else begin
+          s_axis_rq_tlast  = 1'b0;
+          s_axis_rq_tkeep = 4'b1111;
+        end
       end // ST_CYC2
 
       default: begin

@@ -8,7 +8,7 @@ module user_top #(
     parameter           BAR_A_ENABLED   = 1,
     parameter           BAR_A_64BIT     = 0,
     parameter           BAR_A_IO        = 0,
-    parameter [31:0]    BAR_A_BASE      = 32'h1000_0000,
+    parameter [63:0]    BAR_A_BASE      = 64'h0000_0010_0000_0004,
     parameter           BAR_A_SIZE      = 1024, // Size in DW
 
     // AXIS Parameters
@@ -42,8 +42,8 @@ module user_top #(
     input                     m_axis_rc_tvalid,
     input [AXI4_RC_TUSER_WIDTH-1:0] m_axis_rc_tuser,
 
-    input [11:0]  addr_offset,
-    input [1:0]   vio_length,
+    input [2:0]  addr_offset,
+    input [10:0]   vio_length,
     output        icq_full    
   );
 
@@ -113,7 +113,8 @@ module user_top #(
     .rx_fail            (rx_fail),
     
     // for debugging
-    .addr_offset (addr_offset)
+    .addr_offset (addr_offset),
+    .vio_length  (vio_length)
   );
 
 
@@ -239,7 +240,8 @@ module user_top #(
     .probe19(rx_tag),   // 8bit
     .probe20(rx_data),  // 32bit
     .probe21(rx_success),  // 1bit
-    .probe22(rx_fail)    // 1bit
+    .probe22(rx_fail),    // 1bit
+    .probe23(icq_full)    // 1bit
   );
 
 endmodule
