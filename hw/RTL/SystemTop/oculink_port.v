@@ -222,6 +222,18 @@ module oculink_port # (
   wire cfg_done;
 
 
+  //-------------------------------------------------------
+  // DoorBell <-> Controller Interface
+  //-------------------------------------------------------
+
+  wire write_sqtdbl;
+  wire [63:0] sqt_addr;
+  wire write_cqhdbl;
+  wire [63:0] cqh_addr;
+  wire write_sqtdbl_done;
+  wire write_cqhdbl_done;
+
+
 
   // debugging
   wire [3:0] ctl_state;
