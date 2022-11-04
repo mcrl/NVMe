@@ -39,7 +39,8 @@ module user_controller
 
     // for Debugging
     input wire [2:0]   addr_offset,
-    input wire [10:0]   vio_length
+    input wire [10:0]   vio_length,
+    output reg [3:0]    ctl_state
   );
 
   // TLP type encoding for tx_type
@@ -52,6 +53,11 @@ module user_controller
   localparam       RX_TYPE_CPL     = 1'b0;  // without Data
   localparam       RX_TYPE_CPLD    = 1'b1;  // with Data
 
+
+  localparam BAR_A_SQ1TDBL_OFFSET = 64'h0000_0000_0000_1008;
+  localparam BAR_A_CQ1TDBL_OFFSET = 64'h0000_0000_0000_100C;
+  localparam BAR_A_MEMADDR_OFFSET = 64'h0000_0000_0000_0000;
+
   // States
   localparam [3:0] ST_WAIT_CFG      = 4'd0;
   localparam [3:0] ST_WRITE         = 4'd1;
@@ -62,8 +68,14 @@ module user_controller
   localparam [3:0] ST_DONE          = 4'd6;
   localparam [3:0] ST_ERROR         = 4'd7;
   localparam [3:0] ST_TESTDONE      = 4'd8;
+  localparam [3:0] ST_SQTBLW        = 4'd9;
+  localparam [3:0] ST_SQTBLW_WAIT   = 4'd10;
+  localparam [3:0] ST_SQTBLR        = 4'd11;
+  localparam [3:0] ST_SQTBLR_WAIT   = 4'd12;
 
-  reg [3:0]    ctl_state;
+  //reg [3:0]    ctl_state;
+
+
 
 
   // Start Configurator after link comes up
@@ -145,9 +157,19 @@ module user_controller
 
         ST_WRITE_WAIT: begin
           if (tx_done) begin
-            ctl_state    <= ST_READ;
+            ctl_state    <= ST_SQTBLW;
           end
         end // ST_WRITE_WAIT
+
+        ST_SQTBLW: begin
+          ctl_state <= ST_SQTBLW_WAIT;
+        end
+
+        ST_SQTBLW_WAIT: begin
+          if (tx_done) begin
+            ctl_state    <= ST_READ;
+          end
+        end
 
         ST_READ: begin
           ctl_state        <= ST_READ_WAIT;
@@ -155,21 +177,19 @@ module user_controller
 
         ST_READ_WAIT: begin
           if (tx_done) begin
-            ctl_state      <= ST_READ_CPL_WAIT;
+            ctl_state      <= ST_SQTBLR;
           end
         end // ST_WRITE_WAIT
 
-        ST_READ_CPL_WAIT: begin
-          // If there was something wrong with the completion, finish with an error condition
-          if (rx_fail) begin
-            ctl_state      <= ST_ERROR;
-          end 
+        ST_SQTBLR: begin
+          ctl_state <= ST_SQTBLR_WAIT;
+        end
 
-          // If completion was good and targeted aperture was the last one enabled, finish with a success condition
-          else if (rx_success) begin
-              ctl_state    <= ST_DONE;
+        ST_SQTBLR_WAIT: begin
+          if(tx_done) begin
+            ctl_state <= ST_DONE;
           end
-        end // ST_READ_CPL_WAIT
+        end
 
         ST_DONE: begin
           // Unless all tests for address are done, go to ST_WRITE
@@ -205,16 +225,22 @@ module user_controller
     end 
     else begin
       if (ctl_state == ST_WRITE || ctl_state == ST_READ) begin
-        tx_type    <= (ctl_state == ST_WRITE) ? TX_TYPE_MEMWR32 : TX_TYPE_MEMRD32;
-        tx_data    <= 128'h1234_5678_90ab_cdef_1234_5678_90ab_cdef;
-        //tx_length  <= 11'b000_0000_0100;  // DWord count (Write MAX : 256)
-        tx_length <= vio_length;
-        //tx_addr    <= BAR_A_BASE + {18'h0, test_count, 2'b00};
-        tx_addr   <= BAR_A_BASE + {59'h0, addr_offset, 2'b00};
-        rx_type    <= (ctl_state == ST_READ) ? RX_TYPE_CPLD : RX_TYPE_CPL;
-        rx_data    <= 32'h1234_5678;
-        tx_tag     <= tx_tag + 1'b1;  // Tag is incremented for each TLP sent
-        tx_start   <= 1'b1; 
+        tx_type     <= (ctl_state == ST_WRITE) ? TX_TYPE_MEMWR32 : TX_TYPE_MEMRD32;
+        tx_data     <= 128'h1234_5678_90ab_cdef_1234_5678_90ab_cdef;
+        tx_length   <= vio_length;
+        tx_addr     <= BAR_A_BASE + BAR_A_MEMADDR_OFFSET + {59'h0, addr_offset, 2'b00};
+        rx_type     <= (ctl_state == ST_READ) ? RX_TYPE_CPLD : RX_TYPE_CPL;
+        rx_data     <= 32'h1234_5678;
+        tx_tag      <= tx_tag + 1'b1;  // Tag is incremented for each TLP sent
+        tx_start    <= 1'b1; 
+      end
+      else if(ctl_state == ST_SQTBLR || ctl_state == ST_SQTBLW) begin
+        tx_type     <= TX_TYPE_MEMWR32;
+        tx_data     <= 128'h1;
+        tx_length   <= 11'd1;
+        tx_addr     <= BAR_A_BASE + BAR_A_SQ1TDBL_OFFSET;
+        tx_tag      <= tx_tag + 1'b1;  // Tag is incremented for each TLP sent
+        tx_start    <= 1'b1; 
       end
       else begin
         tx_start   <= 1'b0; 

@@ -25,7 +25,10 @@ module user_tlp_encoder #(
     input wire [127:0]        tx_data,
     input wire [10:0]         tx_length,
     input wire                tx_start,
-    output reg                tx_done
+    output reg                tx_done,
+
+    
+    output reg [1:0]  pkt_state
   );
 
   // TLP type encoding for tx_type
@@ -41,7 +44,7 @@ module user_tlp_encoder #(
   localparam [1:0] ST_CYC3   = 2'd3;
 
   // State variable
-  reg [1:0]   pkt_state;
+  //reg [1:0]   pkt_state;
 
   // Registers to store format and type bits of the TLP header
   reg [2:0]   pkt_attr;
@@ -53,6 +56,9 @@ module user_tlp_encoder #(
       tx_count <= 11'd0;
     end
     else begin
+      if (tx_start) begin
+        tx_count <= 11'd0;
+      end
       if(pkt_state == ST_CYC2) begin
         tx_count <= tx_count + 11'd1;
       end
@@ -89,8 +95,22 @@ module user_tlp_encoder #(
         ST_CYC2: begin : beat_2
           // Second Quad-word - wait for data to be accepted by core
           if (s_axis_rq_tready) begin
-            pkt_state <= (tx_count == {2'b00, tx_length[10:2]}-11'd1 ) ? ST_IDLE : ST_CYC2;
-            tx_done    <= (tx_count == {2'b00, tx_length[10:2]}-11'd1 ) ? 1'b1 : 1'b0;
+            if(tx_length > 11'd4) begin
+              if(tx_count == {2'b00, tx_length[10:2]}-11'd1 ) begin
+                pkt_state <= ST_IDLE;
+                tx_done <= 1'b1;
+              end
+              else begin
+                pkt_state <= ST_CYC2;
+                tx_done <= 1'b0;
+              end
+            end
+            else begin
+              pkt_state <= ST_IDLE;
+              tx_done <= 1'b1;
+            end
+            //pkt_state <= (tx_count == {2'b00, tx_length[10:2]}-11'd1 ) ? ST_IDLE : ST_CYC2;
+            //tx_done    <= (tx_count == {2'b00, tx_length[10:2]}-11'd1 ) ? 1'b1 : 1'b0;
           end
         end // ST_CYC2
 
@@ -162,8 +182,93 @@ module user_tlp_encoder #(
   // 10:8    = addr_offset[2:0]
   // 7:4     = last_be[3:0]
   // 3:0     = first_be[3:0]
+/*
+  always @(posedge user_clk) begin
+    case (pkt_state)
+      ST_IDLE: begin
+        s_axis_rq_tlast  <= 1'b0;
+        s_axis_rq_tuser  <= {AXI4_RQ_TUSER_WIDTH{1'b0}};
+        s_axis_rq_tdata  <= {C_DATA_WIDTH{1'b0}};
+        s_axis_rq_tkeep  <= {KEEP_WIDTH{1'b0}};
+        s_axis_rq_tvalid <= 1'b0;
+      end // ST_IDLE
 
+      ST_CYC1: begin
+        s_axis_rq_tlast  <= ((tx_type == TYPE_MEMWR64) ||(tx_type == TYPE_MEMWR32)) ? 1'b0 : 1'b1;
+        s_axis_rq_tuser  <= {
+                            32'b0,    // Parity of tdata
+                            4'b1010,  // Seq Number
+                            8'h00,    // TPH Steering Tag
+                            1'b0,     // TPH indirect Tag Enable
+                            2'b0,     // TPH Type
+                            1'b0,     // TPH Present
+                            1'b0,     // Discontinue
+                            3'b000,   // Byte Lane number in case of Address Aligned mode
+                            (tx_length == 11'd1)? 4'b0000 : 4'b1111, // Last BE
+                            4'b1111   // First BE
+                          }; 
+        s_axis_rq_tdata  <= {
+                            // DESC 3
+                            1'b0,                           // Force ECRC
+                            pkt_attr,                       // Attr
+                            3'b0,                           // TC
+                            1'b0,                           // Requester ID Enable
+                            REQUESTER_ID,                   // Completer ID
+                            tx_tag,                         // Tag
 
+                            // DESC 2
+                            16'h00AF,                       // Requester ID
+                            1'b0,                           // Poisoned Req
+                            pkt_type,                       // Type
+                            //11'd1,                          // DWord count
+                            //11'b111_1111_1111,             // DWord count
+                            tx_length,
+
+                            // DESC 1
+                            //32'h0,                          // Address[63:32]
+
+                            // DESC 1,0
+                            {tx_addr[63:2], 2'b00}          // Address[31:0]
+                          };
+        s_axis_rq_tkeep  <= {KEEP_WIDTH{1'b1}};
+        s_axis_rq_tvalid <= 1'b1;
+      end // ST_CYC1
+
+      // state for MemWr
+      ST_CYC2: begin
+        s_axis_rq_tdata <= tx_data;
+        s_axis_rq_tuser  <= {AXI4_RQ_TUSER_WIDTH{1'b0}};
+        s_axis_rq_tvalid <= 1'b1;
+        if(tx_length > 11'd4) begin
+          if(tx_count == {2'b00, tx_length[10:2]}-11'd1 ) begin
+            s_axis_rq_tlast  <= 1'b1;
+            s_axis_rq_tkeep  <=  (tx_length[1:0] == 2'b01)? 4'b0001 : 
+                                ((tx_length[1:0] == 2'b10)? 4'b0011 :
+                                ((tx_length[1:0] == 2'b11)? 4'b0111 : 4'b1111));
+          end
+          else begin
+            s_axis_rq_tlast  <= 1'b0;
+            s_axis_rq_tkeep <= 4'b1111;
+          end
+        end
+        else begin
+          s_axis_rq_tlast  <= 1'b1;
+          s_axis_rq_tkeep  <=   (tx_length == 11'd1)? 4'b0001 : 
+                              ((tx_length == 11'd2)? 4'b0011 :
+                              ((tx_length == 11'd3)? 4'b0111 : 4'b1111));
+        end
+      end // ST_CYC2
+
+      default: begin
+        s_axis_rq_tlast  <= 1'b0;
+        s_axis_rq_tuser  <= {AXI4_RQ_TUSER_WIDTH{1'b0}};
+        s_axis_rq_tdata  <= {C_DATA_WIDTH{1'b0}};
+        s_axis_rq_tkeep  <= {KEEP_WIDTH{1'b0}};
+        s_axis_rq_tvalid <= 1'b0;
+      end // default case
+    endcase
+  end
+*/
   // Packet generation output
   always @* begin
     case (pkt_state)
@@ -221,15 +326,23 @@ module user_tlp_encoder #(
         s_axis_rq_tdata = tx_data;
         s_axis_rq_tuser  = {AXI4_RQ_TUSER_WIDTH{1'b0}};
         s_axis_rq_tvalid = 1'b1;
-        if(tx_count == {2'b00, tx_length[10:2]}-11'd1 ) begin
-          s_axis_rq_tlast  = 1'b1;
-          s_axis_rq_tkeep  =  (tx_length[1:0] == 2'b01)? 4'b0001 : 
-                              ((tx_length[1:0] == 2'b10)? 4'b0011 :
-                              ((tx_length[1:0] == 2'b11)? 4'b0111 : 4'b1111));
+        if(tx_length > 11'd4) begin
+          if(tx_count == {2'b00, tx_length[10:2]}-11'd1 ) begin
+            s_axis_rq_tlast  = 1'b1;
+            s_axis_rq_tkeep  =  (tx_length[1:0] == 2'b01)? 4'b0001 : 
+                                ((tx_length[1:0] == 2'b10)? 4'b0011 :
+                                ((tx_length[1:0] == 2'b11)? 4'b0111 : 4'b1111));
+          end
+          else begin
+            s_axis_rq_tlast  = 1'b0;
+            s_axis_rq_tkeep = 4'b1111;
+          end
         end
         else begin
-          s_axis_rq_tlast  = 1'b0;
-          s_axis_rq_tkeep = 4'b1111;
+          s_axis_rq_tlast  = 1'b1;
+          s_axis_rq_tkeep  =   (tx_length == 11'd1)? 4'b0001 : 
+                              ((tx_length == 11'd2)? 4'b0011 :
+                              ((tx_length == 11'd3)? 4'b0111 : 4'b1111));
         end
       end // ST_CYC2
 

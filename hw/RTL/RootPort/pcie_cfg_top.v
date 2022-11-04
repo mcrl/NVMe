@@ -100,7 +100,7 @@ module pcie_cfg_top #(
   // PCIe Configurator Controller module
   pcie_cfg_controller #(
     .ROM_FILE             (ROM_FILE),
-    .ROM_SIZE             (36)
+    .ROM_SIZE             (32)
   ) pcie_cfg_controller_inst (
     // globals
     .user_clk           (user_clk),

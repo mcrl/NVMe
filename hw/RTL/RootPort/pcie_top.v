@@ -73,30 +73,32 @@ module pcie_top
   // Transaction (AXIS) Interface
   //-------------------------------------------------------
 
-  wire                                [3:0]     rport_s_axis_rq_tready;
-  wire                   [C_DATA_WIDTH-1:0]     rport_s_axis_rq_tdata;
-  wire                     [KEEP_WIDTH-1:0]     rport_s_axis_rq_tkeep;
-  wire            [AXI4_RQ_TUSER_WIDTH-1:0]     rport_s_axis_rq_tuser;
-  wire                                          rport_s_axis_rq_tlast;
-  wire                                          rport_s_axis_rq_tvalid;
-  wire                   [C_DATA_WIDTH-1:0]     rport_m_axis_rc_tdata;
-  wire                     [KEEP_WIDTH-1:0]     rport_m_axis_rc_tkeep;
-  wire                                          rport_m_axis_rc_tlast;
-  wire                                          rport_m_axis_rc_tvalid;
-  wire                                          rport_m_axis_rc_tready;
-  wire            [AXI4_RC_TUSER_WIDTH-1:0]     rport_m_axis_rc_tuser;
+  wire                                [3:0]     s_axis_rq_tready;
+  wire                   [C_DATA_WIDTH-1:0]     s_axis_rq_tdata;
+  wire                     [KEEP_WIDTH-1:0]     s_axis_rq_tkeep;
+  wire            [AXI4_RQ_TUSER_WIDTH-1:0]     s_axis_rq_tuser;
+  wire                                          s_axis_rq_tlast;
+  wire                                          s_axis_rq_tvalid;
+  
+  wire                   [C_DATA_WIDTH-1:0]     m_axis_rc_tdata;
+  wire                     [KEEP_WIDTH-1:0]     m_axis_rc_tkeep;
+  wire                                          m_axis_rc_tlast;
+  wire                                          m_axis_rc_tvalid;
+  wire                                          m_axis_rc_tready;
+  wire            [AXI4_RC_TUSER_WIDTH-1:0]     m_axis_rc_tuser;
 
   wire                   [C_DATA_WIDTH-1:0]     m_axis_cq_tdata;
   wire            [AXI4_CQ_TUSER_WIDTH-1:0]     m_axis_cq_tuser;
   wire                                          m_axis_cq_tlast;
   wire                     [KEEP_WIDTH-1:0]     m_axis_cq_tkeep;
   wire                                          m_axis_cq_tvalid;
-  reg                                           m_axis_cq_tready = 0;
-  reg                    [C_DATA_WIDTH-1:0]     s_axis_cc_tdata = 0;
-  reg             [AXI4_CC_TUSER_WIDTH-1:0]     s_axis_cc_tuser = 0;
-  reg                                           s_axis_cc_tlast = 0;
-  reg                      [KEEP_WIDTH-1:0]     s_axis_cc_tkeep = 0;
-  reg                                           s_axis_cc_tvalid = 0;
+  reg                                           m_axis_cq_tready;
+
+  reg                    [C_DATA_WIDTH-1:0]     s_axis_cc_tdata;
+  reg             [AXI4_CC_TUSER_WIDTH-1:0]     s_axis_cc_tuser;
+  reg                                           s_axis_cc_tlast;
+  reg                      [KEEP_WIDTH-1:0]     s_axis_cc_tkeep;
+  reg                                           s_axis_cc_tvalid;
   wire                                [3:0]     s_axis_cc_tready;
 
 

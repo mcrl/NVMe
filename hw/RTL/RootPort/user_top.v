@@ -77,13 +77,16 @@ module user_top #(
   wire                            rd_m_axis_rc_tvalid;
   wire [AXI4_RC_TUSER_WIDTH-1:0]  rd_m_axis_rc_tuser;
 
+  
+
+  wire [3:0] ctl_state;
 
   // User Module Controller - controls the read/write/verify process
   user_controller #(
     .BAR_A_ENABLED (BAR_A_ENABLED),
     .BAR_A_64BIT   (BAR_A_64BIT),
     .BAR_A_IO      (BAR_A_IO),
-    .BAR_A_BASE    (BAR_A_BASE),
+    .BAR_A_BASE    (64'h0000_0010_8000_0004),
     .BAR_A_SIZE    (BAR_A_SIZE)
   ) user_controller_inst (
     // System inputs
@@ -114,9 +117,11 @@ module user_top #(
     
     // for debugging
     .addr_offset (addr_offset),
-    .vio_length  (vio_length)
+    .vio_length  (vio_length),
+    .ctl_state(ctl_state)
   );
 
+  wire [1:0] pkt_state;
 
   user_tlp_encoder #(
     .REQUESTER_ID   (REQUESTER_ID),
@@ -143,7 +148,9 @@ module user_top #(
     //.tx_length              ({9'd0, vio_length}),
     .tx_length            (tx_length),
     .tx_start               (tx_start),
-    .tx_done                (tx_done)
+    .tx_done                (tx_done),
+    
+    .pkt_state(pkt_state)
   );
 
   user_isq #(
@@ -241,7 +248,9 @@ module user_top #(
     .probe20(rx_data),  // 32bit
     .probe21(rx_success),  // 1bit
     .probe22(rx_fail),    // 1bit
-    .probe23(icq_full)    // 1bit
+    .probe23(icq_full),    // 1bit
+    .probe24(ctl_state), // 4-bit
+    .probe25(pkt_state)   // 2-bit
   );
 
 endmodule
