@@ -143,6 +143,7 @@ module configurator #(
   always@(posedge user_clk) begin
     if(user_reset || !user_lnk_up) begin
       cfg_state <= ST_IDLE;
+      cfg_done <= 1'b0;
     end
     else begin
       case(cfg_state) 

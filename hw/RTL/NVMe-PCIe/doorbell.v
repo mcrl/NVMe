@@ -14,12 +14,12 @@ module doorbell #(
 
   // Controller Interface
 
-  input write_sqtdbl,
-  input [63:0] sqt_addr,
-  input write_cqhdbl,
-  input [63:0] cqh_addr,
-  output reg write_sqtdbl_done,
-  output reg write_cqhdbl_done,
+  input         write_sqtdbl,
+  input [63:0]  sqt_addr,
+  input         write_cqhdbl,
+  input [63:0]  cqh_addr,
+  output reg    write_sqtdbl_done,
+  output reg    write_cqhdbl_done,
 
   // PCIe Arbiter AXIS Interface
 
