@@ -246,7 +246,14 @@ module configurator #(
         ST_SEND_REQ: begin
           if(s_axis_rq_tready) begin
             // CfgRd or CfgWr
-            if(rom_data[17] == 1'b0) begin
+            if(cfg_done_d) begin
+              s_axis_rq_tdata_d = {C_DATA_WIDTH{1'b0}};
+              s_axis_rq_tvalid_d = 1'b0;
+              s_axis_rq_tkeep_d = 4'b0000;
+              s_axis_rq_tlast_d = 1'b0;
+              s_axis_rq_tuser_d = {AXI4_RQ_TUSER_WIDTH{1'b0}};
+            end
+            else if(rom_data[17] == 1'b0) begin
               s_axis_rq_tdata_d = {
                                   1'b0,   // Force ECRC
                                   3'd0,   // Attr
