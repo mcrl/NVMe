@@ -187,6 +187,32 @@ module oculink_port # (
 
 
   //-------------------------------------------------------
+  // Configurator & Doorbell to Arbiter 
+  //-------------------------------------------------------
+
+  wire                                [3:0]     cfg_s_axis_rq_tready;
+  wire                   [C_DATA_WIDTH-1:0]     cfg_s_axis_rq_tdata;
+  wire                     [KEEP_WIDTH-1:0]     cfg_s_axis_rq_tkeep;
+  wire            [AXI4_RQ_TUSER_WIDTH-1:0]     cfg_s_axis_rq_tuser;
+  wire                                          cfg_s_axis_rq_tlast;
+  wire                                          cfg_s_axis_rq_tvalid;
+  
+  wire                   [C_DATA_WIDTH-1:0]     cfg_m_axis_rc_tdata;
+  wire                     [KEEP_WIDTH-1:0]     cfg_m_axis_rc_tkeep;
+  wire                                          cfg_m_axis_rc_tlast;
+  wire                                          cfg_m_axis_rc_tvalid;
+  wire                                          cfg_m_axis_rc_tready;
+  wire            [AXI4_RC_TUSER_WIDTH-1:0]     cfg_m_axis_rc_tuser;
+
+  wire                                [3:0]     db_s_axis_rq_tready;
+  wire                   [C_DATA_WIDTH-1:0]     db_s_axis_rq_tdata;
+  wire                     [KEEP_WIDTH-1:0]     db_s_axis_rq_tkeep;
+  wire            [AXI4_RQ_TUSER_WIDTH-1:0]     db_s_axis_rq_tuser;
+  wire                                          db_s_axis_rq_tlast;
+  wire                                          db_s_axis_rq_tvalid;
+
+
+  //-------------------------------------------------------
   // Configurator <-> Controller Interface 
   //-------------------------------------------------------
   // Configurator -> Controller
@@ -208,6 +234,7 @@ module oculink_port # (
   wire       recv_skip;
   wire [31:0] recv_data; 
   wire [7:0] tag;
+  wire [31:0] rom_data;
   wire [5:0] rom_addr;
 
 
@@ -238,8 +265,6 @@ module oculink_port # (
 
 
 
-/*
-
   pcie_arbiter #(
     .AXI4_CQ_TUSER_WIDTH  (AXI4_CQ_TUSER_WIDTH),
     .AXI4_CC_TUSER_WIDTH  (AXI4_CC_TUSER_WIDTH),
@@ -248,52 +273,62 @@ module oculink_port # (
     .C_DATA_WIDTH         (C_DATA_WIDTH),
     .KEEP_WIDTH           (KEEP_WIDTH)
   ) pcie_arbiter_inst (
-
-    //-------------------------------------------------------
     // System Interface
-    //-------------------------------------------------------
-
     .user_clk                                 ( user_clk ),
     .user_reset                               ( user_reset ),
     .user_lnk_up                              ( user_lnk_up ),
     
-    //-------------------------------------------------------
     // PCIe IP AXI4-Stream Interface
-    //-------------------------------------------------------
-
-    // Requester reQuest
     .s_axis_rq_tready                         ( s_axis_rq_tready ),
     .s_axis_rq_tdata                          ( s_axis_rq_tdata ),
     .s_axis_rq_tkeep                          ( s_axis_rq_tkeep ),
     .s_axis_rq_tuser                          ( s_axis_rq_tuser ),
     .s_axis_rq_tlast                          ( s_axis_rq_tlast ),
     .s_axis_rq_tvalid                         ( s_axis_rq_tvalid ),
-
-    // Requester Completion    
     .m_axis_rc_tdata                          ( m_axis_rc_tdata ),
     .m_axis_rc_tkeep                          ( m_axis_rc_tkeep ),
     .m_axis_rc_tlast                          ( m_axis_rc_tlast ),
     .m_axis_rc_tvalid                         ( m_axis_rc_tvalid ),
     .m_axis_rc_tuser                          ( m_axis_rc_tuser ),
     .m_axis_rc_tready                         ( m_axis_rc_tready ),
-
-    // Completer reQuest
+/*
     .m_axis_cq_tdata                          ( m_axis_cq_tdata ),
     .m_axis_cq_tuser                          ( m_axis_cq_tuser ),
     .m_axis_cq_tlast                          ( m_axis_cq_tlast ),
     .m_axis_cq_tkeep                          ( m_axis_cq_tkeep ),
     .m_axis_cq_tvalid                         ( m_axis_cq_tvalid ),
     .m_axis_cq_tready                         ( m_axis_cq_tready ),
-
-    // Completer Completion
     .s_axis_cc_tdata                          ( s_axis_cc_tdata ),
     .s_axis_cc_tuser                          ( s_axis_cc_tuser ),
     .s_axis_cc_tlast                          ( s_axis_cc_tlast ),
     .s_axis_cc_tkeep                          ( s_axis_cc_tkeep ),
     .s_axis_cc_tvalid                         ( s_axis_cc_tvalid ),
-    .s_axis_cc_tready                         ( s_axis_cc_tready )
-  );
+    .s_axis_cc_tready                         ( s_axis_cc_tready ),
 */
+    // Configurator -> Arbiter
+    .cfg_done                                 ( cfg_done ),
+    .cfg_s_axis_rq_tready                     ( cfg_s_axis_rq_tready ),
+    .cfg_s_axis_rq_tdata                      ( cfg_s_axis_rq_tdata ),
+    .cfg_s_axis_rq_tkeep                      ( cfg_s_axis_rq_tkeep ),
+    .cfg_s_axis_rq_tuser                      ( cfg_s_axis_rq_tuser ),
+    .cfg_s_axis_rq_tlast                      ( cfg_s_axis_rq_tlast ),
+    .cfg_s_axis_rq_tvalid                     ( cfg_s_axis_rq_tvalid ),
+    .cfg_m_axis_rc_tdata                      ( cfg_m_axis_rc_tdata ),
+    .cfg_m_axis_rc_tkeep                      ( cfg_m_axis_rc_tkeep ),
+    .cfg_m_axis_rc_tlast                      ( cfg_m_axis_rc_tlast ),
+    .cfg_m_axis_rc_tvalid                     ( cfg_m_axis_rc_tvalid ),
+    .cfg_m_axis_rc_tuser                      ( cfg_m_axis_rc_tuser ),
+    .cfg_m_axis_rc_tready                     ( cfg_m_axis_rc_tready ),
+
+    // Doorbell -> Arbiter
+    .db_s_axis_rq_tready                       ( db_s_axis_rq_tready ),
+    .db_s_axis_rq_tdata                        ( db_s_axis_rq_tdata ),
+    .db_s_axis_rq_tkeep                        ( db_s_axis_rq_tkeep ),
+    .db_s_axis_rq_tuser                        ( db_s_axis_rq_tuser ),
+    .db_s_axis_rq_tlast                        ( db_s_axis_rq_tlast ),
+    .db_s_axis_rq_tvalid                       ( db_s_axis_rq_tvalid )
+  );
+
 
   controller #(
     .AXI4_CQ_TUSER_WIDTH  (AXI4_CQ_TUSER_WIDTH),
@@ -327,26 +362,26 @@ module oculink_port # (
     .user_clk                                 ( user_clk ),
     .user_reset                               ( user_reset ),
     .user_lnk_up                              ( user_lnk_up ),
-    
+
     // Controller <-> Configurator Interface
     .start_config                             (start_config),
     .cfg_done                                 (cfg_done),
 
     // Requester reQuest
-    .s_axis_rq_tready                         ( s_axis_rq_tready ),
-    .s_axis_rq_tdata                          ( s_axis_rq_tdata ),
-    .s_axis_rq_tkeep                          ( s_axis_rq_tkeep ),
-    .s_axis_rq_tuser                          ( s_axis_rq_tuser ),
-    .s_axis_rq_tlast                          ( s_axis_rq_tlast ),
-    .s_axis_rq_tvalid                         ( s_axis_rq_tvalid ),
+    .s_axis_rq_tready                         ( cfg_s_axis_rq_tready ),
+    .s_axis_rq_tdata                          ( cfg_s_axis_rq_tdata ),
+    .s_axis_rq_tkeep                          ( cfg_s_axis_rq_tkeep ),
+    .s_axis_rq_tuser                          ( cfg_s_axis_rq_tuser ),
+    .s_axis_rq_tlast                          ( cfg_s_axis_rq_tlast ),
+    .s_axis_rq_tvalid                         ( cfg_s_axis_rq_tvalid ),
 
     // Requester Completion    
-    .m_axis_rc_tdata                          ( m_axis_rc_tdata ),
-    .m_axis_rc_tkeep                          ( m_axis_rc_tkeep ),
-    .m_axis_rc_tlast                          ( m_axis_rc_tlast ),
-    .m_axis_rc_tvalid                         ( m_axis_rc_tvalid ),
-    .m_axis_rc_tuser                          ( m_axis_rc_tuser ),
-    .m_axis_rc_tready                         ( m_axis_rc_tready ),
+    .m_axis_rc_tdata                          ( cfg_m_axis_rc_tdata ),
+    .m_axis_rc_tkeep                          ( cfg_m_axis_rc_tkeep ),
+    .m_axis_rc_tlast                          ( cfg_m_axis_rc_tlast ),
+    .m_axis_rc_tvalid                         ( cfg_m_axis_rc_tvalid ),
+    .m_axis_rc_tuser                          ( cfg_m_axis_rc_tuser ),
+    .m_axis_rc_tready                         ( cfg_m_axis_rc_tready ),
     
     // for debugging
     .cfg_state(cfg_state),
@@ -358,9 +393,37 @@ module oculink_port # (
     .recv_skip(recv_skip),
     .recv_data(recv_data),
     .tag(tag),
+    .rom_data(rom_data),
     .rom_addr(rom_addr)
   );
 
+
+  doorbell #(
+    .AXI4_RQ_TUSER_WIDTH  (AXI4_RQ_TUSER_WIDTH),
+    .C_DATA_WIDTH         (C_DATA_WIDTH),
+    .KEEP_WIDTH           (KEEP_WIDTH)
+  ) doorbell_inst (
+    // System Interface
+    .user_clk                                 ( user_clk ),
+    .user_reset                               ( user_reset ),
+    .user_lnk_up                              ( user_lnk_up ),
+
+    // Controller Interface
+    .write_sqtdbl                             ( write_sqtdbl ),
+    .sqt_addr                                 ( sqt_addr ),
+    .write_cqhdbl                             ( write_cqhdbl ),
+    .cqh_addr                                 ( cqh_addr ),
+    .write_sqtdbl_done                        ( write_sqtdbl_done ),
+    .write_cqhdbl_done                        ( write_cqhdbl_done ),
+
+    // Requester reQuest
+    .s_axis_rq_tready                         ( db_s_axis_rq_tready ),
+    .s_axis_rq_tdata                          ( db_s_axis_rq_tdata ),
+    .s_axis_rq_tkeep                          ( db_s_axis_rq_tkeep ),
+    .s_axis_rq_tuser                          ( db_s_axis_rq_tuser ),
+    .s_axis_rq_tlast                          ( db_s_axis_rq_tlast ),
+    .s_axis_rq_tvalid                         ( db_s_axis_rq_tvalid )
+  );
 
 
 
@@ -392,8 +455,9 @@ module oculink_port # (
     .probe22(recv_cpl_status),  // 3-bit
     .probe23(recv_req_completed), // 1-bit
     .probe24(recv_skip),        // 1-bit
-    .probe25(tag), //8-bit
-    .probe26(rom_addr) // 6-bit
+    .probe25(tag),              //8-bit
+    .probe26(rom_addr),         // 6-bit
+    .probe27(rom_data)          // 32-bit
   );
 
 

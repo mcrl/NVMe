@@ -55,6 +55,7 @@ module configurator #(
   output reg       recv_skip,
   output reg [31:0] recv_data,
   output reg [7:0] tag,
+  output reg [31:0] rom_data,
   output reg [ROM_ADDR_WIDTH-1:0] rom_addr
 );
 
@@ -65,7 +66,8 @@ module configurator #(
   localparam [3:0] ST_SEND_REQ = 4'd1;
   localparam [3:0] ST_SEND_REQ2= 4'd2;
   localparam [3:0] ST_WAIT_CPL = 4'd3;
-  localparam [2:0] ST_DONE     = 4'd4;
+  localparam [3:0] ST_READ_NEXT= 4'd4;
+  localparam [2:0] ST_DONE     = 4'd5;
   //reg [3:0] cfg_state;
 
 /*
@@ -77,7 +79,7 @@ module configurator #(
   reg       recv_skip;
   reg [31:0] recv_data;
 */
-  reg [31:0]                rom_data;
+  //reg [31:0]                rom_data;
   //reg [ROM_ADDR_WIDTH-1:0]  rom_addr;
   reg [31:0]                rom [0:ROM_SIZE-1];
 
@@ -109,29 +111,27 @@ module configurator #(
     end
     else begin
       case(cfg_state) 
-        ST_SEND_REQ: begin
-          // CfgWr or MsgD
-          if(rom_data[17:16] == 2'b01 || rom_data[17:16] == 2'b11) begin
-            rom_addr <= rom_addr + 1'b1;
-          end
-          else begin
-            rom_addr <= rom_addr + 2'd2;
-          end
+        ST_IDLE: begin
+          if(start_config) rom_addr <= rom_addr + 1'b1;
         end
-        ST_SEND_REQ2: begin
+        ST_SEND_REQ: begin
+          rom_addr <= rom_addr + 1'b1;
+        end
+        ST_READ_NEXT: begin
           rom_addr <= rom_addr + 1'b1;
         end
       endcase
     end
   end
 
+  reg cfg_done_d;
   // End configuration and send cfg_done to controller
   always@(posedge user_clk) begin
     if(user_reset || !user_lnk_up) begin
-      cfg_done <= 1'b0;
+      cfg_done_d <= 1'b0;
     end
     else begin
-      if(rom_addr == ROM_SIZE) cfg_done <= 1'b1;
+      if(rom_addr >= ROM_SIZE) cfg_done_d <= 1'b1;
     end
   end
 
@@ -151,7 +151,7 @@ module configurator #(
         end
 
         ST_SEND_REQ: begin
-          if(cfg_done) cfg_state <= ST_DONE;
+          if(cfg_done_d) cfg_state <= ST_DONE;
 
           // CfgWr or MsgD
           else if(rom_data[17:16] == 2'b01 || rom_data[17:16] == 2'b11) begin
@@ -167,7 +167,15 @@ module configurator #(
         end
 
         ST_WAIT_CPL: begin
-          if(recv_done || recv_skip) cfg_state <= ST_SEND_REQ;
+          if(recv_done || recv_skip) cfg_state <= ST_READ_NEXT;
+        end
+
+        ST_READ_NEXT: begin
+          cfg_state <= ST_SEND_REQ;
+        end
+
+        ST_DONE: begin
+          cfg_done <= 1'b1;
         end
 
       endcase
