@@ -234,7 +234,6 @@ module oculink_port # (
   wire write_cqhdbl_done;
 
 
-
   // debugging
   wire [3:0] ctl_state;
   wire [3:0] cfg_state;
@@ -358,6 +357,14 @@ module oculink_port # (
     .start_config                            (start_config),
     .cfg_done                                (cfg_done),
 
+    // Doorbell <-> Controller Interface
+    .write_sqtdbl                             ( write_sqtdbl ),
+    .sqt_addr                                 ( sqt_addr ),
+    .write_cqhdbl                             ( write_cqhdbl ),
+    .cqh_addr                                 ( cqh_addr ),
+    .write_sqtdbl_done                        ( write_sqtdbl_done ),
+    .write_cqhdbl_done                        ( write_cqhdbl_done ),
+
     // for debugging
     .ctl_state(ctl_state)
   );
@@ -460,16 +467,12 @@ module oculink_port # (
     .probe15(user_lnk_up),      // 1-bit
     .probe16(cfg_state),        // 4-bit
     .probe17(ctl_state),        // 4-bit
-    .probe18(recv_data),        // 32-bit
-    .probe19(recv_done),        // 1-bit
-    .probe20(recv_tag),         // 8-bit
-    .probe21(recv_err_code),    // 4-bit
-    .probe22(recv_cpl_status),  // 3-bit
-    .probe23(recv_req_completed), // 1-bit
-    .probe24(recv_skip),        // 1-bit
-    .probe25(tag),              //8-bit
-    .probe26(rom_addr),         // 6-bit
-    .probe27(rom_data)          // 32-bit
+    .probe18(m_axis_cq_tdata),  // 128-bit
+    .probe19(m_axis_cq_tkeep),  // 4-bit
+    .probe20(m_axis_cq_tlast),  // 1-bit
+    .probe21(m_axis_cq_tready), // 1-bit
+    .probe22(m_axis_cq_tuser),  // 88-bit
+    .probe23(m_axis_cq_tvalid)  // 1-bit
   );
 
 

@@ -75,16 +75,12 @@ ila_cfg your_instance_name (
 	.probe15(probe15), // input wire [0:0]  probe15 
 	.probe16(probe16), // input wire [3:0]  probe16 
 	.probe17(probe17), // input wire [3:0]  probe17 
-	.probe18(probe18), // input wire [31:0]  probe18 
-	.probe19(probe19), // input wire [0:0]  probe19 
-	.probe20(probe20), // input wire [7:0]  probe20 
-	.probe21(probe21), // input wire [3:0]  probe21 
-	.probe22(probe22), // input wire [2:0]  probe22 
-	.probe23(probe23), // input wire [0:0]  probe23 
-	.probe24(probe24), // input wire [0:0]  probe24 
-	.probe25(probe25), // input wire [7:0]  probe25 
-	.probe26(probe26), // input wire [5:0]  probe26 
-	.probe27(probe27) // input wire [31:0]  probe27
+	.probe18(probe18), // input wire [127:0]  probe18 
+	.probe19(probe19), // input wire [3:0]  probe19 
+	.probe20(probe20), // input wire [0:0]  probe20 
+	.probe21(probe21), // input wire [0:0]  probe21 
+	.probe22(probe22), // input wire [87:0]  probe22 
+	.probe23(probe23) // input wire [0:0]  probe23
 );
 
 // INST_TAG_END ------ End INSTANTIATION Template ---------

@@ -18,6 +18,15 @@ module controller #(
 
   output reg  start_config,
   input       cfg_done,
+
+  output reg        write_sqtdbl,
+  output reg [63:0] sqt_addr,
+  output reg        write_cqhdbl,
+  output reg [63:0] cqh_addr,
+  input             write_sqtdbl_done,
+  input             write_cqhdbl_done,
+
+
   output reg [3:0] ctl_state
 );
 
@@ -26,6 +35,11 @@ module controller #(
   localparam [3:0] ST_START_CFG     = 4'd1;
   localparam [3:0] ST_WAIT_CFG_DONE = 4'd2;
   localparam [3:0] ST_IDLE          = 4'd3;
+  localparam [3:0] ST_SQTDB         = 4'd4;
+  localparam [3:0] ST_SQTDB_WAIT    = 4'd5;
+  localparam [3:0] ST_CQHDB         = 4'd6;
+  localparam [3:0] ST_CQHDB_WAIT    = 4'd7;
+  localparam [3:0] ST_DONE          = 4'd8;
 
   //reg [3:0]    ctl_state;
 
@@ -50,49 +64,63 @@ module controller #(
   // ST_START_CFG     : Start configuration 
   // ST_WAIT_CFG_DONE : Wait for Configurator to finish configuring the NVMe SSD
   // ST_IDLE          : Idle state 
-
-  // ST_WRITE         : Transmit write TLP to Endpoint 
-  // ST_WRITE_WAIT    : Wait for write TLP to be transmitted
-  // ST_READ          : Send a read TLP to Endpoint 
-  // ST_READ_WAIT     : Wait for read TLP to be transmitted
-  // ST_READ_CPL_WAIT : Wait for completion to be returned
-  // ST_DONE          : Test passed successfully. Wait for restart to be requested
-  // ST_ERROR         : Test failed. Wait for restart to be requested
-
+  // ST_SQTDB         : Write SQ tail address to SQ Tail Doorbell 
+  // ST_CQHDB         : Write CQ head address to CQ Head Doorbell 
+  
   always@(posedge user_clk) begin
     if(user_reset || !user_lnk_up) begin
       ctl_state <= ST_WAIT_LNKUP;
+      write_sqtdbl <= 1'b0;
+      write_cqhdbl <= 1'b0;
+      sqt_addr <= 64'h0;
+      cqh_addr <= 64'h0;
     end
     else begin
       case(ctl_state)
         ST_WAIT_LNKUP: begin
-          if(user_lnk_up) begin
-            ctl_state <= ST_START_CFG;
-          end
+          ctl_state <= ST_START_CFG;
         end
 
         ST_START_CFG: begin
-          if(!user_lnk_up) begin
-            ctl_state <= ST_WAIT_LNKUP;
-          end
-          else begin
-            ctl_state <= ST_WAIT_CFG_DONE;
-          end
+          ctl_state <= ST_WAIT_CFG_DONE;
         end
 
         ST_WAIT_CFG_DONE: begin
-          if(!user_lnk_up) begin
-            ctl_state <= ST_WAIT_LNKUP;
-          end
-          else begin
-            if(cfg_done) begin
-              ctl_state <= ST_IDLE;
-            end
+          if(cfg_done) begin
+            ctl_state <= ST_IDLE;
           end
         end
 
         ST_IDLE: begin
+          ctl_state <= ST_SQTDB;          
+        end
 
+        ST_SQTDB: begin
+          write_sqtdbl <= 1'b1;
+          sqt_addr <= 64'h1000;
+          ctl_state <= ST_SQTDB_WAIT;
+        end
+
+        ST_SQTDB_WAIT: begin
+          write_sqtdbl <= 1'b0;
+          if(write_sqtdbl_done) begin
+            ctl_state <= ST_CQHDB;
+            sqt_addr <= 64'h0;
+          end
+        end
+
+        ST_CQHDB: begin
+          write_cqhdbl <= 1'b1;
+          cqh_addr <= 64'h2000;
+          ctl_state <= ST_CQHDB_WAIT;
+        end
+
+        ST_CQHDB_WAIT: begin
+          write_cqhdbl <= 1'b0;
+          if(write_cqhdbl_done) begin
+            ctl_state <= ST_DONE;
+            cqh_addr <= 64'h0;
+          end
         end
 
       endcase

@@ -32,6 +32,8 @@ module doorbell #(
 );
 
   localparam [63:0] BAR0 = 64'h0000_0010_8000_0004;
+  localparam [63:0] SQT_OFFSET = 64'h0000_0000_0000_1008;
+  localparam [63:0] CQH_OFFSET = 64'h0000_0010_8000_100C;
 
   localparam [3:0] ST_IDLE = 4'd0;  // Wait for write doorbell signal from controller
   localparam [3:0] ST_DB_WRITE1 = 4'd1;
@@ -104,6 +106,8 @@ module doorbell #(
   end
 
   
+  reg is_sq;
+
   always@(*) begin
     if(user_reset || !user_lnk_up) begin
       s_axis_rq_tdata_d = {C_DATA_WIDTH{1'b0}};
@@ -113,9 +117,14 @@ module doorbell #(
       s_axis_rq_tuser_d = {AXI4_RQ_TUSER_WIDTH{1'b0}};
       write_sqtdbl_done_d = 'd0;
       write_cqhdbl_done_d = 'd0;
+      is_sq = 0;
     end
     else begin
       case(db_state)
+        ST_IDLE: begin
+          if(write_sqtdbl) is_sq = 1;
+          else is_sq = 0; 
+        end
         ST_DB_WRITE1: begin
           if(s_axis_rq_tready) begin
             s_axis_rq_tdata_d = {
@@ -129,7 +138,8 @@ module doorbell #(
                                 1'd0,   // Poisoned Request
                                 4'b0001,   // Req Type Memory Write Req
                                 11'd2,  // Dword count
-                                62'd0,  // Address
+                                //62'd0,  // Address
+                                (is_sq) ? BAR0[63:2] + SQT_OFFSET[63:2] : BAR0[63:2] + CQH_OFFSET[63:2],
                                 2'd0    // Reserved
                               };
             s_axis_rq_tvalid_d = 1'b1;
@@ -155,14 +165,14 @@ module doorbell #(
           if(s_axis_rq_tready) begin
             s_axis_rq_tdata_d = {
                                   64'd0, 
-                                  (write_sqtdbl) ? sqt_addr : cqh_addr
+                                  (is_sq) ? sqt_addr : cqh_addr
                                 };
             s_axis_rq_tvalid_d = 1'b1;
             s_axis_rq_tkeep_d = 4'b0011;
             s_axis_rq_tlast_d = 1'b1;
             s_axis_rq_tuser_d = {AXI4_RQ_TUSER_WIDTH{1'b0}};
-            if(write_sqtdbl) write_sqtdbl_done_d = 1'b1;
-            else if(write_cqhdbl) write_cqhdbl_done_d = 1'b1;
+            if(is_sq) write_sqtdbl_done_d = 1'b1;
+            else if(!is_sq) write_cqhdbl_done_d = 1'b1;
           end
         end
 
