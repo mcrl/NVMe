@@ -28,7 +28,11 @@ module doorbell #(
   output reg          [KEEP_WIDTH-1:0]  s_axis_rq_tkeep,
   output reg                            s_axis_rq_tlast,
   output reg                            s_axis_rq_tvalid,
-  input                     [3:0]       s_axis_rq_tready
+  input                     [3:0]       s_axis_rq_tready,
+
+  // for Debugging
+  output reg [3:0] db_state,
+  output reg is_sq
 );
 
   localparam [63:0] BAR0 = 64'h0000_0010_8000_0004;
@@ -38,9 +42,12 @@ module doorbell #(
   localparam [3:0] ST_IDLE = 4'd0;  // Wait for write doorbell signal from controller
   localparam [3:0] ST_DB_WRITE1 = 4'd1;
   localparam [3:0] ST_DB_WRITE2 = 4'd2;
+  localparam [3:0] ST_DB_DONE = 4'd3;
 
+/*
   reg [3:0] db_state;
-
+  reg is_sq;
+*/
 
   reg                   [C_DATA_WIDTH-1:0]     s_axis_rq_tdata_d;
   reg                     [KEEP_WIDTH-1:0]     s_axis_rq_tkeep_d;
@@ -69,6 +76,10 @@ module doorbell #(
           end
 
           ST_DB_WRITE2: begin
+            db_state <= ST_DB_DONE;
+          end
+
+          ST_DB_DONE: begin
             db_state <= ST_IDLE;
           end
 
@@ -105,8 +116,18 @@ module doorbell #(
     end
   end
 
-  
-  reg is_sq;
+  always@(posedge user_clk) begin
+    if(user_reset || !user_lnk_up) begin
+      is_sq <= 1'b0;
+    end
+    else begin
+      if(db_state == ST_IDLE) begin
+        if(write_sqtdbl) is_sq <= 1'b1;
+        else is_sq <= 1'b0;
+      end
+    end
+  end
+
 
   always@(*) begin
     if(user_reset || !user_lnk_up) begin
@@ -117,13 +138,12 @@ module doorbell #(
       s_axis_rq_tuser_d = {AXI4_RQ_TUSER_WIDTH{1'b0}};
       write_sqtdbl_done_d = 'd0;
       write_cqhdbl_done_d = 'd0;
-      is_sq = 0;
     end
     else begin
       case(db_state)
         ST_IDLE: begin
-          if(write_sqtdbl) is_sq = 1;
-          else is_sq = 0; 
+          write_sqtdbl_done_d = 'd0;
+          write_cqhdbl_done_d = 'd0; 
         end
         ST_DB_WRITE1: begin
           if(s_axis_rq_tready) begin
@@ -171,9 +191,17 @@ module doorbell #(
             s_axis_rq_tkeep_d = 4'b0011;
             s_axis_rq_tlast_d = 1'b1;
             s_axis_rq_tuser_d = {AXI4_RQ_TUSER_WIDTH{1'b0}};
-            if(is_sq) write_sqtdbl_done_d = 1'b1;
-            else if(!is_sq) write_cqhdbl_done_d = 1'b1;
           end
+        end
+
+        ST_DB_DONE: begin
+          s_axis_rq_tdata_d = {C_DATA_WIDTH{1'b0}};
+          s_axis_rq_tvalid_d = 1'b0;
+          s_axis_rq_tkeep_d = 4'b0000;
+          s_axis_rq_tlast_d = 1'b0;
+          s_axis_rq_tuser_d = {AXI4_RQ_TUSER_WIDTH{1'b0}};
+          if(is_sq) write_sqtdbl_done_d = 1'b1;
+          else if(!is_sq) write_cqhdbl_done_d = 1'b1;
         end
 
         default: begin

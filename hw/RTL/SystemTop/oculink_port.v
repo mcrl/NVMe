@@ -88,7 +88,8 @@ module oculink_port # (
   wire                                          m_axis_cq_tlast;
   wire                     [KEEP_WIDTH-1:0]     m_axis_cq_tkeep;
   wire                                          m_axis_cq_tvalid;
-  reg                                           m_axis_cq_tready;
+  wire                                          m_axis_cq_tready;
+  assign m_axis_cq_tready = 1'b1;
 
   reg                    [C_DATA_WIDTH-1:0]     s_axis_cc_tdata;
   reg             [AXI4_CC_TUSER_WIDTH-1:0]     s_axis_cc_tuser;
@@ -248,6 +249,8 @@ module oculink_port # (
   wire [31:0] rom_data;
   wire [5:0] rom_addr;
 
+  wire [3:0] db_state;
+  wire is_sq;
 
   // Virtual I/O
   wire [15:0] probe_in0;
@@ -441,7 +444,11 @@ module oculink_port # (
     .s_axis_rq_tkeep                          ( db_s_axis_rq_tkeep ),
     .s_axis_rq_tuser                          ( db_s_axis_rq_tuser ),
     .s_axis_rq_tlast                          ( db_s_axis_rq_tlast ),
-    .s_axis_rq_tvalid                         ( db_s_axis_rq_tvalid )
+    .s_axis_rq_tvalid                         ( db_s_axis_rq_tvalid ),
+
+    // for debugging
+    .db_state(db_state),
+    .is_sq(is_sq)
   );
 
 
@@ -472,7 +479,9 @@ module oculink_port # (
     .probe20(m_axis_cq_tlast),  // 1-bit
     .probe21(m_axis_cq_tready), // 1-bit
     .probe22(m_axis_cq_tuser),  // 88-bit
-    .probe23(m_axis_cq_tvalid)  // 1-bit
+    .probe23(m_axis_cq_tvalid),  // 1-bit
+    .probe24(db_state), // 4-bit
+    .probe25(is_sq)     // 1-bit
   );
 
 

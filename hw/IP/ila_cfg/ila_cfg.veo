@@ -80,7 +80,9 @@ ila_cfg your_instance_name (
 	.probe20(probe20), // input wire [0:0]  probe20 
 	.probe21(probe21), // input wire [0:0]  probe21 
 	.probe22(probe22), // input wire [87:0]  probe22 
-	.probe23(probe23) // input wire [0:0]  probe23
+	.probe23(probe23), // input wire [0:0]  probe23 
+	.probe24(probe24), // input wire [3:0]  probe24 
+	.probe25(probe25) // input wire [0:0]  probe25
 );
 
 // INST_TAG_END ------ End INSTANTIATION Template ---------
