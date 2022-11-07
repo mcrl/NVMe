@@ -44,8 +44,8 @@ module controller #(
   //reg [3:0]    ctl_state;
 
 
-
-
+  localparam [63:0] ASQ_BAR = 64'h0000_0800_8000_0000;
+  localparam [63:0] ACQ_BAR = 64'h0000_0800_9000_0000;
 
   // pulse signal to start configuration 
   //reg start_config;
@@ -66,7 +66,11 @@ module controller #(
   // ST_IDLE          : Idle state 
   // ST_SQTDB         : Write SQ tail address to SQ Tail Doorbell 
   // ST_CQHDB         : Write CQ head address to CQ Head Doorbell 
-  
+  // ST_RDSQT         : Read ASQ Tail address
+  // ST_RDCQH         : Read ACQ Head address
+
+
+
   always@(posedge user_clk) begin
     if(user_reset || !user_lnk_up) begin
       ctl_state <= ST_WAIT_LNKUP;
@@ -97,7 +101,7 @@ module controller #(
 
         ST_SQTDB: begin
           write_sqtdbl <= 1'b1;
-          sqt_addr <= 64'h1000;
+          sqt_addr <= ASQ_BAR + 64'd1;
           ctl_state <= ST_SQTDB_WAIT;
         end
 
@@ -111,7 +115,7 @@ module controller #(
 
         ST_CQHDB: begin
           write_cqhdbl <= 1'b1;
-          cqh_addr <= 64'h2000;
+          cqh_addr <= ACQ_BAR + 64'd1;
           ctl_state <= ST_CQHDB_WAIT;
         end
 

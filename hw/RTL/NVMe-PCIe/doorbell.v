@@ -35,9 +35,9 @@ module doorbell #(
   output reg is_sq
 );
 
-  localparam [63:0] BAR0 = 64'h0000_0010_8000_0004;
-  localparam [63:0] SQT_OFFSET = 64'h0000_0000_0000_1008;
-  localparam [63:0] CQH_OFFSET = 64'h0000_0010_8000_100C;
+  localparam [63:0] BAR0 = 64'h0000_0010_8000_0000;
+  localparam [63:0] SQT_OFFSET = 64'h0000_0000_0000_1000;
+  localparam [63:0] CQH_OFFSET = 64'h0000_0010_8000_1004;
 
   localparam [3:0] ST_IDLE = 4'd0;  // Wait for write doorbell signal from controller
   localparam [3:0] ST_DB_WRITE1 = 4'd1;
@@ -175,8 +175,8 @@ module doorbell #(
                                 1'b0,     // tph_present
                                 1'b0,     // discontinue
                                 3'd0,     // addr_offset
-                                4'b0000,  // last be
-                                4'b0011   // first be 
+                                4'b1111,  // last be
+                                4'b1111   // first be 
                               };
           end
         end
