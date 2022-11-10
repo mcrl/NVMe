@@ -36,13 +36,15 @@ module doorbell #(
 );
 
   localparam [63:0] BAR0 = 64'h0000_0010_8000_0000;
-  localparam [63:0] SQT_OFFSET = 64'h0000_0000_0000_1000;
-  localparam [63:0] CQH_OFFSET = 64'h0000_0010_8000_1004;
+  localparam [63:0] SQT_OFFSET = 64'h0000_0000_0000_1008;
+  localparam [63:0] CQH_OFFSET = 64'h0000_0000_0000_100C;
+  localparam [63:0] ASQ_BAR = 64'h0001_0000_0000_0000;
+  localparam [63:0] ACQ_BAR = 64'h0002_0000_0000_0000;
 
   localparam [3:0] ST_IDLE = 4'd0;  // Wait for write doorbell signal from controller
   localparam [3:0] ST_DB_WRITE1 = 4'd1;
   localparam [3:0] ST_DB_WRITE2 = 4'd2;
-  localparam [3:0] ST_DB_DONE = 4'd3;
+  localparam [3:0] ST_DB_DONE   = 4'd3;
 
 /*
   reg [3:0] db_state;
@@ -156,7 +158,7 @@ module doorbell #(
                                 8'd0,   // Tag
                                 16'd0,  // Requester ID
                                 1'd0,   // Poisoned Request
-                                4'b0001,   // Req Type Memory Write Req
+                                4'b0001,   // Req Type Memory Write 
                                 11'd2,  // Dword count
                                 //62'd0,  // Address
                                 (is_sq) ? BAR0[63:2] + SQT_OFFSET[63:2] : BAR0[63:2] + CQH_OFFSET[63:2],
@@ -185,7 +187,7 @@ module doorbell #(
           if(s_axis_rq_tready) begin
             s_axis_rq_tdata_d = {
                                   64'd0, 
-                                  (is_sq) ? sqt_addr : cqh_addr
+                                  (is_sq) ? ASQ_BAR + sqt_addr : ACQ_BAR + cqh_addr
                                 };
             s_axis_rq_tvalid_d = 1'b1;
             s_axis_rq_tkeep_d = 4'b0011;

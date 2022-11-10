@@ -1,9 +1,35 @@
 // NVMe Configurator
+// Bit layout:
+//   All TLPs:
+//     Unused - bits 31-29
+//     Dword - bits 28-18 : Dword 
+//     Type - bits 17-16: 00=CfgRd, 01=CfgWr, 10=MemRd, 11=MemWr
+//   Cfg TLPs:
+//     Function Number (2 LSb) - bits 15-14
+//     Register Number - bits 13-4
+//     1DW BE - bits 3-0
+//   Mem TLPs:
+//     Offsets - bits 15-0
+//     Payload Data - bits 31-0
+//
+// Unused        Type                                           - All TLPs (even)
+// |-----------| |-|
+//                    Func  Register  1DW
+//                    Num    Number    BE                       - Cfg TLPs (even)
+//                    ||   |--------| |--|
+//
+//                            Offsets                           - Mem TLPs (even)
+//                    |------------------|
+//
+//  Payload Data
+// |-------_--------_--------_-------|                          - All TLPs (odd)
+
+
 
 module configurator #(
   // Configurator Parameters
-  parameter ROM_FILE                    = "pcie_cfg_rom.data",   // Location of configuration rom data file
-  parameter ROM_SIZE                    = 30,                    // Number of entries in configuration rom
+  parameter ROM_FILE                    = "nvme_cfg_rom.data",   // Location of configuration rom data file
+  parameter ROM_SIZE                    = 32,                    // Number of entries in configuration rom
   parameter ROM_ADDR_WIDTH              = (ROM_SIZE-1 < 2  )  ? 2 :
                                           (ROM_SIZE-1 < 4  )  ? 3 :
                                           (ROM_SIZE-1 < 8  )  ? 4 :
@@ -27,7 +53,7 @@ module configurator #(
   input                 start_config,
   output reg            cfg_done,
 
-  // PCIe Arbiter AXIS Interface
+  // PCIe Arbiter AXIS Interface 
 
   output reg        [C_DATA_WIDTH-1:0]  s_axis_rq_tdata,
   output reg [AXI4_RQ_TUSER_WIDTH-1:0]  s_axis_rq_tuser,
@@ -72,8 +98,6 @@ module configurator #(
   localparam [3:0] ST_WAIT_CPL = 4'd3;
   localparam [3:0] ST_READ_NEXT= 4'd4;
   localparam [3:0] ST_DONE     = 4'd5;
-  localparam [3:0] ST_REQ_CSTSRDY = 4'd6;
-  localparam [3:0] ST_WAIT_CSTSRDY = 4'd7;
 
   //reg [3:0] cfg_state;
 
@@ -128,7 +152,8 @@ module configurator #(
           rom_addr <= rom_addr + 1'b1;
         end
         ST_READ_NEXT: begin
-          rom_addr <= rom_addr + 1'b1;
+          if(wait_cstsRdy && !is_cstsRdy) rom_addr <= rom_addr - 1'b1;
+          else rom_addr <= rom_addr + 1'b1;
         end
       endcase
     end
@@ -139,9 +164,15 @@ module configurator #(
   always@(posedge user_clk) begin
     if(user_reset || !user_lnk_up) begin
       cfg_done_d <= 1'b0;
+      wait_cstsRdy <= 1'b0;
     end
     else begin
-      if(rom_addr >= ROM_SIZE) cfg_done_d <= 1'b1;
+      // Read CSTS.RDY command. Wait until CSTS.RDY == 1
+      if(rom_addr == 18) wait_cstsRdy <= 1'b1;
+      else if(rom_addr >= ROM_SIZE) begin
+        cfg_done_d <= 1'b1;
+        wait_cstsRdy <= 1'b0;
+      end
     end
   end
 
@@ -154,7 +185,6 @@ module configurator #(
     if(user_reset || !user_lnk_up) begin
       cfg_state <= ST_IDLE;
       cfg_done <= 1'b0;
-      wait_cstsRdy <= 1'b0;
     end
     else begin
       case(cfg_state) 
@@ -162,10 +192,9 @@ module configurator #(
           if(start_config) cfg_state <= ST_SEND_REQ;
         end
 
-        ST_SEND_REQ: begin
+      ST_SEND_REQ: begin
           if(cfg_done_d) begin
-            cfg_state <= ST_REQ_CSTSRDY;
-            wait_cstsRdy <= 1'b1;
+            cfg_state <= ST_DONE;
           end
 
           // CfgWr or MemWr
@@ -187,17 +216,6 @@ module configurator #(
 
         ST_READ_NEXT: begin
           cfg_state <= ST_SEND_REQ;
-        end
-
-        ST_REQ_CSTSRDY: begin
-          cfg_state <= ST_WAIT_CSTSRDY;
-        end
-        
-        ST_WAIT_CSTSRDY: begin
-          if(recv_done) begin
-            if(is_cstsRdy) cfg_state <= ST_DONE;
-            else cfg_state <= ST_REQ_CSTSRDY;
-          end
         end
 
         ST_DONE: begin
@@ -270,8 +288,40 @@ module configurator #(
       case(cfg_state)
         ST_SEND_REQ: begin
           if(s_axis_rq_tready) begin
+            if(wait_cstsRdy && !is_cstsRdy) begin
+              s_axis_rq_tdata_d = {
+                                  1'b0,   // Force ECRC
+                                  3'd0,   // Attr
+                                  3'd0,   // TC
+                                  1'd0,   // Requester ID Enable
+                                  16'd0,  // Completer ID
+                                  tag,   // Tag
+                                  16'd0,  // Requester ID
+                                  1'd0,   // Poisoned Request
+                                  MemRd, // Req Type
+                                  11'd1, // Dword count
+                                  BAR0 + 64'h1c // Address
+                                };
+              s_axis_rq_tvalid_d = 1'b1;
+              s_axis_rq_tkeep_d = 4'b1111;
+              s_axis_rq_tlast_d = 1'b1; // MemRd or MemWr
+              s_axis_rq_tuser_d = {
+                                  2'b0,     // seq_num[5:4]
+                                  32'd0,    // parity
+                                  4'd0,     // seq_num[3:0]
+                                  8'd0,     // tph_st_tag
+                                  1'b0,     // tph_indirect_tag_en
+                                  2'd0,     // tph_type   
+                                  1'b0,     // tph_present
+                                  1'b0,     // discontinue
+                                  3'd0,     // addr_offset
+                                  4'b0000,  // last be
+                                  4'b1111   // first be
+                                };
+            end
+
             // CfgRd or CfgWr
-            if(cfg_done_d) begin
+            else if(cfg_done_d) begin
               s_axis_rq_tdata_d = {C_DATA_WIDTH{1'b0}};
               s_axis_rq_tvalid_d = 1'b0;
               s_axis_rq_tkeep_d = 4'b0000;
@@ -356,39 +406,6 @@ module configurator #(
             s_axis_rq_tuser_d = {AXI4_RQ_TUSER_WIDTH{1'b0}};
           end
         end
-
-
-        ST_REQ_CSTSRDY: begin
-          s_axis_rq_tdata_d = {
-                                  1'b0,   // Force ECRC
-                                  3'd0,   // Attr
-                                  3'd0,   // TC
-                                  1'd0,   // Requester ID Enable
-                                  16'd0,  // Completer ID
-                                  tag,   // Tag
-                                  16'd0,  // Requester ID
-                                  1'd0,   // Poisoned Request
-                                  MemRd, // Req Type
-                                  11'd1, // Dword count
-                                  BAR0 + 64'h1c // Address
-                                };
-              s_axis_rq_tvalid_d = 1'b1;
-              s_axis_rq_tkeep_d = 4'b1111;
-              s_axis_rq_tlast_d = 1'b1; // MemRd or MemWr
-              s_axis_rq_tuser_d = {
-                                  2'b0,     // seq_num[5:4]
-                                  32'd0,    // parity
-                                  4'd0,     // seq_num[3:0]
-                                  8'd0,     // tph_st_tag
-                                  1'b0,     // tph_indirect_tag_en
-                                  2'd0,     // tph_type   
-                                  1'b0,     // tph_present
-                                  1'b0,     // discontinue
-                                  3'd0,     // addr_offset
-                                  4'b0000,  // last be
-                                  4'b1111   // first be
-                                };
-        end
         
         default: begin
           s_axis_rq_tdata_d = {C_DATA_WIDTH{1'b0}};
@@ -427,7 +444,7 @@ module configurator #(
         recv_done <= 1'b1;
         recv_data <= m_axis_rc_tdata[127:96];
         if(wait_cstsRdy && m_axis_rc_tdata[96]) is_cstsRdy <= 1'b1;
-        else is_cstsRdy <= 1'b0;
+        //else is_cstsRdy <= 1'b0;
       end
       else begin
         recv_tag <= 8'd0;

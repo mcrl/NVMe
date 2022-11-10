@@ -91,11 +91,11 @@ module oculink_port # (
   wire                                          m_axis_cq_tready;
   assign m_axis_cq_tready = 1'b1;
 
-  reg                    [C_DATA_WIDTH-1:0]     s_axis_cc_tdata;
-  reg             [AXI4_CC_TUSER_WIDTH-1:0]     s_axis_cc_tuser;
-  reg                                           s_axis_cc_tlast;
-  reg                      [KEEP_WIDTH-1:0]     s_axis_cc_tkeep;
-  reg                                           s_axis_cc_tvalid;
+  wire                   [C_DATA_WIDTH-1:0]     s_axis_cc_tdata;
+  wire            [AXI4_CC_TUSER_WIDTH-1:0]     s_axis_cc_tuser;
+  wire                                          s_axis_cc_tlast;
+  wire                     [KEEP_WIDTH-1:0]     s_axis_cc_tkeep;
+  wire                                          s_axis_cc_tvalid;
   wire                                [3:0]     s_axis_cc_tready;
 
   //-------------------------------------------------------
@@ -235,6 +235,13 @@ module oculink_port # (
   wire write_cqhdbl_done;
 
 
+  //-------------------------------------------------------
+  // TX CC <-> Controller Interface
+  //-------------------------------------------------------
+  wire send_cmd;
+  wire send_cmd_done;
+
+
   // debugging
   wire [3:0] ctl_state;
   wire [3:0] cfg_state;
@@ -368,6 +375,9 @@ module oculink_port # (
     .write_sqtdbl_done                        ( write_sqtdbl_done ),
     .write_cqhdbl_done                        ( write_cqhdbl_done ),
 
+    .send_cmd(send_cmd),
+    .send_cmd_done(send_cmd_done),
+
     // for debugging
     .ctl_state(ctl_state)
   );
@@ -452,6 +462,27 @@ module oculink_port # (
   );
 
 
+  tx_cc #(
+    .AXI4_CC_TUSER_WIDTH  (AXI4_CC_TUSER_WIDTH),
+    .C_DATA_WIDTH         (C_DATA_WIDTH),
+    .KEEP_WIDTH           (KEEP_WIDTH)
+  ) tx_cc_inst (
+    // System Interface
+    .user_clk                                 ( user_clk ),
+    .user_reset                               ( user_reset ),
+    .user_lnk_up                              ( user_lnk_up ),
+
+    .s_axis_cc_tready                         ( s_axis_cc_tready ),
+    .s_axis_cc_tdata                          ( s_axis_cc_tdata ),
+    .s_axis_cc_tkeep                          ( s_axis_cc_tkeep ),
+    .s_axis_cc_tuser                          ( s_axis_cc_tuser ),
+    .s_axis_cc_tlast                          ( s_axis_cc_tlast ),
+    .s_axis_cc_tvalid                         ( s_axis_cc_tvalid ),
+
+    .send_cmd(send_cmd),
+    .send_cmd_done(send_cmd_done)
+  );
+
 
   // ILA
   ila_cfg ila_cfg_inst (
@@ -481,7 +512,21 @@ module oculink_port # (
     .probe22(m_axis_cq_tuser),  // 88-bit
     .probe23(m_axis_cq_tvalid),  // 1-bit
     .probe24(db_state), // 4-bit
-    .probe25(is_sq)     // 1-bit
+    .probe25(is_sq),    // 1-bit
+    .probe26(s_axis_cc_tdata),  // 128-bit
+    .probe27(s_axis_cc_tkeep),  // 4-bit
+    .probe28(s_axis_cc_tlast),
+    .probe29(s_axis_cc_tvalid),
+    .probe30(s_axis_cc_tready),
+    .probe31(s_axis_cc_tuser),  // 33-bit
+    .probe32(rom_addr),                 // 6-bit
+    .probe33(rom_data),                 // 32-bit
+    .probe34(cfg_mgmt_addr),            // 10-bit
+    .probe35(cfg_mgmt_read),            // 1-bit
+    .probe36(cfg_mgmt_read_data),       // 32-bit
+    .probe37(cfg_mgmt_write),           // 1-bit
+    .probe38(cfg_mgmt_write_data),      // 32-bit
+    .probe39(cfg_mgmt_read_write_done)  // 1-bit
   );
 
 
@@ -642,30 +687,34 @@ module oculink_port # (
         cfg_mgmt_byte_enable <= 4'b0;
         cfg_mgmt_write       <= 1'b0;
         cfg_mgmt_read        <= 1'b0;
-        write_cfg_done_1     <= 1'b0; end
+        write_cfg_done_1     <= 1'b0; 
+    end
     else begin
       if (cfg_mgmt_read_write_done == 1'b1 && write_cfg_done_1 == 1'b1) begin
-          cfg_mgmt_addr        <= 0;
-          cfg_mgmt_write_data  <= 0;
-          cfg_mgmt_byte_enable <= 0;
-          cfg_mgmt_write       <= 0;
-          cfg_mgmt_read        <= 0;  end
-      else if (cfg_mgmt_read_write_done == 1'b1 && write_cfg_done_1 == 1'b0) begin
-          cfg_mgmt_addr        <= 32'h40082;
-          cfg_mgmt_write_data[31:28] <= cfg_mgmt_read_data[31:28];
-          cfg_mgmt_write_data[27]    <= 1'b1; 
-          cfg_mgmt_write_data[26:0]  <= cfg_mgmt_read_data[26:0];
-          cfg_mgmt_byte_enable <= 4'hF;
-          cfg_mgmt_write       <= 1'b1;
-          cfg_mgmt_read        <= 1'b0;  
-          write_cfg_done_1     <= 1'b1; end
-      else if (write_cfg_done_1 == 1'b0) begin
-          cfg_mgmt_addr        <= 32'h40082;
-          cfg_mgmt_write_data  <= 32'b0;
-          cfg_mgmt_byte_enable <= 4'hF;
-          cfg_mgmt_write       <= 1'b0;
-          cfg_mgmt_read        <= 1'b1;  end
+        cfg_mgmt_addr        <= 0;
+        cfg_mgmt_write_data  <= 0;
+        cfg_mgmt_byte_enable <= 0;
+        cfg_mgmt_write       <= 0;
+        cfg_mgmt_read        <= 0;  
       end
+      else if (cfg_mgmt_read_write_done == 1'b1 && write_cfg_done_1 == 1'b0) begin
+        cfg_mgmt_addr         <= 10'h010;         // BAR0 Reg Num
+        //cfg_mgmt_write_data   <= 32'h0000_1000;   // BAR0 Value
+        cfg_mgmt_byte_enable  <= 4'hF;
+        cfg_mgmt_write        <= 1'b0;
+        cfg_mgmt_read         <= 1'b1;  
+        write_cfg_done_1      <= 1'b1; 
+      end
+      /*
+      else if (write_cfg_done_1 == 1'b0) begin
+        cfg_mgmt_addr        <= 32'h40082;
+        cfg_mgmt_write_data  <= 32'b0;
+        cfg_mgmt_byte_enable <= 4'hF;
+        cfg_mgmt_write       <= 1'b0;
+        cfg_mgmt_read        <= 1'b1;  
+      end
+      */
+    end
   end
 
 

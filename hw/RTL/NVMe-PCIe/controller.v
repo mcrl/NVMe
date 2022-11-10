@@ -26,6 +26,8 @@ module controller #(
   input             write_sqtdbl_done,
   input             write_cqhdbl_done,
 
+  output reg send_cmd,
+  input send_cmd_done,
 
   output reg [3:0] ctl_state
 );
@@ -35,6 +37,8 @@ module controller #(
   localparam [3:0] ST_START_CFG     = 4'd1;
   localparam [3:0] ST_WAIT_CFG_DONE = 4'd2;
   localparam [3:0] ST_IDLE          = 4'd3;
+  localparam [3:0] ST_SEND_CMD      = 4'd9;
+  localparam [3:0] ST_WAIT_CMD      = 4'd10;
   localparam [3:0] ST_SQTDB         = 4'd4;
   localparam [3:0] ST_SQTDB_WAIT    = 4'd5;
   localparam [3:0] ST_CQHDB         = 4'd6;
@@ -44,8 +48,8 @@ module controller #(
   //reg [3:0]    ctl_state;
 
 
-  localparam [63:0] ASQ_BAR = 64'h0000_0800_8000_0000;
-  localparam [63:0] ACQ_BAR = 64'h0000_0800_9000_0000;
+  localparam [63:0] ASQ_BAR = 64'h0000_0000_8000_0000;
+  localparam [63:0] ACQ_BAR = 64'h0000_0000_9000_0000;
 
   // pulse signal to start configuration 
   //reg start_config;
@@ -69,7 +73,7 @@ module controller #(
   // ST_RDSQT         : Read ASQ Tail address
   // ST_RDCQH         : Read ACQ Head address
 
-
+  reg flag;
 
   always@(posedge user_clk) begin
     if(user_reset || !user_lnk_up) begin
@@ -78,6 +82,9 @@ module controller #(
       write_cqhdbl <= 1'b0;
       sqt_addr <= 64'h0;
       cqh_addr <= 64'h0;
+
+      send_cmd <= 1'b0;
+      flag <= 1'b0;
     end
     else begin
       case(ctl_state)
@@ -96,12 +103,24 @@ module controller #(
         end
 
         ST_IDLE: begin
-          ctl_state <= ST_SQTDB;          
+          //ctl_state <= ST_SQTDB;
+          //ctl_state <= ST_SEND_CMD;
+        end
+
+        ST_SEND_CMD: begin
+          ctl_state <= ST_WAIT_CMD;
+          send_cmd <= 1'b1;
+        end
+
+        ST_WAIT_CMD: begin
+          send_cmd <= 1'b0;
+          //if(send_cmd_done) ctl_state <= ST_SQTDB;
+          if(send_cmd_done) ctl_state <= ST_DONE;
         end
 
         ST_SQTDB: begin
           write_sqtdbl <= 1'b1;
-          sqt_addr <= ASQ_BAR + 64'd1;
+          sqt_addr <= sqt_addr + 64'd1;
           ctl_state <= ST_SQTDB_WAIT;
         end
 
@@ -109,22 +128,26 @@ module controller #(
           write_sqtdbl <= 1'b0;
           if(write_sqtdbl_done) begin
             ctl_state <= ST_CQHDB;
-            sqt_addr <= 64'h0;
           end
         end
 
         ST_CQHDB: begin
           write_cqhdbl <= 1'b1;
-          cqh_addr <= ACQ_BAR + 64'd1;
+          cqh_addr <= cqh_addr + 64'd1;
           ctl_state <= ST_CQHDB_WAIT;
         end
 
         ST_CQHDB_WAIT: begin
           write_cqhdbl <= 1'b0;
+          flag <= 1'b1;
           if(write_cqhdbl_done) begin
-            ctl_state <= ST_DONE;
-            cqh_addr <= 64'h0;
+            if(flag) ctl_state <= ST_DONE;
+            else ctl_state <= ST_SQTDB;
           end
+        end
+
+        ST_DONE: begin
+
         end
 
       endcase
