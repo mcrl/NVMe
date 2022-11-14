@@ -26,6 +26,9 @@ module tx_cc #(
 
   localparam [63:0] BAR0 = 64'h0000_0010_8000_0000;
 
+  localparam [15:0] REQUESTER_ID = 16'h4508;
+  localparam [15:0] COMPLETER_ID = 16'h0000;
+
   localparam [3:0] ST_IDLE        = 4'd0;  
   localparam [3:0] ST_CMD_DES     = 4'd1;
   localparam [3:0] ST_CMD_DW1_4   = 4'd2;
@@ -137,12 +140,12 @@ module tx_cc #(
                                 1'b0,   // Force ECRC
                                 3'd0,   // Attr
                                 3'd0,   // TC
-                                1'd0,   // Requester ID Enable
-                                16'd0,  // Completer ID
+                                1'd1,   // Requester ID Enable
+                                COMPLETER_ID,
                                 8'd0,   // Tag
 
                                 // DESC1
-                                16'h0,  // Requester ID
+                                REQUESTER_ID,
                                 1'b0,   // Reserved
                                 1'b0,   // Poisoned Completion
                                 3'h0,   // Completion Status

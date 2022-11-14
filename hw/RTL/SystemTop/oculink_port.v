@@ -244,7 +244,7 @@ module oculink_port # (
 
   // debugging
   wire [3:0] ctl_state;
-  wire [3:0] cfg_state;
+  wire [4:0] cfg_state;
   wire       recv_done;
   wire [7:0] recv_tag;
   wire [3:0] recv_err_code;
@@ -264,6 +264,9 @@ module oculink_port # (
   wire [15:0] probe_out0;
   wire        vio_reset_n;
 
+
+  wire [3:0] vio_sqt_addr;
+  wire vio_write_sqtdbl;
   // cfg_ltssm_state L0 is 6'h10
   assign probe_in0 = {  
                         8'h00,
@@ -274,6 +277,8 @@ module oculink_port # (
 
   assign vio_reset_n      = probe_out0[0];
   assign perst_n          = vio_reset_n;
+  assign vio_sqt_addr     = probe_out0[3:1];
+  assign vio_write_sqtdbl = probe_out0[4];
 
   // Note: PCIe is in RESET by default--allows ILA triggers to be added  
   vio_0 vio_0 (
@@ -375,6 +380,9 @@ module oculink_port # (
     .write_sqtdbl_done                        ( write_sqtdbl_done ),
     .write_cqhdbl_done                        ( write_cqhdbl_done ),
 
+    .vio_sqt_addr(vio_sqt_addr),
+    .vio_write_sqtdbl(vio_write_sqtdbl),
+
     .send_cmd(send_cmd),
     .send_cmd_done(send_cmd_done),
 
@@ -415,6 +423,8 @@ module oculink_port # (
     .m_axis_rc_tuser                          ( cfg_m_axis_rc_tuser ),
     .m_axis_rc_tready                         ( cfg_m_axis_rc_tready ),
     
+    .cfg_ltssm_state                          ( cfg_ltssm_state ),
+
     // for debugging
     .cfg_state(cfg_state),
     .recv_done(recv_done),
@@ -503,7 +513,7 @@ module oculink_port # (
     .probe13(s_axis_rq_tuser),  // 62-bit
     .probe14(cfg_ltssm_state),  // 6-bit
     .probe15(user_lnk_up),      // 1-bit
-    .probe16(cfg_state),        // 4-bit
+    .probe16(cfg_state),        // 5-bit
     .probe17(ctl_state),        // 4-bit
     .probe18(m_axis_cq_tdata),  // 128-bit
     .probe19(m_axis_cq_tkeep),  // 4-bit

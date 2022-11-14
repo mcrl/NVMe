@@ -111,7 +111,7 @@ input [0 : 0] probe12;
 input [61 : 0] probe13;
 input [5 : 0] probe14;
 input [0 : 0] probe15;
-input [3 : 0] probe16;
+input [4 : 0] probe16;
 input [3 : 0] probe17;
 input [127 : 0] probe18;
 input [3 : 0] probe19;

@@ -26,6 +26,9 @@ module controller #(
   input             write_sqtdbl_done,
   input             write_cqhdbl_done,
 
+  input [3:0] vio_sqt_addr,
+  input vio_write_sqtdbl,
+
   output reg send_cmd,
   input send_cmd_done,
 
@@ -103,51 +106,24 @@ module controller #(
         end
 
         ST_IDLE: begin
-          //ctl_state <= ST_SQTDB;
-          //ctl_state <= ST_SEND_CMD;
-        end
-
-        ST_SEND_CMD: begin
-          ctl_state <= ST_WAIT_CMD;
-          send_cmd <= 1'b1;
-        end
-
-        ST_WAIT_CMD: begin
-          send_cmd <= 1'b0;
-          //if(send_cmd_done) ctl_state <= ST_SQTDB;
-          if(send_cmd_done) ctl_state <= ST_DONE;
+          if(vio_write_sqtdbl) ctl_state <= ST_SQTDB;
         end
 
         ST_SQTDB: begin
           write_sqtdbl <= 1'b1;
-          sqt_addr <= sqt_addr + 64'd1;
+          sqt_addr <= {28'h0, vio_sqt_addr};
           ctl_state <= ST_SQTDB_WAIT;
         end
 
         ST_SQTDB_WAIT: begin
           write_sqtdbl <= 1'b0;
           if(write_sqtdbl_done) begin
-            ctl_state <= ST_CQHDB;
-          end
-        end
-
-        ST_CQHDB: begin
-          write_cqhdbl <= 1'b1;
-          cqh_addr <= cqh_addr + 64'd1;
-          ctl_state <= ST_CQHDB_WAIT;
-        end
-
-        ST_CQHDB_WAIT: begin
-          write_cqhdbl <= 1'b0;
-          flag <= 1'b1;
-          if(write_cqhdbl_done) begin
-            if(flag) ctl_state <= ST_DONE;
-            else ctl_state <= ST_SQTDB;
+            ctl_state <= ST_DONE;
           end
         end
 
         ST_DONE: begin
-
+          if(!vio_write_sqtdbl) ctl_state <= ST_IDLE;
         end
 
       endcase

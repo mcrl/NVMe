@@ -29,7 +29,7 @@
 module configurator #(
   // Configurator Parameters
   parameter ROM_FILE                    = "nvme_cfg_rom.data",   // Location of configuration rom data file
-  parameter ROM_SIZE                    = 32,                    // Number of entries in configuration rom
+  parameter ROM_SIZE                    = 8,                    // Number of entries in configuration rom
   parameter ROM_ADDR_WIDTH              = (ROM_SIZE-1 < 2  )  ? 2 :
                                           (ROM_SIZE-1 < 4  )  ? 3 :
                                           (ROM_SIZE-1 < 8  )  ? 4 :
@@ -69,8 +69,8 @@ module configurator #(
   input                               m_axis_rc_tvalid,
   output                              m_axis_rc_tready,
 
-  output reg [3:0] cfg_state,
-
+  output reg  [4:0] cfg_state,
+  input       [5:0] cfg_ltssm_state,
 
   // for debugging
   output reg       recv_done,
@@ -85,96 +85,66 @@ module configurator #(
   output reg [ROM_ADDR_WIDTH-1:0] rom_addr
 );
 
-  localparam [3:0] CfgRd = 4'b1000;
-  localparam [3:0] CfgWr = 4'b1010;
-  localparam [3:0] MemRd = 4'b0000;
-  localparam [3:0] MemWr = 4'b0001;
+  `include "constants.h"
 
-  localparam [63:0] BAR0 = 64'h0000_0010_8000_0000;
+  localparam [4:0] ST_IDLE     = 5'd0;
 
-  localparam [3:0] ST_IDLE     = 4'd0;
-  localparam [3:0] ST_SEND_REQ = 4'd1;
-  localparam [3:0] ST_SEND_REQ2= 4'd2;
-  localparam [3:0] ST_WAIT_CPL = 4'd3;
-  localparam [3:0] ST_READ_NEXT= 4'd4;
-  localparam [3:0] ST_DONE     = 4'd5;
+  // Enable Memory Space, I/O Space, Enable Bus Master
+  localparam [4:0] ST_RESET1_1 = 5'd6;      
+  localparam [4:0] ST_RESET1_2 = 5'd7;
+  localparam [4:0] ST_RESET1_3 = 5'd8;
 
-  //reg [3:0] cfg_state;
+  // CfgWr BAR0 (LO 32bit)
+  localparam [4:0] ST_RESET2_1 = 5'd9;      
+  localparam [4:0] ST_RESET2_2 = 5'd10;
+  localparam [4:0] ST_RESET2_3 = 5'd11;
 
-/*
-  reg       recv_done;
-  reg [7:0] recv_tag;
-  reg [3:0] recv_err_code;
-  reg [2:0] recv_cpl_status;
-  reg       recv_req_completed;
-  reg       recv_skip;
-  reg [31:0] recv_data;
-*/
-  //reg [31:0]                rom_data;
-  //reg [ROM_ADDR_WIDTH-1:0]  rom_addr;
-  reg [31:0]                rom [0:ROM_SIZE-1];
+  // CfgWr BAR1 (HI 32bit)
+  localparam [4:0] ST_RESET3_1 = 5'd12;      
+  localparam [4:0] ST_RESET3_2 = 5'd13;
+  localparam [4:0] ST_RESET3_3 = 5'd14;
 
-  //reg [7:0] tag;
+  // MemWr 0x00 to CC.EN
+  localparam [4:0] ST_RESET0_1 = 5'd1;      
+  localparam [4:0] ST_RESET0_2 = 5'd2;
+
+  // MemRd CSTS.RDY 
+  localparam [4:0] ST_RESET0_3 = 5'd3;      
+  localparam [4:0] ST_RESET0_4 = 5'd4;
+
+  // MemWr 0x000f_000f to AQA (Admin Queue Attribute)
+  localparam [4:0] ST_RESET4_1 = 5'd15;      
+  localparam [4:0] ST_RESET4_2 = 5'd16;
+
+  // MemWr 0xFFFF_F100 to ASQ (Admin Submission Queue Base Address)
+  localparam [4:0] ST_RESET5_1 = 5'd18;      
+  localparam [4:0] ST_RESET5_2 = 5'd19;
+
+  // MemWr 0xFFFF_F200 to ACQ (Admin Completion Queue Base Address)
+  localparam [4:0] ST_RESET6_1 = 5'd21;      
+  localparam [4:0] ST_RESET6_2 = 5'd22;
+
+  // MemWr 0x0000_0001 to CC.EN (Enable Controller Configuration)
+  localparam [4:0] ST_RESET7_1 = 5'd24;      
+  localparam [4:0] ST_RESET7_2 = 5'd25;
+
+  // MemRd CSTS.RDY 
+  localparam [4:0] ST_RESET8_1 = 5'd27;      
+  localparam [4:0] ST_RESET8_2 = 5'd28;
+
+  // Controller Level Reset is Done
+  localparam [4:0] ST_RESET_DONE = 5'd30;   
+
+
+
+  reg recv_fail;
+  reg csts_ready;
 
   reg                   [C_DATA_WIDTH-1:0]     s_axis_rq_tdata_d;
   reg                     [KEEP_WIDTH-1:0]     s_axis_rq_tkeep_d;
   reg            [AXI4_RQ_TUSER_WIDTH-1:0]     s_axis_rq_tuser_d;
   reg                                          s_axis_rq_tlast_d;
   reg                                          s_axis_rq_tvalid_d;
-
-
-  reg wait_cstsRdy;
-  reg is_cstsRdy;
-
-  //-------------------------------------------------------
-  // ROM Data and Address
-  //-------------------------------------------------------
-
-  // ROM data
-  always @(posedge user_clk) begin  // No reset for a ROM
-    rom_data <= rom[rom_addr];
-  end
-  initial begin
-    $readmemb(ROM_FILE, rom, 0, ROM_SIZE-1);
-  end
-
-  // ROM address
-  always@(posedge user_clk) begin
-    if(user_reset || !user_lnk_up) begin
-      rom_addr <= {ROM_ADDR_WIDTH{1'b0}};
-    end
-    else begin
-      case(cfg_state) 
-        ST_IDLE: begin
-          if(start_config) rom_addr <= rom_addr + 1'b1;
-        end
-        ST_SEND_REQ: begin
-          rom_addr <= rom_addr + 1'b1;
-        end
-        ST_READ_NEXT: begin
-          if(wait_cstsRdy && !is_cstsRdy) rom_addr <= rom_addr - 1'b1;
-          else rom_addr <= rom_addr + 1'b1;
-        end
-      endcase
-    end
-  end
-
-  reg cfg_done_d;
-  // End configuration and send cfg_done to controller
-  always@(posedge user_clk) begin
-    if(user_reset || !user_lnk_up) begin
-      cfg_done_d <= 1'b0;
-      wait_cstsRdy <= 1'b0;
-    end
-    else begin
-      // Read CSTS.RDY command. Wait until CSTS.RDY == 1
-      if(rom_addr == 18) wait_cstsRdy <= 1'b1;
-      else if(rom_addr >= ROM_SIZE) begin
-        cfg_done_d <= 1'b1;
-        wait_cstsRdy <= 1'b0;
-      end
-    end
-  end
 
 
   //-------------------------------------------------------
@@ -189,36 +159,63 @@ module configurator #(
     else begin
       case(cfg_state) 
         ST_IDLE: begin
-          if(start_config) cfg_state <= ST_SEND_REQ;
+          if(start_config) cfg_state <= ST_RESET1_1;
         end
 
-      ST_SEND_REQ: begin
-          if(cfg_done_d) begin
-            cfg_state <= ST_DONE;
+        // Enable Memory Space
+        ST_RESET1_1: cfg_state <= ST_RESET1_2;
+        ST_RESET1_2: cfg_state <= ST_RESET1_3;
+        ST_RESET1_3: if(recv_done && !recv_fail) cfg_state <= ST_RESET2_1;
+
+        // CfgWr BAR0
+        ST_RESET2_1: cfg_state <= ST_RESET2_2;
+        ST_RESET2_2: cfg_state <= ST_RESET2_3;
+        ST_RESET2_3: if(recv_done && !recv_fail) cfg_state <= ST_RESET3_1;
+
+        // CfgWr BAR1
+        ST_RESET3_1: cfg_state <= ST_RESET3_2;
+        ST_RESET3_2: cfg_state <= ST_RESET3_3;
+        ST_RESET3_3: if(recv_done && !recv_fail) cfg_state <= ST_RESET0_1;
+
+        // MemWr 0x00 to CC.EN 
+        ST_RESET0_1: cfg_state <= ST_RESET0_2;
+        ST_RESET0_2: cfg_state <= ST_RESET0_3;
+
+        // MemRd CSTS.RDY (Wait until not ready)
+        ST_RESET0_3: cfg_state <= ST_RESET0_4;
+        ST_RESET0_4: begin
+          if(recv_done && !recv_fail) begin
+            if(!csts_ready) cfg_state <= ST_RESET4_1;
+            else cfg_state <= ST_RESET0_3;
           end
+        end
 
-          // CfgWr or MemWr
-          else if(rom_data[17:16] == 2'b01 || rom_data[17:16] == 2'b11) begin
-            cfg_state <= ST_SEND_REQ2;
+        // MemWr 0x000f_000f to AQA (Admin Queue Attribute)
+        ST_RESET4_1: cfg_state <= ST_RESET4_2;
+        ST_RESET4_2: cfg_state <= ST_RESET5_1;
+
+        // MemWr 0xFFFF_F100 to ASQ (Admin Submission Queue Base Address)
+        ST_RESET5_1: cfg_state <= ST_RESET5_2;
+        ST_RESET5_2: cfg_state <= ST_RESET6_1;
+
+        // MemWr 0xFFFF_F200 to ACQ (Admin Completion Queue Base Address)
+        ST_RESET6_1: cfg_state <= ST_RESET6_2;
+        ST_RESET6_2: cfg_state <= ST_RESET7_1;
+
+        // MemWr 0x0000_0001 to CC.EN (Enable Controller Configuration)
+        ST_RESET7_1: cfg_state <= ST_RESET7_2;
+        ST_RESET7_2: cfg_state <= ST_RESET8_1;
+
+        // MemRd CSTS.RDY
+        ST_RESET8_1: cfg_state <= ST_RESET8_2;
+        ST_RESET8_2: begin
+          if(recv_done && !recv_fail) begin
+            if(csts_ready) cfg_state <= ST_RESET_DONE;
+            else cfg_state <= ST_RESET8_1;
           end
-          else begin
-            cfg_state <= ST_WAIT_CPL;
-          end
         end
 
-        ST_SEND_REQ2: begin
-          cfg_state <= ST_WAIT_CPL;
-        end
-
-        ST_WAIT_CPL: begin
-          if(recv_done || recv_skip) cfg_state <= ST_READ_NEXT;
-        end
-
-        ST_READ_NEXT: begin
-          cfg_state <= ST_SEND_REQ;
-        end
-
-        ST_DONE: begin
+        ST_RESET_DONE: begin
           cfg_done <= 1'b1;
         end
 
@@ -226,32 +223,6 @@ module configurator #(
     end
   end
 
-  always@(posedge user_clk) begin
-    if(user_reset || !user_lnk_up) begin  
-      recv_skip <= 1'b0;
-    end
-    else begin
-      if(cfg_state == ST_SEND_REQ) begin
-        // MemWr
-        if(rom_data[17:16] == 2'b11) recv_skip <= 1'b1;
-        else recv_skip <= 1'b0;
-      end
-    end
-  end
-
-
-  //-------------------------------------------------------
-  // tag
-  //-------------------------------------------------------
-
-  always@(posedge user_clk) begin
-    if(user_reset || !user_lnk_up) begin
-      tag <= 8'd0;
-    end
-    else begin
-      if(cfg_state == ST_SEND_REQ) tag <= tag + 8'd1;
-    end
-  end
 
   //-------------------------------------------------------
   // Requester reQuest Encoder
@@ -286,125 +257,430 @@ module configurator #(
     end
     else begin
       case(cfg_state)
-        ST_SEND_REQ: begin
-          if(s_axis_rq_tready) begin
-            if(wait_cstsRdy && !is_cstsRdy) begin
-              s_axis_rq_tdata_d = {
-                                  1'b0,   // Force ECRC
-                                  3'd0,   // Attr
-                                  3'd0,   // TC
-                                  1'd0,   // Requester ID Enable
-                                  16'd0,  // Completer ID
-                                  tag,   // Tag
-                                  16'd0,  // Requester ID
-                                  1'd0,   // Poisoned Request
-                                  MemRd, // Req Type
-                                  11'd1, // Dword count
-                                  BAR0 + 64'h1c // Address
-                                };
-              s_axis_rq_tvalid_d = 1'b1;
-              s_axis_rq_tkeep_d = 4'b1111;
-              s_axis_rq_tlast_d = 1'b1; // MemRd or MemWr
-              s_axis_rq_tuser_d = {
-                                  2'b0,     // seq_num[5:4]
-                                  32'd0,    // parity
-                                  4'd0,     // seq_num[3:0]
-                                  8'd0,     // tph_st_tag
-                                  1'b0,     // tph_indirect_tag_en
-                                  2'd0,     // tph_type   
-                                  1'b0,     // tph_present
-                                  1'b0,     // discontinue
-                                  3'd0,     // addr_offset
-                                  4'b0000,  // last be
-                                  4'b1111   // first be
-                                };
-            end
 
-            // CfgRd or CfgWr
-            else if(cfg_done_d) begin
-              s_axis_rq_tdata_d = {C_DATA_WIDTH{1'b0}};
-              s_axis_rq_tvalid_d = 1'b0;
-              s_axis_rq_tkeep_d = 4'b0000;
-              s_axis_rq_tlast_d = 1'b0;
-              s_axis_rq_tuser_d = {AXI4_RQ_TUSER_WIDTH{1'b0}};
-            end
-            else if(rom_data[17] == 1'b0) begin
-              s_axis_rq_tdata_d = {
-                                  1'b0,   // Force ECRC
-                                  3'd0,   // Attr
-                                  3'd0,   // TC
-                                  1'd0,   // Requester ID Enable
-                                  16'd0,  // Completer ID
-                                  tag,   // Tag
-                                  16'd0,  // Requester ID
-                                  1'd0,   // Poisoned Request
-                                  (rom_data[17:16] == 2'b00) ? CfgRd : CfgWr, // Req Type
-                                  11'd4,  // Dword count
-                                  52'd0,  // Reserved
-                                  rom_data[13:4],  // (Ext + ) Reg Number
-                                  2'd0    // Reserved
-                                };
-              s_axis_rq_tvalid_d = 1'b1;
-              s_axis_rq_tkeep_d = 4'b1111;
-              s_axis_rq_tlast_d = (rom_data[17:16] == 2'b00) ? 1'b1 : 1'b0; // CfgRd : CfgWr
-              s_axis_rq_tuser_d = {
-                                  2'b0,     // seq_num[5:4]
-                                  32'd0,    // parity
-                                  4'd0,     // seq_num[3:0]
-                                  8'd0,     // tph_st_tag
-                                  1'b0,     // tph_indirect_tag_en
-                                  2'd0,     // tph_type   
-                                  1'b0,     // tph_present
-                                  1'b0,     // discontinue
-                                  3'd0,     // addr_offset
-                                  4'b0000,  // last be
-                                  rom_data[3:0] // first be
-                                };
-            end
-
-            // MemRd or MemWr
-            else begin
-              s_axis_rq_tdata_d = {
-                                  1'b0,   // Force ECRC
-                                  3'd0,   // Attr
-                                  3'd0,   // TC
-                                  1'd0,   // Requester ID Enable
-                                  16'd0,  // Completer ID
-                                  tag,   // Tag
-                                  16'd0,  // Requester ID
-                                  1'd0,   // Poisoned Request
-                                  (rom_data[17:16] == 2'b10) ? MemRd : MemWr, // Req Type
-                                  rom_data[28:18], // Dword count
-                                  BAR0 + {48'h0,rom_data[15:0]} // Address
-                                };
-              s_axis_rq_tvalid_d = 1'b1;
-              s_axis_rq_tkeep_d = 4'b1111;
-              s_axis_rq_tlast_d = (rom_data[17:16] == 2'b10) ? 1'b1 : 1'b0; // MemRd or MemWr
-              s_axis_rq_tuser_d = {
-                                  2'b0,     // seq_num[5:4]
-                                  32'd0,    // parity
-                                  4'd0,     // seq_num[3:0]
-                                  8'd0,     // tph_st_tag
-                                  1'b0,     // tph_indirect_tag_en
-                                  2'd0,     // tph_type   
-                                  1'b0,     // tph_present
-                                  1'b0,     // discontinue
-                                  3'd0,     // addr_offset
-                                  (rom_data[28:18] > 11'd1)? 4'b1111 : 4'b0000,  // last be
-                                  4'b1111   // first be
-                                };
-            end
-          end
+        // Enable Memory Space
+        ST_RESET1_1: begin
+          s_axis_rq_tdata_d = {
+                                1'b0,   // Force ECRC
+                                3'd0,   // Attr
+                                3'd0,   // TC
+                                1'b1,   // Requester ID Enable
+                                COMPLETER_ID,
+                                tag,   
+                                REQUESTER_ID,
+                                1'd0,   // Poisoned Request
+                                CfgWr,  // Req Type
+                                11'd1,  // Dword count
+                                52'd0,  // Reserved
+                                10'd1,  // Reg Number
+                                2'd0    // Reserved
+                              };
+          s_axis_rq_tuser_d = {
+                                2'b0,     // seq_num[5:4]
+                                32'd0,    // parity
+                                4'd0,     // seq_num[3:0]
+                                8'd0,     // tph_st_tag
+                                1'b0,     // tph_indirect_tag_en
+                                2'd0,     // tph_type   
+                                1'b0,     // tph_present
+                                1'b0,     // discontinue
+                                3'd0,     // addr_offset
+                                4'b0000,  // last be
+                                4'b1111   // first be
+                              };
+          s_axis_rq_tvalid_d = 1'b1;
+          s_axis_rq_tkeep_d = 4'b1111;
+          s_axis_rq_tlast_d = 1'b0;
         end
-        ST_SEND_REQ2: begin
-          if(s_axis_rq_tready) begin
-            // CfgWr or MemWr
-            s_axis_rq_tdata_d = {96'd0, rom_data[31:0]};
-            s_axis_rq_tvalid_d = 1'b1;
-            s_axis_rq_tkeep_d = 4'b0001;
-            s_axis_rq_tlast_d = 1'b1;
-            s_axis_rq_tuser_d = {AXI4_RQ_TUSER_WIDTH{1'b0}};
-          end
+        
+        ST_RESET1_2: begin
+          s_axis_rq_tdata_d = {
+                                96'h0,
+                                32'b111
+                              };
+          s_axis_rq_tuser_d = {AXI4_RQ_TUSER_WIDTH{1'b0}};
+          s_axis_rq_tvalid_d = 1'b1;
+          s_axis_rq_tkeep_d = 4'b0001;
+          s_axis_rq_tlast_d = 1'b1;
+        end
+        
+        // CfgWr BAR0
+        ST_RESET2_1: begin
+          s_axis_rq_tdata_d = {
+                                1'b0,   // Force ECRC
+                                3'd0,   // Attr
+                                3'd0,   // TC
+                                1'b1,   // Requester ID Enable
+                                COMPLETER_ID,
+                                tag,   
+                                REQUESTER_ID,
+                                1'd0,   // Poisoned Request
+                                CfgWr,  // Req Type
+                                11'd1,  // Dword count
+                                52'd0,  // Reserved
+                                10'd4,  // Reg Number
+                                2'd0    // Reserved
+                              };
+          s_axis_rq_tuser_d = {
+                                2'b0,     // seq_num[5:4]
+                                32'd0,    // parity
+                                4'd0,     // seq_num[3:0]
+                                8'd0,     // tph_st_tag
+                                1'b0,     // tph_indirect_tag_en
+                                2'd0,     // tph_type   
+                                1'b0,     // tph_present
+                                1'b0,     // discontinue
+                                3'd0,     // addr_offset
+                                4'b0000,  // last be
+                                4'b1111   // first be
+                              };
+          s_axis_rq_tvalid_d = 1'b1;
+          s_axis_rq_tkeep_d = 4'b1111;
+          s_axis_rq_tlast_d = 1'b0;
+        end
+        
+        ST_RESET2_2: begin
+          s_axis_rq_tdata_d = {
+                                96'h0,
+                                32'h0000_0000 // BAR 0 (LO)
+                              };
+          s_axis_rq_tuser_d = {AXI4_RQ_TUSER_WIDTH{1'b0}};
+          s_axis_rq_tvalid_d = 1'b1;
+          s_axis_rq_tkeep_d = 4'b0001;
+          s_axis_rq_tlast_d = 1'b1;
+        end
+
+        // CfgWr BAR1
+        ST_RESET3_1: begin
+          s_axis_rq_tdata_d = {
+                                1'b0,   // Force ECRC
+                                3'd0,   // Attr
+                                3'd0,   // TC
+                                1'b1,   // Requester ID Enable
+                                COMPLETER_ID,
+                                tag,   
+                                REQUESTER_ID,
+                                1'd0,   // Poisoned Request
+                                CfgWr,  // Req Type
+                                11'd1,  // Dword count
+                                52'd0,  // Reserved
+                                10'd5,  // Reg Number
+                                2'd0    // Reserved
+                              };
+          s_axis_rq_tuser_d = {
+                                2'b0,     // seq_num[5:4]
+                                32'd0,    // parity
+                                4'd0,     // seq_num[3:0]
+                                8'd0,     // tph_st_tag
+                                1'b0,     // tph_indirect_tag_en
+                                2'd0,     // tph_type   
+                                1'b0,     // tph_present
+                                1'b0,     // discontinue
+                                3'd0,     // addr_offset
+                                4'b0000,  // last be
+                                4'b1111   // first be
+                              };
+          s_axis_rq_tvalid_d = 1'b1;
+          s_axis_rq_tkeep_d = 4'b1111;
+          s_axis_rq_tlast_d = 1'b0;
+        end
+        
+        ST_RESET3_2: begin
+          s_axis_rq_tdata_d = {
+                                96'h0,
+                                32'h0000_0010 // BAR 1 (HI)
+                              };
+          s_axis_rq_tuser_d = {AXI4_RQ_TUSER_WIDTH{1'b0}};
+          s_axis_rq_tvalid_d = 1'b1;
+          s_axis_rq_tkeep_d = 4'b0001;
+          s_axis_rq_tlast_d = 1'b1;
+        end
+
+        // MemWr 0x00 to CC.EN
+        ST_RESET0_1: begin
+          s_axis_rq_tdata_d = {
+                                1'b0,   // Force ECRC
+                                3'd0,   // Attr
+                                3'd0,   // TC
+                                1'b1,   // Requester ID Enable
+                                COMPLETER_ID,
+                                tag,   
+                                REQUESTER_ID,
+                                1'd0,   // Poisoned Request
+                                MemWr,  // Req Type
+                                11'd1,  // Dword count
+                                BAR0 + 64'h14       // Address
+                              };
+          s_axis_rq_tuser_d = {
+                                2'b0,     // seq_num[5:4]
+                                32'd0,    // parity
+                                4'd0,     // seq_num[3:0]
+                                8'd0,     // tph_st_tag
+                                1'b0,     // tph_indirect_tag_en
+                                2'd0,     // tph_type   
+                                1'b0,     // tph_present
+                                1'b0,     // discontinue
+                                3'd0,     // addr_offset
+                                4'b0000,  // last be
+                                4'b1111   // first be
+                              };
+          s_axis_rq_tvalid_d = 1'b1;
+          s_axis_rq_tkeep_d = 4'b1111;
+          s_axis_rq_tlast_d = 1'b0;
+        end
+        
+        ST_RESET0_2: begin
+          s_axis_rq_tdata_d = {
+                                96'h0,
+                                32'h0000_0000
+                              };
+          s_axis_rq_tuser_d = {AXI4_RQ_TUSER_WIDTH{1'b0}};
+          s_axis_rq_tvalid_d = 1'b1;
+          s_axis_rq_tkeep_d = 4'b0001;
+          s_axis_rq_tlast_d = 1'b1;
+        end
+
+        // MemRd CSTS.RDY
+        ST_RESET0_3: begin
+          s_axis_rq_tdata_d = {
+                                1'b0,   // Force ECRC
+                                3'd0,   // Attr
+                                3'd0,   // TC
+                                1'b1,   // Requester ID Enable
+                                COMPLETER_ID,
+                                tag,   
+                                REQUESTER_ID,
+                                1'd0,   // Poisoned Request
+                                MemRd,  // Req Type
+                                11'd1,  // Dword count
+                                BAR0 + 64'h1C       // Address
+                              };
+          s_axis_rq_tuser_d = {
+                                2'b0,     // seq_num[5:4]
+                                32'd0,    // parity
+                                4'd0,     // seq_num[3:0]
+                                8'd0,     // tph_st_tag
+                                1'b0,     // tph_indirect_tag_en
+                                2'd0,     // tph_type   
+                                1'b0,     // tph_present
+                                1'b0,     // discontinue
+                                3'd0,     // addr_offset
+                                4'b0000,  // last be
+                                4'b1111   // first be
+                              };
+          s_axis_rq_tvalid_d = 1'b1;
+          s_axis_rq_tkeep_d = 4'b1111;
+          s_axis_rq_tlast_d = 1'b1;
+        end
+
+        // MemWr 0x000f_000f to AQA
+        ST_RESET4_1: begin
+          s_axis_rq_tdata_d = {
+                                1'b0,   // Force ECRC
+                                3'd0,   // Attr
+                                3'd0,   // TC
+                                1'b1,   // Requester ID Enable
+                                COMPLETER_ID,
+                                tag,   
+                                REQUESTER_ID,
+                                1'd0,   // Poisoned Request
+                                MemWr,  // Req Type
+                                11'd1,  // Dword count
+                                BAR0 + 64'h24       // Address
+                              };
+          s_axis_rq_tuser_d = {
+                                2'b0,     // seq_num[5:4]
+                                32'd0,    // parity
+                                4'd0,     // seq_num[3:0]
+                                8'd0,     // tph_st_tag
+                                1'b0,     // tph_indirect_tag_en
+                                2'd0,     // tph_type   
+                                1'b0,     // tph_present
+                                1'b0,     // discontinue
+                                3'd0,     // addr_offset
+                                4'b0000,  // last be
+                                4'b1111   // first be
+                              };
+          s_axis_rq_tvalid_d = 1'b1;
+          s_axis_rq_tkeep_d = 4'b1111;
+          s_axis_rq_tlast_d = 1'b0;
+        end
+        
+        ST_RESET4_2: begin
+          s_axis_rq_tdata_d = {
+                                96'h0,
+                                32'h000f_000f
+                              };
+          s_axis_rq_tuser_d = {AXI4_RQ_TUSER_WIDTH{1'b0}};
+          s_axis_rq_tvalid_d = 1'b1;
+          s_axis_rq_tkeep_d = 4'b0001;
+          s_axis_rq_tlast_d = 1'b1;
+        end
+
+        // MemWr 0xFFFF F100 to ASQ (offset : 0x28)
+        ST_RESET5_1: begin
+          s_axis_rq_tdata_d = {
+                                1'b0,   // Force ECRC
+                                3'd0,   // Attr
+                                3'd0,   // TC
+                                1'b1,   // Requester ID Enable
+                                COMPLETER_ID,
+                                tag,   
+                                REQUESTER_ID,
+                                1'd0,   // Poisoned Request
+                                MemWr,  // Req Type
+                                11'd2,  // Dword count
+                                BAR0 + 64'h28       // Address
+                              };
+          s_axis_rq_tuser_d = {
+                                2'b0,     // seq_num[5:4]
+                                32'd0,    // parity
+                                4'd0,     // seq_num[3:0]
+                                8'd0,     // tph_st_tag
+                                1'b0,     // tph_indirect_tag_en
+                                2'd0,     // tph_type   
+                                1'b0,     // tph_present
+                                1'b0,     // discontinue
+                                3'd0,     // addr_offset
+                                4'b1111,  // last be
+                                4'b1111   // first be
+                              };
+          s_axis_rq_tvalid_d = 1'b1;
+          s_axis_rq_tkeep_d = 4'b1111;
+          s_axis_rq_tlast_d = 1'b0;
+        end
+        
+        ST_RESET5_2: begin
+          s_axis_rq_tdata_d = {
+                                64'h0,
+                                64'h0000_0000_FFFF_F100
+                              };
+          s_axis_rq_tuser_d = {AXI4_RQ_TUSER_WIDTH{1'b0}};
+          s_axis_rq_tvalid_d = 1'b1;
+          s_axis_rq_tkeep_d = 4'b0011;
+          s_axis_rq_tlast_d = 1'b1;
+        end
+
+        // MemWr 0xFFFF F200 to ACQ (offset : 0x30)
+        ST_RESET6_1: begin
+          s_axis_rq_tdata_d = {
+                                1'b0,   // Force ECRC
+                                3'd0,   // Attr
+                                3'd0,   // TC
+                                1'b1,   // Requester ID Enable
+                                COMPLETER_ID,
+                                tag,   
+                                REQUESTER_ID,
+                                1'd0,   // Poisoned Request
+                                MemWr,  // Req Type
+                                11'd2,  // Dword count
+                                BAR0 + 64'h30       // Address
+                              };
+          s_axis_rq_tuser_d = {
+                                2'b0,     // seq_num[5:4]
+                                32'd0,    // parity
+                                4'd0,     // seq_num[3:0]
+                                8'd0,     // tph_st_tag
+                                1'b0,     // tph_indirect_tag_en
+                                2'd0,     // tph_type   
+                                1'b0,     // tph_present
+                                1'b0,     // discontinue
+                                3'd0,     // addr_offset
+                                4'b1111,  // last be
+                                4'b1111   // first be
+                              };
+          s_axis_rq_tvalid_d = 1'b1;
+          s_axis_rq_tkeep_d = 4'b1111;
+          s_axis_rq_tlast_d = 1'b0;
+        end
+        
+        ST_RESET6_2: begin
+          s_axis_rq_tdata_d = {
+                                64'h0,
+                                64'h0000_0000_FFFF_F200
+                              };
+          s_axis_rq_tuser_d = {AXI4_RQ_TUSER_WIDTH{1'b0}};
+          s_axis_rq_tvalid_d = 1'b1;
+          s_axis_rq_tkeep_d = 4'b0011;
+          s_axis_rq_tlast_d = 1'b1;
+        end
+
+        // MemWr 0x0000_0001 to CC.EN (Enable Controller Configuration)
+        ST_RESET7_1: begin
+          s_axis_rq_tdata_d = {
+                                1'b0,   // Force ECRC
+                                3'd0,   // Attr
+                                3'd0,   // TC
+                                1'b1,   // Requester ID Enable
+                                COMPLETER_ID,
+                                tag,   
+                                REQUESTER_ID,
+                                1'd0,   // Poisoned Request
+                                MemWr,  // Req Type
+                                11'd1,  // Dword count
+                                BAR0 + 64'h14       // Address
+                              };
+          s_axis_rq_tuser_d = {
+                                2'b0,     // seq_num[5:4]
+                                32'd0,    // parity
+                                4'd0,     // seq_num[3:0]
+                                8'd0,     // tph_st_tag
+                                1'b0,     // tph_indirect_tag_en
+                                2'd0,     // tph_type   
+                                1'b0,     // tph_present
+                                1'b0,     // discontinue
+                                3'd0,     // addr_offset
+                                4'b0000,  // last be
+                                4'b1111   // first be
+                              };
+          s_axis_rq_tvalid_d = 1'b1;
+          s_axis_rq_tkeep_d = 4'b1111;
+          s_axis_rq_tlast_d = 1'b0;
+        end
+        
+        ST_RESET7_2: begin
+          s_axis_rq_tdata_d = {
+                                64'h0,
+                                32'h0,
+                                32'h1
+                              };
+          s_axis_rq_tuser_d = {AXI4_RQ_TUSER_WIDTH{1'b0}};
+          s_axis_rq_tvalid_d = 1'b1;
+          s_axis_rq_tkeep_d = 4'b0001;
+          s_axis_rq_tlast_d = 1'b1;
+        end
+
+        // MemRd CSTS.RDY
+        ST_RESET8_1: begin
+          s_axis_rq_tdata_d = {
+                                1'b0,   // Force ECRC
+                                3'd0,   // Attr
+                                3'd0,   // TC
+                                1'b1,   // Requester ID Enable
+                                COMPLETER_ID,
+                                tag,   
+                                REQUESTER_ID,
+                                1'd0,   // Poisoned Request
+                                MemRd,  // Req Type
+                                11'd1,  // Dword count
+                                BAR0 + 64'h1C       // Address
+                              };
+          s_axis_rq_tuser_d = {
+                                2'b0,     // seq_num[5:4]
+                                32'd0,    // parity
+                                4'd0,     // seq_num[3:0]
+                                8'd0,     // tph_st_tag
+                                1'b0,     // tph_indirect_tag_en
+                                2'd0,     // tph_type   
+                                1'b0,     // tph_present
+                                1'b0,     // discontinue
+                                3'd0,     // addr_offset
+                                4'b0000,  // last be
+                                4'b1111   // first be
+                              };
+          s_axis_rq_tvalid_d = 1'b1;
+          s_axis_rq_tkeep_d = 4'b1111;
+          s_axis_rq_tlast_d = 1'b1;
         end
         
         default: begin
@@ -425,34 +701,23 @@ module configurator #(
   //-------------------------------------------------------
   assign m_axis_rc_tready = 1'b1;
 
+
   always@(posedge user_clk) begin
     if(user_reset || !user_lnk_up) begin
-      recv_tag <= 8'd0;
       recv_done <= 1'b0;
-      recv_err_code <= 4'd0;
-      recv_cpl_status <= 3'd0;
-      recv_req_completed <= 1'b0;
-      recv_data <= 32'd0;
-      is_cstsRdy <= 1'b0;
+      recv_fail <= 1'b0;
+      csts_ready <= 1'b0;
     end 
     else begin
+      
       if(m_axis_rc_tvalid && m_axis_rc_tlast) begin
-        recv_tag <= m_axis_rc_tdata[71:64];
-        recv_err_code <= m_axis_rc_tdata[15:12];
-        recv_req_completed <= m_axis_rc_tdata[30];
-        recv_cpl_status <= m_axis_rc_tdata[45:43];
+        if(cfg_state == ST_RESET0_4 || cfg_state == ST_RESET8_2) csts_ready <= m_axis_rc_tdata[96];
         recv_done <= 1'b1;
-        recv_data <= m_axis_rc_tdata[127:96];
-        if(wait_cstsRdy && m_axis_rc_tdata[96]) is_cstsRdy <= 1'b1;
-        //else is_cstsRdy <= 1'b0;
+        recv_fail <= ~m_axis_rc_tdata[30];
       end
       else begin
-        recv_tag <= 8'd0;
         recv_done <= 1'b0;
-        recv_err_code <= 4'd0;
-        recv_cpl_status <= 3'd0;
-        recv_req_completed <= 1'b0;
-        recv_data <= 32'd0;
+        recv_fail <= 1'b0;
       end
     end
   end
