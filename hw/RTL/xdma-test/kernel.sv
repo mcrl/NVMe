@@ -29,7 +29,6 @@ module kernel (
   output logic [2:0]  k2o_awprot,
   output logic [3:0]  k2o_awqos,
   input  logic        k2o_awready,
-  output logic [3:0]  k2o_awregion,
   output logic [2:0]  k2o_awsize,
   output logic        k2o_awvalid,
   // W
@@ -48,7 +47,6 @@ module kernel (
   output logic [2:0]  k2o_arprot,
   output logic [3:0]  k2o_arqos,
   input  logic        k2o_arready,
-  output logic [3:0]  k2o_arregion,
   output logic [2:0]  k2o_arsize,
   output logic        k2o_arvalid,
   // B
@@ -66,49 +64,49 @@ module kernel (
 
   // o2k: oculink(master) to kernel(slave) AXI-MM interface
   // AW
-  input [63:0] o2k_awaddr,
-  input [1:0]  o2k_awburst,
-  input [3:0]  o2k_awcache,
-  input [3:0]  o2k_awid,
-  input [7:0]  o2k_awlen,
-  input [0:0]  o2k_awlock,
-  input [2:0]  o2k_awprot,
-  input [3:0]  o2k_awqos,
-  output       o2k_awready,
-  input [3:0]  o2k_awregion,
-  input [2:0]  o2k_awsize,
-  input        o2k_awvalid,
+  input  logic [63:0] o2k_awaddr,
+  input  logic [1:0]  o2k_awburst,
+  input  logic [3:0]  o2k_awcache,
+  input  logic [3:0]  o2k_awid,
+  input  logic [7:0]  o2k_awlen,
+  input  logic [0:0]  o2k_awlock,
+  input  logic [2:0]  o2k_awprot,
+  input  logic [3:0]  o2k_awqos,
+  output logic        o2k_awready,
+  input  logic [3:0]  o2k_awregion,
+  input  logic [2:0]  o2k_awsize,
+  input  logic        o2k_awvalid,
   // W
-  input [127:0] o2k_wdata,
-  input         o2k_wlast,
-  output        o2k_wready,
-  input [15:0]  o2k_wstrb,
-  input         o2k_wvalid,
+  input  logic [127:0] o2k_wdata,
+  input  logic         o2k_wlast,
+  output logic         o2k_wready,
+  input  logic [15:0]  o2k_wstrb,
+  input  logic         o2k_wvalid,
   // AR
-  input [63:0] o2k_araddr,
-  input [1:0]  o2k_arburst,
-  input [3:0]  o2k_arcache,
-  input [3:0]  o2k_arid,
-  input [7:0]  o2k_arlen,
-  input [0:0]  o2k_arlock,
-  input [2:0]  o2k_arprot,
-  input [3:0]  o2k_arqos,
-  output       o2k_arready,
-  input [3:0]  o2k_arregion,
-  input [2:0]  o2k_arsize,
-  input        o2k_arvalid,
+  input  logic [63:0] o2k_araddr,
+  input  logic [1:0]  o2k_arburst,
+  input  logic [3:0]  o2k_arcache,
+  input  logic [3:0]  o2k_arid,
+  input  logic [7:0]  o2k_arlen,
+  input  logic [0:0]  o2k_arlock,
+  input  logic [2:0]  o2k_arprot,
+  input  logic [3:0]  o2k_arqos,
+  output logic        o2k_arready,
+  input  logic [3:0]  o2k_arregion,
+  input  logic [2:0]  o2k_arsize,
+  input  logic        o2k_arvalid,
   // B
-  output [3:0] o2k_bid,
-  input        o2k_bready,
-  output [1:0] o2k_bresp,
-  output       o2k_bvalid,
+  output logic [3:0] o2k_bid,
+  input  logic       o2k_bready,
+  output logic [1:0] o2k_bresp,
+  output logic       o2k_bvalid,
   // R
-  output [127:0] o2k_rdata,
-  output [3:0]   o2k_rid,
-  output         o2k_rlast,
-  input          o2k_rready,
-  output [1:0]   o2k_rresp,
-  output         o2k_rvalid
+  output logic [127:0] o2k_rdata,
+  output logic [3:0]   o2k_rid,
+  output logic         o2k_rlast,
+  input  logic         o2k_rready,
+  output logic [1:0]   o2k_rresp,
+  output logic         o2k_rvalid
 );
 
 localparam MAGIC_AWID = 1;
@@ -321,7 +319,6 @@ always_comb begin
   k2o_awprot = 0;
   k2o_awqos = 0;
   k2o_aw_fifo_rready = k2o_awready;
-  k2o_awregion = 0;
   k2o_awsize = 4; // 16B = 128b
   k2o_awvalid = k2o_aw_fifo_rvalid;
 end
@@ -344,7 +341,7 @@ always_comb begin
   k2o_wdata = k2o_w_fifo_rdata;
   k2o_wlast = 1;
   k2o_w_fifo_rready = k2o_wready;
-  k2o_strb = '1;
+  k2o_wstrb = '1;
   k2o_wvalid = k2o_w_fifo_rvalid;
 end
 
@@ -373,7 +370,6 @@ always_comb begin
   k2o_arprot = 0;
   k2o_arqos = 0;
   k2o_ar_fifo_rready = k2o_arready;
-  k2o_arregion = 0;
   k2o_arsize = 4; // 16B = 128b
   k2o_arvalid = k2o_ar_fifo_rvalid;
 end
