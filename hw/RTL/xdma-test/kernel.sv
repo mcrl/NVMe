@@ -1,6 +1,7 @@
 module kernel (
   input logic clk,
   input logic rstn,
+  output logic ocu_rstn,
 
   (* X_INTERFACE_INFO = "xilinx.com:interface:bram:1.0 host ADDR" *)
   input logic [14:0] host_addr,
@@ -107,7 +108,7 @@ module kernel (
   output         o2k_rlast,
   input          o2k_rready,
   output [1:0]   o2k_rresp,
-  output         o2k_rvalid,
+  output         o2k_rvalid
 );
 
 localparam MAGIC_AWID = 1;
@@ -201,6 +202,7 @@ always_ff @(posedge clk, negedge rstn) begin
     o2k_aw_fifo_rready <= 0;
     o2k_w_fifo_rready <= 0;
     o2k_ar_fifo_rready <= 0;
+    ocu_rstn <= 0;
   end else begin
     k2o_aw_fifo_wvalid <= 0;
     k2o_w_fifo_wvalid <= 0;
@@ -257,6 +259,10 @@ always_ff @(posedge clk, negedge rstn) begin
       end else if (host_addr == 'hb0 / 4) begin
         o2k_r_fifo_wvalid <= 1;
         o2k_r_fifo_wdata <= data;
+      end else if (host_addr == 'hc0 / 4) begin
+        ocu_rstn <= 1;
+      end else if (host_addr == 'hc4 / 4) begin
+        ocu_rstn <= 0;
       end
     end else begin
       if          (host_addr == 'h00 / 4) begin

@@ -6,23 +6,22 @@ module top (
   input logic pcie_perstn,
   input logic pcie_refclk_clk_n,
   input logic pcie_refclk_clk_p,
-  input logic [3:0] ocu0_data_rxn;
-  input logic [3:0] ocu0_data_rxp;
-  output logic [3:0] ocu0_data_txn;
-  output logic [3:0] ocu0_data_txp;
+  input logic [3:0] ocu0_data_rxn,
+  input logic [3:0] ocu0_data_rxp,
+  output logic [3:0] ocu0_data_txn,
+  output logic [3:0] ocu0_data_txp,
+  output logic ocu0_perstn
 );
 
 // 250MHz clk region from host PCIe IP
 logic usr_clk;
 logic usr_rstn;
 
-// oculink PCIe IP share the same clk and rstn with host PCIe IP
+// oculink PCIe IP share the same clk with host PCIe IP
 logic ocu0_refclk_clk_n;
 logic ocu0_refclk_clk_p;
-logic ocu0_rstn;
 assign ocu0_refclk_clk_n = pcie_refclk_clk_n;
 assign ocu0_refclk_clk_p = pcie_refclk_clk_p;
-assign ocu0_rstn = pcie_perstn;
 
 // host -> kernel bram interface
 logic [14:0] host_bram_addr;
@@ -177,7 +176,7 @@ bd0 bd0_inst (
   .ocu0_master_wvalid(ocu0_master_wvalid),
   .ocu0_refclk_clk_n(ocu0_refclk_clk_n),
   .ocu0_refclk_clk_p(ocu0_refclk_clk_p),
-  .ocu0_rstn(ocu0_rstn),
+  .ocu0_rstn(ocu0_perstn),
   .ocu0_slave_araddr(ocu0_slave_araddr),
   .ocu0_slave_arburst(ocu0_slave_arburst),
   .ocu0_slave_arcache(ocu0_slave_arcache),
@@ -222,6 +221,7 @@ bd0 bd0_inst (
 kernel kernel_inst (
   .clk(usr_clk),
   .rstn(usr_rstn),
+  .ocu_rstn(ocu0_perstn),
   .host_addr(host_bram_addr),
   .host_clk(host_bram_clk),
   .host_din(host_bram_din),
