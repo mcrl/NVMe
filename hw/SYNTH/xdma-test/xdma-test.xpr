@@ -110,15 +110,16 @@
           <Proxy FileSetName="bd0_xdma_0_2"/>
         </CompFileExtendedInfo>
       </File>
-      <File Path="$PPRDIR/../../RTL/xdma-test/kernel.sv">
+      <File Path="$PPRDIR/../../RTL/xdma-test/top.sv">
         <FileInfo>
           <Attr Name="UsedIn" Val="synthesis"/>
           <Attr Name="UsedIn" Val="implementation"/>
           <Attr Name="UsedIn" Val="simulation"/>
         </FileInfo>
       </File>
-      <File Path="$PPRDIR/../../RTL/xdma-test/top.sv">
+      <File Path="$PPRDIR/../../RTL/xdma-test/kernel.sv">
         <FileInfo>
+          <Attr Name="AutoDisabled" Val="1"/>
           <Attr Name="UsedIn" Val="synthesis"/>
           <Attr Name="UsedIn" Val="implementation"/>
           <Attr Name="UsedIn" Val="simulation"/>
