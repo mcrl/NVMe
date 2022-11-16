@@ -10,18 +10,14 @@ module top (
   input logic [3:0] ocu0_data_rxp,
   output logic [3:0] ocu0_data_txn,
   output logic [3:0] ocu0_data_txp,
-  output logic ocu0_perstn
+  output logic ocu0_perstn,
+  input logic ocu0_refclk_clk_n,
+  input logic ocu0_refclk_clk_p
 );
 
 // 250MHz clk region from host PCIe IP
 logic usr_clk;
 logic usr_rstn;
-
-// oculink PCIe IP share the same clk with host PCIe IP
-logic ocu0_refclk_clk_n;
-logic ocu0_refclk_clk_p;
-assign ocu0_refclk_clk_n = pcie_refclk_clk_n;
-assign ocu0_refclk_clk_p = pcie_refclk_clk_p;
 
 // host -> kernel bram interface
 logic [14:0] host_bram_addr;
@@ -83,7 +79,6 @@ logic [0:0]ocu0_slave_arlock;
 logic [2:0]ocu0_slave_arprot;
 logic [3:0]ocu0_slave_arqos;
 logic ocu0_slave_arready;
-logic [3:0]ocu0_slave_arregion;
 logic [2:0]ocu0_slave_arsize;
 logic ocu0_slave_arvalid;
 logic [63:0]ocu0_slave_awaddr;
@@ -95,7 +90,6 @@ logic [0:0]ocu0_slave_awlock;
 logic [2:0]ocu0_slave_awprot;
 logic [3:0]ocu0_slave_awqos;
 logic ocu0_slave_awready;
-logic [3:0]ocu0_slave_awregion;
 logic [2:0]ocu0_slave_awsize;
 logic ocu0_slave_awvalid;
 logic [3:0]ocu0_slave_bid;
@@ -186,7 +180,6 @@ bd0 bd0_inst (
   .ocu0_slave_arprot(ocu0_slave_arprot),
   .ocu0_slave_arqos(ocu0_slave_arqos),
   .ocu0_slave_arready(ocu0_slave_arready),
-  .ocu0_slave_arregion(ocu0_slave_arregion),
   .ocu0_slave_arsize(ocu0_slave_arsize),
   .ocu0_slave_arvalid(ocu0_slave_arvalid),
   .ocu0_slave_awaddr(ocu0_slave_awaddr),
@@ -198,7 +191,6 @@ bd0 bd0_inst (
   .ocu0_slave_awprot(ocu0_slave_awprot),
   .ocu0_slave_awqos(ocu0_slave_awqos),
   .ocu0_slave_awready(ocu0_slave_awready),
-  .ocu0_slave_awregion(ocu0_slave_awregion),
   .ocu0_slave_awsize(ocu0_slave_awsize),
   .ocu0_slave_awvalid(ocu0_slave_awvalid),
   .ocu0_slave_bid(ocu0_slave_bid),
@@ -277,7 +269,6 @@ kernel kernel_inst (
   .k2o_arprot(ocu0_slave_arprot),
   .k2o_arqos(ocu0_slave_arqos),
   .k2o_arready(ocu0_slave_arready),
-  .k2o_arregion(ocu0_slave_arregion),
   .k2o_arsize(ocu0_slave_arsize),
   .k2o_arvalid(ocu0_slave_arvalid),
   .k2o_awaddr(ocu0_slave_awaddr),
@@ -289,7 +280,6 @@ kernel kernel_inst (
   .k2o_awprot(ocu0_slave_awprot),
   .k2o_awqos(ocu0_slave_awqos),
   .k2o_awready(ocu0_slave_awready),
-  .k2o_awregion(ocu0_slave_awregion),
   .k2o_awsize(ocu0_slave_awsize),
   .k2o_awvalid(ocu0_slave_awvalid),
   .k2o_bid(ocu0_slave_bid),
