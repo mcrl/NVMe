@@ -2,32 +2,32 @@
 
 module oculink_port # (
   // PCIe Parameters
-  parameter           PCIE_EXT_CLK                  = "FALSE",
-  parameter           EXT_PIPE_SIM                  = "FALSE",                               
-  parameter           PL_LINK_CAP_MAX_LINK_SPEED    = 4,  // 1- GEN1, 2 - GEN2, 4 - GEN3, 8 - GEN4
-  parameter [4:0]     PL_LINK_CAP_MAX_LINK_WIDTH    = 4,  // 1- X1, 2 - X2, 4 - X4, 8 - X8, 16 - X16
-  parameter           PL_DISABLE_EI_INFER_IN_L0     = "TRUE",
-  parameter           PL_DISABLE_UPCONFIG_CAPABLE   = "FALSE",
-  parameter  integer  USER_CLK2_FREQ                = 3,
-  parameter           REF_CLK_FREQ                  = 0,  // 0 - 100 MHz, 1 - 125 MHz,  2 - 250 MHz
+  parameter           PCIE_EXT_CLK                      = "FALSE",
+  parameter           EXT_PIPE_SIM                      = "FALSE",                               
+  parameter           PL_LINK_CAP_MAX_LINK_SPEED        = 4,  // 1- GEN1, 2 - GEN2, 4 - GEN3, 8 - GEN4
+  parameter [4:0]     PL_LINK_CAP_MAX_LINK_WIDTH        = 4,  // 1- X1, 2 - X2, 4 - X4, 8 - X8, 16 - X16
+  parameter           PL_DISABLE_EI_INFER_IN_L0         = "TRUE",
+  parameter           PL_DISABLE_UPCONFIG_CAPABLE       = "FALSE",
+  parameter  integer  USER_CLK2_FREQ                    = 3,
+  parameter           REF_CLK_FREQ                      = 0,  // 0 - 100 MHz, 1 - 125 MHz,  2 - 250 MHz
 
   // AXIS Parameters
-  parameter        AXISTEN_IF_RQ_ALIGNMENT_MODE   = "FALSE",
-  parameter        AXISTEN_IF_CC_ALIGNMENT_MODE   = "FALSE",
-  parameter        AXISTEN_IF_CQ_ALIGNMENT_MODE   = "FALSE",
-  parameter        AXISTEN_IF_RC_ALIGNMENT_MODE   = "FALSE",
-  parameter        AXI4_CQ_TUSER_WIDTH            = 88,
-  parameter        AXI4_CC_TUSER_WIDTH            = 33,
-  parameter        AXI4_RQ_TUSER_WIDTH            = 62,
-  parameter        AXI4_RC_TUSER_WIDTH            = 75,
-  parameter        AXISTEN_IF_ENABLE_CLIENT_TAG   = "TRUE",
-  parameter        AXISTEN_IF_RQ_PARITY_CHECK     = "FALSE",
-  parameter        AXISTEN_IF_CC_PARITY_CHECK     = "FALSE",
-  parameter        AXISTEN_IF_MC_RX_STRADDLE      = "FALSE",
-  parameter        AXISTEN_IF_ENABLE_RX_MSG_INTFC = "FALSE",
-  parameter [17:0] AXISTEN_IF_ENABLE_MSG_ROUTE    = 18'h2FFFF,
-  parameter        C_DATA_WIDTH                   = 128,            
-  parameter KEEP_WIDTH                            = C_DATA_WIDTH / 32
+  parameter           AXISTEN_IF_RQ_ALIGNMENT_MODE      = "FALSE",
+  parameter           AXISTEN_IF_CC_ALIGNMENT_MODE      = "FALSE",
+  parameter           AXISTEN_IF_CQ_ALIGNMENT_MODE      = "FALSE",
+  parameter           AXISTEN_IF_RC_ALIGNMENT_MODE      = "FALSE",
+  parameter           AXI4_CQ_TUSER_WIDTH               = 88,
+  parameter           AXI4_CC_TUSER_WIDTH               = 33,
+  parameter           AXI4_RQ_TUSER_WIDTH               = 62,
+  parameter           AXI4_RC_TUSER_WIDTH               = 75,
+  parameter           AXISTEN_IF_ENABLE_CLIENT_TAG      = "TRUE",
+  parameter           AXISTEN_IF_RQ_PARITY_CHECK        = "FALSE",
+  parameter           AXISTEN_IF_CC_PARITY_CHECK        = "FALSE",
+  parameter           AXISTEN_IF_MC_RX_STRADDLE         = "FALSE",
+  parameter           AXISTEN_IF_ENABLE_RX_MSG_INTFC    = "FALSE",
+  parameter [17:0]    AXISTEN_IF_ENABLE_MSG_ROUTE       = 18'h2FFFF,
+  parameter           C_DATA_WIDTH                      = 128,            
+  parameter           KEEP_WIDTH                        = C_DATA_WIDTH / 32
 )
 (
   //-------------------------------------------------------
@@ -216,10 +216,7 @@ module oculink_port # (
   //-------------------------------------------------------
   // Configurator <-> Controller Interface 
   //-------------------------------------------------------
-  // Configurator -> Controller
   wire start_config;
-
-  // Configurator <- Controller
   wire cfg_done;
 
 
@@ -242,34 +239,30 @@ module oculink_port # (
   wire send_cmd_done;
 
 
-  // debugging
+  //-------------------------------------------------------
+  // Debugging Signals 
+  //-------------------------------------------------------
   wire [3:0] ctl_state;
   wire [4:0] cfg_state;
-  wire       recv_done;
-  wire [7:0] recv_tag;
-  wire [3:0] recv_err_code;
-  wire [2:0] recv_cpl_status;
-  wire       recv_req_completed;
-  wire       recv_skip;
-  wire [31:0] recv_data; 
-  wire [7:0] tag;
-  wire [31:0] rom_data;
-  wire [5:0] rom_addr;
-
   wire [3:0] db_state;
-  wire is_sq;
 
-  // Virtual I/O
-  wire [15:0] probe_in0;
-  wire [15:0] probe_out0;
+
+  //-------------------------------------------------------
+  // Virtual I/O Signals
+  //-------------------------------------------------------
+  wire [255:0] probe_in0;
+  wire [255:0] probe_out0;
   wire        vio_reset_n;
+  wire [3:0]  vio_sqt_addr;
+  wire        vio_write_sqtdbl;
+  wire        vio_send_cmd;
 
 
-  wire [3:0] vio_sqt_addr;
-  wire vio_write_sqtdbl;
   // cfg_ltssm_state L0 is 6'h10
   assign probe_in0 = {  
-                        8'h00,
+                        240'h0,
+                        4'h00,
+                        ctl_state,
                         perst_n,
                         cprsnt,
                         cfg_ltssm_state // 6-bit
@@ -277,14 +270,15 @@ module oculink_port # (
 
   assign vio_reset_n      = probe_out0[0];
   assign perst_n          = vio_reset_n;
-  assign vio_sqt_addr     = probe_out0[3:1];
-  assign vio_write_sqtdbl = probe_out0[4];
+  assign vio_sqt_addr     = probe_out0[32:1];
+  assign vio_write_sqtdbl = probe_out0[33];
+  assign vio_send_cmd     = probe_out0[34];
 
   // Note: PCIe is in RESET by default--allows ILA triggers to be added  
   vio_0 vio_0 (
     .clk        (user_clk),  // input  wire          clk
-    .probe_in0  (probe_in0), // input  wire [15 : 0] probe_in0
-    .probe_out0 (probe_out0) // output wire [15 : 0] probe_out0
+    .probe_in0  (probe_in0), // input  wire [255 : 0] probe_in0
+    .probe_out0 (probe_out0) // output wire [255 : 0] probe_out0
   );
 
 
@@ -368,11 +362,12 @@ module oculink_port # (
     .user_clk                                ( user_clk ),
     .user_reset                              ( user_reset ),
     .user_lnk_up                             ( user_lnk_up ),
-    // Configurator <-> Controller Interface
+    
+    // Configurator <-> Controller
     .start_config                            (start_config),
     .cfg_done                                (cfg_done),
 
-    // Doorbell <-> Controller Interface
+    // Doorbell <-> Controller
     .write_sqtdbl                             ( write_sqtdbl ),
     .sqt_addr                                 ( sqt_addr ),
     .write_cqhdbl                             ( write_cqhdbl ),
@@ -380,14 +375,15 @@ module oculink_port # (
     .write_sqtdbl_done                        ( write_sqtdbl_done ),
     .write_cqhdbl_done                        ( write_cqhdbl_done ),
 
-    .vio_sqt_addr(vio_sqt_addr),
-    .vio_write_sqtdbl(vio_write_sqtdbl),
-
-    .send_cmd(send_cmd),
-    .send_cmd_done(send_cmd_done),
+    // TX CC <-> Controller
+    .send_cmd                                 (send_cmd),
+    .send_cmd_done                            (send_cmd_done),
 
     // for debugging
-    .ctl_state(ctl_state)
+    .vio_sqt_addr                             (vio_sqt_addr),
+    .vio_write_sqtdbl                         (vio_write_sqtdbl),
+    .vio_send_cmd                             (vio_send_cmd),
+    .ctl_state                                (ctl_state)
   );
 
 
@@ -423,20 +419,8 @@ module oculink_port # (
     .m_axis_rc_tuser                          ( cfg_m_axis_rc_tuser ),
     .m_axis_rc_tready                         ( cfg_m_axis_rc_tready ),
     
-    .cfg_ltssm_state                          ( cfg_ltssm_state ),
-
     // for debugging
-    .cfg_state(cfg_state),
-    .recv_done(recv_done),
-    .recv_tag(recv_tag),
-    .recv_err_code(recv_err_code),
-    .recv_cpl_status(recv_cpl_status),
-    .recv_req_completed(recv_req_completed),
-    .recv_skip(recv_skip),
-    .recv_data(recv_data),
-    .tag(tag),
-    .rom_data(rom_data),
-    .rom_addr(rom_addr)
+    .cfg_state                                (cfg_state)
   );
 
 
@@ -467,8 +451,7 @@ module oculink_port # (
     .s_axis_rq_tvalid                         ( db_s_axis_rq_tvalid ),
 
     // for debugging
-    .db_state(db_state),
-    .is_sq(is_sq)
+    .db_state                                 (db_state)
   );
 
 
@@ -489,54 +472,185 @@ module oculink_port # (
     .s_axis_cc_tlast                          ( s_axis_cc_tlast ),
     .s_axis_cc_tvalid                         ( s_axis_cc_tvalid ),
 
-    .send_cmd(send_cmd),
-    .send_cmd_done(send_cmd_done)
+    .send_cmd                                 ( send_cmd),
+    .send_cmd_done                            ( send_cmd_done)
   );
+
+  //-------------------------------------------------------
+  // ILA Pipelining
+  //-------------------------------------------------------
+
+  wire                                [3:0]     s_axis_rq_tready_q;
+  wire                   [C_DATA_WIDTH-1:0]     s_axis_rq_tdata_q;
+  wire                     [KEEP_WIDTH-1:0]     s_axis_rq_tkeep_q;
+  wire            [AXI4_RQ_TUSER_WIDTH-1:0]     s_axis_rq_tuser_q;
+  wire                                          s_axis_rq_tlast_q;
+  wire                                          s_axis_rq_tvalid_q;
+  wire                   [C_DATA_WIDTH-1:0]     m_axis_rc_tdata_q;
+  wire                     [KEEP_WIDTH-1:0]     m_axis_rc_tkeep_q;
+  wire                                          m_axis_rc_tlast_q;
+  wire                                          m_axis_rc_tvalid_q;
+  wire                                          m_axis_rc_tready_q;
+  wire            [AXI4_RC_TUSER_WIDTH-1:0]     m_axis_rc_tuser_q;
+  wire                   [C_DATA_WIDTH-1:0]     m_axis_cq_tdata_q;
+  wire            [AXI4_CQ_TUSER_WIDTH-1:0]     m_axis_cq_tuser_q;
+  wire                                          m_axis_cq_tlast_q;
+  wire                     [KEEP_WIDTH-1:0]     m_axis_cq_tkeep_q;
+  wire                                          m_axis_cq_tvalid_q;
+  wire                                          m_axis_cq_tready_q;
+  wire                   [C_DATA_WIDTH-1:0]     s_axis_cc_tdata_q;
+  wire            [AXI4_CC_TUSER_WIDTH-1:0]     s_axis_cc_tuser_q;
+  wire                                          s_axis_cc_tlast_q;
+  wire                     [KEEP_WIDTH-1:0]     s_axis_cc_tkeep_q;
+  wire                                          s_axis_cc_tvalid_q;
+  wire                                [3:0]     s_axis_cc_tready_q;
+
+  reg                                [3:0]     s_axis_rq_tready_d;
+  reg                   [C_DATA_WIDTH-1:0]     s_axis_rq_tdata_d;
+  reg                     [KEEP_WIDTH-1:0]     s_axis_rq_tkeep_d;
+  reg            [AXI4_RQ_TUSER_WIDTH-1:0]     s_axis_rq_tuser_d;
+  reg                                          s_axis_rq_tlast_d;
+  reg                                          s_axis_rq_tvalid_d;
+  reg                   [C_DATA_WIDTH-1:0]     m_axis_rc_tdata_d;
+  reg                     [KEEP_WIDTH-1:0]     m_axis_rc_tkeep_d;
+  reg                                          m_axis_rc_tlast_d;
+  reg                                          m_axis_rc_tvalid_d;
+  reg                                          m_axis_rc_tready_d;
+  reg            [AXI4_RC_TUSER_WIDTH-1:0]     m_axis_rc_tuser_d;
+  reg                   [C_DATA_WIDTH-1:0]     m_axis_cq_tdata_d;
+  reg            [AXI4_CQ_TUSER_WIDTH-1:0]     m_axis_cq_tuser_d;
+  reg                                          m_axis_cq_tlast_d;
+  reg                     [KEEP_WIDTH-1:0]     m_axis_cq_tkeep_d;
+  reg                                          m_axis_cq_tvalid_d;
+  reg                                          m_axis_cq_tready_d;
+  reg                   [C_DATA_WIDTH-1:0]     s_axis_cc_tdata_d;
+  reg            [AXI4_CC_TUSER_WIDTH-1:0]     s_axis_cc_tuser_d;
+  reg                                          s_axis_cc_tlast_d;
+  reg                     [KEEP_WIDTH-1:0]     s_axis_cc_tkeep_d;
+  reg                                          s_axis_cc_tvalid_d;
+  reg                                [3:0]     s_axis_cc_tready_d;
+
+
+  wire        user_lnk_up_q;
+  wire [5:0]  cfg_ltssm_state_q;
+  wire [3:0]  ctl_state_q;
+  wire [4:0]  cfg_state_q;
+  wire [3:0]  db_state_q;
+  wire        start_config_q;
+  wire        cfg_done_q;
+
+  reg         user_lnk_up_d;
+  reg [5:0]   cfg_ltssm_state_d;
+  reg [3:0]   ctl_state_d;
+  reg [4:0]   cfg_state_d;
+  reg [3:0]   db_state_d;
+  reg         start_config_d;
+  reg         cfg_done_d;
+
+  // cfg_ltssm_state, user_lnk_up, cfg_done, start_config, cfg_state, ctl_state, db_state
+  always@(posedge user_clk) begin
+    user_lnk_up_d <= user_lnk_up;
+    cfg_ltssm_state_d <= cfg_ltssm_state;
+    cfg_done_d <= cfg_done;
+    start_config_d <= start_config;
+    cfg_state_d <= cfg_state;
+    ctl_state_d <= ctl_state;
+    db_state_d <= db_state;
+
+    s_axis_rq_tready_d <= s_axis_rq_tready;
+    s_axis_rq_tdata_d <= s_axis_rq_tdata;
+    s_axis_rq_tkeep_d <= s_axis_rq_tkeep;
+    s_axis_rq_tuser_d <= s_axis_rq_tuser;
+    s_axis_rq_tlast_d <= s_axis_rq_tlast;
+    s_axis_rq_tvalid_d <= s_axis_rq_tvalid;
+    m_axis_rc_tdata_d <= m_axis_rc_tdata;
+    m_axis_rc_tkeep_d <= m_axis_rc_tkeep;
+    m_axis_rc_tlast_d <= m_axis_rc_tlast;
+    m_axis_rc_tvalid_d <= m_axis_rc_tvalid;
+    m_axis_rc_tready_d <= m_axis_rc_tready;
+    m_axis_rc_tuser_d <= m_axis_rc_tuser;
+    m_axis_cq_tdata_d <= m_axis_cq_tdata;
+    m_axis_cq_tuser_d <= m_axis_cq_tuser;
+    m_axis_cq_tlast_d <= m_axis_cq_tlast;
+    m_axis_cq_tkeep_d <= m_axis_cq_tkeep;
+    m_axis_cq_tvalid_d <= m_axis_cq_tvalid;
+    m_axis_cq_tready_d <= m_axis_cq_tready;
+    s_axis_cc_tdata_d <= s_axis_cc_tdata;
+    s_axis_cc_tuser_d <= s_axis_cc_tuser;
+    s_axis_cc_tlast_d <= s_axis_cc_tlast;
+    s_axis_cc_tkeep_d <= s_axis_cc_tkeep;
+    s_axis_cc_tvalid_d <= s_axis_cc_tvalid;
+    s_axis_cc_tready_d <= s_axis_cc_tready;
+  end
+
+  assign s_axis_rq_tready_q  = s_axis_rq_tready_d;
+  assign s_axis_rq_tdata_q = s_axis_rq_tdata_d;
+  assign s_axis_rq_tkeep_q = s_axis_rq_tkeep_d;
+  assign s_axis_rq_tuser_q = s_axis_rq_tuser_d;
+  assign s_axis_rq_tlast_q = s_axis_rq_tlast_d;
+  assign s_axis_rq_tvalid_q  = s_axis_rq_tvalid_d;
+  assign m_axis_rc_tdata_q = m_axis_rc_tdata_d;
+  assign m_axis_rc_tkeep_q = m_axis_rc_tkeep_d;
+  assign m_axis_rc_tlast_q = m_axis_rc_tlast_d;
+  assign m_axis_rc_tvalid_q  = m_axis_rc_tvalid_d;
+  assign m_axis_rc_tready_q  = m_axis_rc_tready_d;
+  assign m_axis_rc_tuser_q = m_axis_rc_tuser_d;
+  assign m_axis_cq_tdata_q = m_axis_cq_tdata_d;
+  assign m_axis_cq_tuser_q = m_axis_cq_tuser_d;
+  assign m_axis_cq_tlast_q = m_axis_cq_tlast_d;
+  assign m_axis_cq_tkeep_q = m_axis_cq_tkeep_d;
+  assign m_axis_cq_tvalid_q  = m_axis_cq_tvalid_d;
+  assign m_axis_cq_tready_q  = m_axis_cq_tready_d;
+  assign s_axis_cc_tdata_q = s_axis_cc_tdata_d;
+  assign s_axis_cc_tuser_q = s_axis_cc_tuser_d;
+  assign s_axis_cc_tlast_q = s_axis_cc_tlast_d;
+  assign s_axis_cc_tkeep_q = s_axis_cc_tkeep_d;
+  assign s_axis_cc_tvalid_q  = s_axis_cc_tvalid_d;
+  assign s_axis_cc_tready_q  = s_axis_cc_tready_d;
+
+  assign user_lnk_up_q = user_lnk_up_d;
+  assign cfg_ltssm_state_q = cfg_ltssm_state_d;
+  assign ctl_state_q = ctl_state_d;
+  assign cfg_state_q = cfg_state_d;
+  assign db_state_q = db_state_d;
+  assign start_config_q = start_config_d;
+  assign cfg_done_q = cfg_done_d;
 
 
   // ILA
   ila_cfg ila_cfg_inst (
-    .clk(user_clk),            // input wire clk
-    .probe0(start_config),     // 1-bit
-    .probe1(cfg_done),         // 1-bit
-    .probe2(m_axis_rc_tdata),  // 128-bit
-    .probe3(m_axis_rc_tkeep),  // 4-bit
-    .probe4(m_axis_rc_tlast),   
-    .probe5(m_axis_rc_tvalid),
-    .probe6(m_axis_rc_tready),
-    .probe7(m_axis_rc_tuser),  // 75-bit
-    .probe8(s_axis_rq_tdata),  // 128-bit
-    .probe9(s_axis_rq_tkeep),  // 4-bit
-    .probe10(s_axis_rq_tlast),
-    .probe11(s_axis_rq_tvalid),
-    .probe12(s_axis_rq_tready),
-    .probe13(s_axis_rq_tuser),  // 62-bit
-    .probe14(cfg_ltssm_state),  // 6-bit
-    .probe15(user_lnk_up),      // 1-bit
-    .probe16(cfg_state),        // 5-bit
-    .probe17(ctl_state),        // 4-bit
-    .probe18(m_axis_cq_tdata),  // 128-bit
-    .probe19(m_axis_cq_tkeep),  // 4-bit
-    .probe20(m_axis_cq_tlast),  // 1-bit
-    .probe21(m_axis_cq_tready), // 1-bit
-    .probe22(m_axis_cq_tuser),  // 88-bit
-    .probe23(m_axis_cq_tvalid),  // 1-bit
-    .probe24(db_state), // 4-bit
-    .probe25(is_sq),    // 1-bit
-    .probe26(s_axis_cc_tdata),  // 128-bit
-    .probe27(s_axis_cc_tkeep),  // 4-bit
-    .probe28(s_axis_cc_tlast),
-    .probe29(s_axis_cc_tvalid),
-    .probe30(s_axis_cc_tready),
-    .probe31(s_axis_cc_tuser),  // 33-bit
-    .probe32(rom_addr),                 // 6-bit
-    .probe33(rom_data),                 // 32-bit
-    .probe34(cfg_mgmt_addr),            // 10-bit
-    .probe35(cfg_mgmt_read),            // 1-bit
-    .probe36(cfg_mgmt_read_data),       // 32-bit
-    .probe37(cfg_mgmt_write),           // 1-bit
-    .probe38(cfg_mgmt_write_data),      // 32-bit
-    .probe39(cfg_mgmt_read_write_done)  // 1-bit
+    .clk(user_clk),             // input clk
+    .probe0(cfg_ltssm_state_q),   // 6-bit
+    .probe1(user_lnk_up_q),       // 1-bit
+    .probe2(m_axis_rc_tdata_q),   // 128-bit
+    .probe3(m_axis_rc_tkeep_q),   // 4-bit
+    .probe4(m_axis_rc_tlast_q),   
+    .probe5(m_axis_rc_tvalid_q),
+    .probe6(m_axis_rc_tready_q),
+    .probe7(m_axis_rc_tuser_q),   // 75-bit
+    .probe8(s_axis_rq_tdata_q),   // 128-bit
+    .probe9(s_axis_rq_tkeep_q),   // 4-bit
+    .probe10(s_axis_rq_tlast_q),
+    .probe11(s_axis_rq_tvalid_q),
+    .probe12(s_axis_rq_tready_q),
+    .probe13(s_axis_rq_tuser_q),  // 62-bit
+    .probe14(m_axis_cq_tdata_q),  // 128-bit
+    .probe15(m_axis_cq_tkeep_q),  // 4-bit
+    .probe16(m_axis_cq_tlast_q),  // 1-bit
+    .probe17(m_axis_cq_tready_q), // 1-bit
+    .probe18(m_axis_cq_tuser_q),  // 88-bit
+    .probe19(m_axis_cq_tvalid_q), // 1-bit
+    .probe20(s_axis_cc_tdata_q),  // 128-bit
+    .probe21(s_axis_cc_tkeep_q),  // 4-bit
+    .probe22(s_axis_cc_tlast_q),  
+    .probe23(s_axis_cc_tvalid_q),
+    .probe24(s_axis_cc_tready_q),
+    .probe25(s_axis_cc_tuser_q),  // 33-bit
+    .probe26(cfg_done_q),         // 1-bit
+    .probe27(start_config_q),     // 1-bit
+    .probe28(cfg_state_q),        // 5-bit
+    .probe29(ctl_state_q),        // 4-bit
+    .probe30(db_state_q)          // 4-bit
   );
 
 

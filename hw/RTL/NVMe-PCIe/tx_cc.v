@@ -57,8 +57,10 @@ module tx_cc #(
       if(s_axis_cc_tready) begin
         case(cc_state)
           ST_IDLE: begin
-            send_cmd_done <= 1'b0;
-            if(send_cmd) cc_state <= ST_CMD_DES;
+            if(send_cmd) begin
+              send_cmd_done <= 1'b0;
+              cc_state <= ST_CMD_DES;
+            end
           end
 
           ST_CMD_DES: begin

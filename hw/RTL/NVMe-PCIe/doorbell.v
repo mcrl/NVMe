@@ -5,24 +5,20 @@ module doorbell #(
   parameter        C_DATA_WIDTH           = 128,
   parameter        KEEP_WIDTH             = C_DATA_WIDTH / 32
 ) (
-
   // System Interface
-  
-  input                 user_clk,
-  input                 user_reset,
-  input                 user_lnk_up,
+  input                                 user_clk,
+  input                                 user_reset,
+  input                                 user_lnk_up,
 
   // Controller Interface
-
-  input         write_sqtdbl,
-  input [63:0]  sqt_addr,
-  input         write_cqhdbl,
-  input [63:0]  cqh_addr,
-  output reg    write_sqtdbl_done,
-  output reg    write_cqhdbl_done,
+  input                                 write_sqtdbl,
+  input [63:0]                          sqt_addr,
+  input                                 write_cqhdbl,
+  input [63:0]                          cqh_addr,
+  output reg                            write_sqtdbl_done,
+  output reg                            write_cqhdbl_done,
 
   // PCIe Arbiter AXIS Interface
-
   output reg        [C_DATA_WIDTH-1:0]  s_axis_rq_tdata,
   output reg [AXI4_RQ_TUSER_WIDTH-1:0]  s_axis_rq_tuser,
   output reg          [KEEP_WIDTH-1:0]  s_axis_rq_tkeep,
@@ -31,8 +27,7 @@ module doorbell #(
   input                     [3:0]       s_axis_rq_tready,
 
   // for Debugging
-  output reg [3:0] db_state,
-  output reg is_sq
+  output reg [3:0]                      db_state
 );
 
   `include "constants.h"
@@ -42,18 +37,13 @@ module doorbell #(
   localparam [3:0] ST_DB_WRITE2 = 4'd2;
   localparam [3:0] ST_DB_DONE   = 4'd3;
 
-/*
-  reg [3:0] db_state;
-  reg is_sq;
-*/
-
-  reg                   [C_DATA_WIDTH-1:0]     s_axis_rq_tdata_d;
-  reg                     [KEEP_WIDTH-1:0]     s_axis_rq_tkeep_d;
-  reg            [AXI4_RQ_TUSER_WIDTH-1:0]     s_axis_rq_tuser_d;
-  reg                                          s_axis_rq_tlast_d;
-  reg                                          s_axis_rq_tvalid_d;
-  reg                                          write_sqtdbl_done_d;
-  reg                                          write_cqhdbl_done_d;
+  reg         [C_DATA_WIDTH-1:0]     s_axis_rq_tdata_d;
+  reg           [KEEP_WIDTH-1:0]     s_axis_rq_tkeep_d;
+  reg  [AXI4_RQ_TUSER_WIDTH-1:0]     s_axis_rq_tuser_d;
+  reg                                s_axis_rq_tlast_d;
+  reg                                s_axis_rq_tvalid_d;
+  reg                                write_sqtdbl_done_d;
+  reg                                write_cqhdbl_done_d;
 
 
 
