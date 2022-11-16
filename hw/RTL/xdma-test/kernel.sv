@@ -112,26 +112,29 @@ module kernel (
 localparam MAGIC_AWID = 1;
 localparam MAGIC_ARID = 2;
 
-logic        k2o_aw_fifo_rvalid;
-logic [63:0] k2o_aw_fifo_rdata;
-logic        k2o_aw_fifo_rready;
-logic        k2o_aw_fifo_wvalid;
-logic [63:0] k2o_aw_fifo_wdata;
-logic        k2o_aw_fifo_wready;
+localparam K2O_AW_FIFO_WIDTH = 3 + 64; // awsize, awaddr
+logic                             k2o_aw_fifo_rvalid;
+logic [K2O_AW_FIFO_WIDTH - 1 : 0] k2o_aw_fifo_rdata;
+logic                             k2o_aw_fifo_rready;
+logic                             k2o_aw_fifo_wvalid;
+logic [K2O_AW_FIFO_WIDTH - 1 : 0] k2o_aw_fifo_wdata;
+logic                             k2o_aw_fifo_wready;
 
-logic         k2o_w_fifo_rvalid;
-logic [127:0] k2o_w_fifo_rdata;
-logic         k2o_w_fifo_rready;
-logic         k2o_w_fifo_wvalid;
-logic [127:0] k2o_w_fifo_wdata;
-logic         k2o_w_fifo_wready;
+localparam K2O_W_FIFO_WIDTH = 16 + 128; // wstrb, wdata
+logic                            k2o_w_fifo_rvalid;
+logic [K2O_W_FIFO_WIDTH - 1 : 0] k2o_w_fifo_rdata;
+logic                            k2o_w_fifo_rready;
+logic                            k2o_w_fifo_wvalid;
+logic [K2O_W_FIFO_WIDTH - 1 : 0] k2o_w_fifo_wdata;
+logic                            k2o_w_fifo_wready;
 
-logic        k2o_ar_fifo_rvalid;
-logic [63:0] k2o_ar_fifo_rdata;
-logic        k2o_ar_fifo_rready;
-logic        k2o_ar_fifo_wvalid;
-logic [63:0] k2o_ar_fifo_wdata;
-logic        k2o_ar_fifo_wready;
+localparam K2O_AR_FIFO_WIDTH = 3 + 64; // arsize, araddr
+logic                             k2o_ar_fifo_rvalid;
+logic [K2O_AR_FIFO_WIDTH - 1 : 0] k2o_ar_fifo_rdata;
+logic                             k2o_ar_fifo_rready;
+logic                             k2o_ar_fifo_wvalid;
+logic [K2O_AR_FIFO_WIDTH - 1 : 0] k2o_ar_fifo_wdata;
+logic                             k2o_ar_fifo_wready;
 
 localparam K2O_B_FIFO_WIDTH = 4 + 2; // id, resp
 logic                            k2o_b_fifo_rvalid;
@@ -149,7 +152,7 @@ logic                            k2o_r_fifo_wvalid;
 logic [K2O_R_FIFO_WIDTH - 1 : 0] k2o_r_fifo_wdata;
 logic                            k2o_r_fifo_wready;
 
-localparam O2K_AW_FIFO_WIDTH = 4 + 8 + 64; // id, len, addr
+localparam O2K_AW_FIFO_WIDTH = 4 + 8 + 3 + 64; // id, len, size, addr
 logic                             o2k_aw_fifo_rvalid;
 logic [O2K_AW_FIFO_WIDTH - 1 : 0] o2k_aw_fifo_rdata;
 logic                             o2k_aw_fifo_rready;
@@ -157,14 +160,15 @@ logic                             o2k_aw_fifo_wvalid;
 logic [O2K_AW_FIFO_WIDTH - 1 : 0] o2k_aw_fifo_wdata;
 logic                             o2k_aw_fifo_wready;
 
-logic         o2k_w_fifo_rvalid;
-logic [127:0] o2k_w_fifo_rdata;
-logic         o2k_w_fifo_rready;
-logic         o2k_w_fifo_wvalid;
-logic [127:0] o2k_w_fifo_wdata;
-logic         o2k_w_fifo_wready;
+localparam O2K_W_FIFO_WIDTH = 16 + 128; // strb, data
+logic                            o2k_w_fifo_rvalid;
+logic [O2K_W_FIFO_WIDTH - 1 : 0] o2k_w_fifo_rdata;
+logic                            o2k_w_fifo_rready;
+logic                            o2k_w_fifo_wvalid;
+logic [O2K_W_FIFO_WIDTH - 1 : 0] o2k_w_fifo_wdata;
+logic                            o2k_w_fifo_wready;
 
-localparam O2K_AR_FIFO_WIDTH = 4 + 8 + 64; // id, len, addr
+localparam O2K_AR_FIFO_WIDTH = 4 + 8 + 3 + 64; // id, len, size, addr
 logic                             o2k_ar_fifo_rvalid;
 logic [O2K_AR_FIFO_WIDTH - 1 : 0] o2k_ar_fifo_rdata;
 logic                             o2k_ar_fifo_rready;
@@ -189,6 +193,7 @@ logic [O2K_R_FIFO_WIDTH -  1: 0] o2k_r_fifo_wdata;
 logic                            o2k_r_fifo_wready;
 
 logic [255 : 0] data;
+logic ocu_rstn_sw;
 
 always_ff @(posedge clk, negedge rstn) begin
   if (~rstn) begin
@@ -201,6 +206,7 @@ always_ff @(posedge clk, negedge rstn) begin
     o2k_w_fifo_rready <= 0;
     o2k_ar_fifo_rready <= 0;
     ocu_rstn <= 0;
+    ocu_rstn_sw <= 1;
   end else begin
     k2o_aw_fifo_wvalid <= 0;
     k2o_w_fifo_wvalid <= 0;
@@ -210,84 +216,85 @@ always_ff @(posedge clk, negedge rstn) begin
     o2k_aw_fifo_rready <= 0;
     o2k_w_fifo_rready <= 0;
     o2k_ar_fifo_rready <= 0;
-    if (host_we != 0) begin
-      if          (host_addr == 'h00 / 4) begin
+    ocu_rstn <= ocu_rstn_sw;
+    if (host_en && host_we != 0) begin
+      if          (host_addr == 'h00) begin
         data[0 * 32 +: 32] <= host_din;
-      end else if (host_addr == 'h04 / 4) begin
+      end else if (host_addr == 'h04) begin
         data[1 * 32 +: 32] <= host_din;
-      end else if (host_addr == 'h08 / 4) begin
+      end else if (host_addr == 'h08) begin
         data[2 * 32 +: 32] <= host_din;
-      end else if (host_addr == 'h0c / 4) begin
+      end else if (host_addr == 'h0c) begin
         data[3 * 32 +: 32] <= host_din;
-      end else if (host_addr == 'h10 / 4) begin
+      end else if (host_addr == 'h10) begin
         data[4 * 32 +: 32] <= host_din;
-      end else if (host_addr == 'h14 / 4) begin
+      end else if (host_addr == 'h14) begin
         data[5 * 32 +: 32] <= host_din;
-      end else if (host_addr == 'h18 / 4) begin
+      end else if (host_addr == 'h18) begin
         data[6 * 32 +: 32] <= host_din;
-      end else if (host_addr == 'h1c / 4) begin
+      end else if (host_addr == 'h1c) begin
         data[7 * 32 +: 32] <= host_din;
-      end else if (host_addr == 'h20 / 4) begin
+      end else if (host_addr == 'h20) begin
         k2o_aw_fifo_wvalid <= 1;
         k2o_aw_fifo_wdata <= data;
-      end else if (host_addr == 'h30 / 4) begin
+      end else if (host_addr == 'h30) begin
         k2o_w_fifo_wvalid <= 1;
         k2o_w_fifo_wdata <= data;
-      end else if (host_addr == 'h40 / 4) begin
+      end else if (host_addr == 'h40) begin
         k2o_ar_fifo_wvalid <= 1;
         k2o_ar_fifo_wdata <= data;
-      end else if (host_addr == 'h54 / 4) begin
+      end else if (host_addr == 'h54) begin
         k2o_b_fifo_rready <= 1;
         data <= k2o_b_fifo_rdata;
-      end else if (host_addr == 'h64 / 4) begin
+      end else if (host_addr == 'h64) begin
         k2o_r_fifo_rready <= 1;
         data <= k2o_r_fifo_rdata;
-      end else if (host_addr == 'h74 / 4) begin
+      end else if (host_addr == 'h74) begin
         o2k_aw_fifo_rready <= 1;
         data <= o2k_aw_fifo_rdata;
-      end else if (host_addr == 'h84 / 4) begin
+      end else if (host_addr == 'h84) begin
         o2k_w_fifo_rready <= 1;
         data <= o2k_w_fifo_rdata;
-      end else if (host_addr == 'h94 / 4) begin
+      end else if (host_addr == 'h94) begin
         o2k_ar_fifo_rready <= 1;
         data <= o2k_ar_fifo_rdata;
-      end else if (host_addr == 'ha0 / 4) begin
+      end else if (host_addr == 'ha0) begin
         o2k_b_fifo_wvalid <= 1;
         o2k_b_fifo_wdata <= data;
-      end else if (host_addr == 'hb0 / 4) begin
+      end else if (host_addr == 'hb0) begin
         o2k_r_fifo_wvalid <= 1;
         o2k_r_fifo_wdata <= data;
-      end else if (host_addr == 'hc0 / 4) begin
-        ocu_rstn <= 1;
-      end else if (host_addr == 'hc4 / 4) begin
-        ocu_rstn <= 0;
+      end else if (host_addr == 'hc0) begin
+        ocu_rstn_sw <= 0;
+      end else if (host_addr == 'hc4) begin
+        ocu_rstn_sw <= 1;
       end
     end else begin
-      if          (host_addr == 'h00 / 4) begin
+      if          (host_addr == 'h00) begin
         host_dout <= data[0 * 32 +: 32];
-      end else if (host_addr == 'h04 / 4) begin
+      end else if (host_addr == 'h04) begin
         host_dout <= data[1 * 32 +: 32];
-      end else if (host_addr == 'h08 / 4) begin
+      end else if (host_addr == 'h08) begin
         host_dout <= data[2 * 32 +: 32];
-      end else if (host_addr == 'h0c / 4) begin
+      end else if (host_addr == 'h0c) begin
         host_dout <= data[3 * 32 +: 32];
-      end else if (host_addr == 'h10 / 4) begin
+      end else if (host_addr == 'h10) begin
         host_dout <= data[4 * 32 +: 32];
-      end else if (host_addr == 'h14 / 4) begin
+      end else if (host_addr == 'h14) begin
         host_dout <= data[5 * 32 +: 32];
-      end else if (host_addr == 'h18 / 4) begin
+      end else if (host_addr == 'h18) begin
         host_dout <= data[6 * 32 +: 32];
-      end else if (host_addr == 'h1c / 4) begin
+      end else if (host_addr == 'h1c) begin
         host_dout <= data[7 * 32 +: 32];
-      end else if (host_addr == 'h50 / 4) begin
+      end else if (host_addr == 'h50) begin
         host_dout <= k2o_b_fifo_rvalid;
-      end else if (host_addr == 'h60 / 4) begin
+      end else if (host_addr == 'h60) begin
         host_dout <= k2o_r_fifo_rvalid;
-      end else if (host_addr == 'h70 / 4) begin
+      end else if (host_addr == 'h70) begin
         host_dout <= o2k_aw_fifo_rvalid;
-      end else if (host_addr == 'h80 / 4) begin
+      end else if (host_addr == 'h80) begin
         host_dout <= o2k_w_fifo_rvalid;
-      end else if (host_addr == 'h90 / 4) begin
+      end else if (host_addr == 'h90) begin
         host_dout <= o2k_ar_fifo_rvalid;
       end
     end
@@ -295,7 +302,7 @@ always_ff @(posedge clk, negedge rstn) begin
 end
 
 fifo_bp #(
-  .DATA_WIDTH(64),
+  .DATA_WIDTH(K2O_AW_FIFO_WIDTH),
   .LOG2_DEPTH($clog2(512))
 ) k2o_aw_fifo (
   .clk(clk),
@@ -310,7 +317,7 @@ fifo_bp #(
 
 always_comb begin
   // except awburst/awlen/awsize, default is 0
-  k2o_awaddr = k2o_aw_fifo_rdata;
+  {k2o_awsize, k2o_awaddr} = k2o_aw_fifo_rdata;
   k2o_awburst = 1; // INCR
   k2o_awcache = 0;
   k2o_awid = MAGIC_AWID;
@@ -319,12 +326,11 @@ always_comb begin
   k2o_awprot = 0;
   k2o_awqos = 0;
   k2o_aw_fifo_rready = k2o_awready;
-  k2o_awsize = 4; // 16B = 128b
   k2o_awvalid = k2o_aw_fifo_rvalid;
 end
 
 fifo_bp #(
-  .DATA_WIDTH(128),
+  .DATA_WIDTH(K2O_W_FIFO_WIDTH),
   .LOG2_DEPTH($clog2(512))
 ) k2o_w_fifo (
   .clk(clk),
@@ -338,15 +344,14 @@ fifo_bp #(
 );
 
 always_comb begin
-  k2o_wdata = k2o_w_fifo_rdata;
+  {k2o_wstrb, k2o_wdata} = k2o_w_fifo_rdata;
   k2o_wlast = 1;
   k2o_w_fifo_rready = k2o_wready;
-  k2o_wstrb = '1;
   k2o_wvalid = k2o_w_fifo_rvalid;
 end
 
 fifo_bp #(
-  .DATA_WIDTH(64),
+  .DATA_WIDTH(K2O_AR_FIFO_WIDTH),
   .LOG2_DEPTH($clog2(512))
 ) k2o_ar_fifo (
   .clk(clk),
@@ -361,7 +366,7 @@ fifo_bp #(
 
 always_comb begin
   // except arburst/arlen/arsize, default is 0
-  k2o_araddr = k2o_ar_fifo_rdata;
+  {k2o_arsize, k2o_araddr} = k2o_ar_fifo_rdata;
   k2o_arburst = 1; // INCR
   k2o_arcache = 0;
   k2o_arid = MAGIC_ARID;
@@ -370,7 +375,6 @@ always_comb begin
   k2o_arprot = 0;
   k2o_arqos = 0;
   k2o_ar_fifo_rready = k2o_arready;
-  k2o_arsize = 4; // 16B = 128b
   k2o_arvalid = k2o_ar_fifo_rvalid;
 end
 
@@ -430,12 +434,12 @@ fifo_bp #(
 
 always_comb begin
   o2k_aw_fifo_wvalid = o2k_awvalid;
-  o2k_aw_fifo_wdata = {o2k_awid, o2k_awlen, o2k_awaddr};
+  o2k_aw_fifo_wdata = {o2k_awid, o2k_awlen, o2k_awsize, o2k_awaddr};
   o2k_awready = o2k_aw_fifo_wready;
 end
 
 fifo_bp #(
-  .DATA_WIDTH(128),
+  .DATA_WIDTH(O2K_W_FIFO_WIDTH),
   .LOG2_DEPTH($clog2(512))
 ) o2k_w_fifo (
   .clk(clk),
@@ -450,7 +454,7 @@ fifo_bp #(
 
 always_comb begin
   o2k_w_fifo_wvalid = o2k_wvalid;
-  o2k_w_fifo_wdata = o2k_wdata;
+  o2k_w_fifo_wdata = {o2k_wstrb, o2k_wdata};
   o2k_wready = o2k_w_fifo_wready;
 end
 
@@ -470,7 +474,7 @@ fifo_bp #(
 
 always_comb begin
   o2k_ar_fifo_wvalid = o2k_arvalid;
-  o2k_ar_fifo_wdata = {o2k_arid, o2k_arlen, o2k_araddr};
+  o2k_ar_fifo_wdata = {o2k_arid, o2k_arlen, o2k_arsize, o2k_araddr};
   o2k_arready = o2k_ar_fifo_wready;
 end
 
