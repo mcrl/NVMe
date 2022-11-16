@@ -97,4 +97,6 @@ else
 	exit 1
 fi
 
+chmod 777 /dev/xdma0_user
+
 echo "DONE"
