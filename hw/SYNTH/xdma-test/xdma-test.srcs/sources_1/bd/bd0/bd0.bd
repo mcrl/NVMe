@@ -40,7 +40,8 @@
       "axi_clock_converter_0": "",
       "axi_clock_converter_1": "",
       "system_ila_2": "",
-      "proc_sys_reset_0": ""
+      "proc_sys_reset_0": "",
+      "system_ila_3": ""
     },
     "interface_ports": {
       "pcie_mgt": {
@@ -627,8 +628,11 @@
           "pcie_blk_locn": {
             "value": "X0Y3"
           },
+          "pf0_bar0_64bit": {
+            "value": "true"
+          },
           "pf0_bar0_enabled": {
-            "value": "false"
+            "value": "true"
           },
           "pf0_bar0_type_mqdma": {
             "value": "Memory"
@@ -1666,6 +1670,29 @@
         "xci_name": "bd0_proc_sys_reset_0_0",
         "xci_path": "ip\\bd0_proc_sys_reset_0_0\\bd0_proc_sys_reset_0_0.xci",
         "inst_hier_path": "proc_sys_reset_0"
+      },
+      "system_ila_3": {
+        "vlnv": "xilinx.com:ip:system_ila:1.1",
+        "xci_name": "bd0_system_ila_3_0",
+        "xci_path": "ip\\bd0_system_ila_3_0\\bd0_system_ila_3_0.xci",
+        "inst_hier_path": "system_ila_3",
+        "parameters": {
+          "C_NUM_MONITOR_SLOTS": {
+            "value": "2"
+          }
+        },
+        "interface_ports": {
+          "SLOT_0_AXI": {
+            "mode": "Monitor",
+            "vlnv_bus_definition": "xilinx.com:interface:aximm:1.0",
+            "vlnv": "xilinx.com:interface:aximm_rtl:1.0"
+          },
+          "SLOT_1_AXI": {
+            "mode": "Monitor",
+            "vlnv_bus_definition": "xilinx.com:interface:aximm:1.0",
+            "vlnv": "xilinx.com:interface:aximm_rtl:1.0"
+          }
+        }
       }
     },
     "interface_nets": {
@@ -1718,7 +1745,8 @@
       "axi_interconnect_0_M00_AXI": {
         "interface_ports": [
           "ocu0_master",
-          "axi_interconnect_0/M00_AXI"
+          "axi_interconnect_0/M00_AXI",
+          "system_ila_3/SLOT_0_AXI"
         ]
       },
       "axi_interconnect_1_M00_AXI": {
@@ -1744,7 +1772,8 @@
       "ocu0_slave_1": {
         "interface_ports": [
           "ocu0_slave",
-          "axi_interconnect_1/S00_AXI"
+          "axi_interconnect_1/S00_AXI",
+          "system_ila_3/SLOT_1_AXI"
         ]
       },
       "xdma_0_M_AXI": {
@@ -1808,7 +1837,8 @@
           "axi_interconnect_1/S00_ACLK",
           "axi_interconnect_0/M00_ACLK",
           "system_ila_2/clk",
-          "proc_sys_reset_0/slowest_sync_clk"
+          "proc_sys_reset_0/slowest_sync_clk",
+          "system_ila_3/clk"
         ]
       },
       "proc_sys_reset_0_interconnect_aresetn": {
@@ -1820,7 +1850,8 @@
           "axi_bram_ctrl_0/s_axi_aresetn",
           "usr_rstn",
           "axi_interconnect_0/M00_ARESETN",
-          "axi_interconnect_1/S00_ARESETN"
+          "axi_interconnect_1/S00_ARESETN",
+          "system_ila_3/resetn"
         ]
       },
       "reset_rtl_0_1": {
@@ -1887,14 +1918,14 @@
             "segments": {
               "SEG_xdma_1_BAR0": {
                 "address_block": "/xdma_1/S_AXI_B/BAR0",
-                "offset": "0x0000000100000000",
+                "offset": "0x0000000000000000",
                 "range": "4G",
                 "offset_base_param": "axibar_0",
                 "offset_high_param": "axibar_highaddr_0"
               },
               "SEG_xdma_1_CTL0": {
                 "address_block": "/xdma_1/S_AXI_LITE/CTL0",
-                "offset": "0x0000000000000000",
+                "offset": "0x0000000100000000",
                 "range": "4G",
                 "offset_base_param": "baseaddr",
                 "offset_high_param": "highaddr"

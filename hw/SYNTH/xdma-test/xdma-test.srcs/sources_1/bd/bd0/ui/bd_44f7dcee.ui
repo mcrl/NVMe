@@ -7,7 +7,7 @@
    "Color Coded_TopLeft":"-287,-165",
    "Default View_Layers":"/xdma_0_axi_aresetn:true|/util_ds_buf_IBUF_OUT:true|/util_ds_buf_IBUF_DS_ODIV2:true|/xdma_0_axi_aclk:true|/reset_rtl_0_1:true|",
    "Default View_ScaleFactor":"0.967169",
-   "Default View_TopLeft":"-179,-357",
+   "Default View_TopLeft":"-247,2",
    "Display-PortTypeClock":"true",
    "Display-PortTypeReset":"true",
    "ExpandedHierarchyInLayout":"",
@@ -23,63 +23,64 @@
    "Reduced Jogs_TopLeft":"-242,-160",
    "guistr":"# # String gsaved with Nlview 7.0r6  2020-01-29 bk=1.5227 VDI=41 GEI=36 GUI=JA:10.0 non-TLS
 #  -string -flagsOSRD
-preplace port pcie_mgt -pg 1 -lvl 6 -x 1730 -y 170 -defaultsOSRD
-preplace port host_bram -pg 1 -lvl 6 -x 1730 -y 40 -defaultsOSRD
-preplace port ocu0_data -pg 1 -lvl 6 -x 1730 -y 660 -defaultsOSRD
-preplace port ocu0_master -pg 1 -lvl 6 -x 1730 -y 630 -defaultsOSRD
-preplace port ocu0_slave -pg 1 -lvl 0 -x -80 -y 510 -defaultsOSRD
-preplace port pcie_refclk -pg 1 -lvl 0 -x -80 -y 20 -defaultsOSRD
-preplace port ocu0_refclk -pg 1 -lvl 0 -x -80 -y 350 -defaultsOSRD
-preplace port port-id_pcie_perstn -pg 1 -lvl 0 -x -80 -y 50 -defaultsOSRD
-preplace port port-id_ocu0_rstn -pg 1 -lvl 0 -x -80 -y 750 -defaultsOSRD
-preplace port port-id_usr_clk -pg 1 -lvl 6 -x 1730 -y 210 -defaultsOSRD
-preplace portBus usr_rstn -pg 1 -lvl 6 -x 1730 -y -240 -defaultsOSRD
-preplace inst xdma_0 -pg 1 -lvl 2 -x 480 -y -50 -defaultsOSRD
-preplace inst util_ds_buf -pg 1 -lvl 1 -x 120 -y -10 -defaultsOSRD
-preplace inst axi_bram_ctrl_0 -pg 1 -lvl 4 -x 1270 -y -110 -defaultsOSRD
-preplace inst system_ila_0 -pg 1 -lvl 5 -x 1590 -y -580 -defaultsOSRD
-preplace inst axi_bram_ctrl_1 -pg 1 -lvl 4 -x 1270 -y -300 -defaultsOSRD
-preplace inst axi_bram_ctrl_1_bram -pg 1 -lvl 5 -x 1590 -y -350 -defaultsOSRD
-preplace inst xdma_1 -pg 1 -lvl 3 -x 850 -y 300 -defaultsOSRD
-preplace inst util_ds_buf_0 -pg 1 -lvl 2 -x 480 -y 350 -defaultsOSRD
-preplace inst axi_interconnect_0 -pg 1 -lvl 4 -x 1270 -y 380 -defaultsOSRD
-preplace inst axi_interconnect_1 -pg 1 -lvl 2 -x 480 -y 590 -defaultsOSRD
-preplace inst system_ila_1 -pg 1 -lvl 4 -x 1270 -y 810 -defaultsOSRD
-preplace inst clk_wiz_0 -pg 1 -lvl 4 -x 1270 -y 40 -defaultsOSRD
-preplace inst axi_clock_converter_0 -pg 1 -lvl 3 -x 850 -y -400 -defaultsOSRD
-preplace inst axi_clock_converter_1 -pg 1 -lvl 3 -x 850 -y -190 -defaultsOSRD
-preplace inst system_ila_2 -pg 1 -lvl 5 -x 1590 -y -150 -defaultsOSRD
-preplace inst proc_sys_reset_0 -pg 1 -lvl 4 -x 1270 -y 180 -defaultsOSRD
-preplace netloc S00_ACLK_1 1 1 3 310 820 N 820 1020
-preplace netloc S00_ARESETN_1 1 1 3 320 830 N 830 1010
-preplace netloc clk_wiz_0_clk_out1 1 1 5 290 -200 690 -300 1060 -20 1460J 210 N
-preplace netloc reset_rtl_0_1 1 0 2 -60J -80 260
-preplace netloc sys_rst_n_0_1 1 0 3 -50J 450 N 450 690J
-preplace netloc util_ds_buf_0_IBUF_DS_ODIV2 1 2 1 640 300n
-preplace netloc util_ds_buf_0_IBUF_OUT 1 2 1 660 320n
-preplace netloc util_ds_buf_IBUF_DS_ODIV2 1 1 1 270 -70n
-preplace netloc util_ds_buf_IBUF_OUT 1 1 1 280 -50n
-preplace netloc xdma_0_axi_aclk1 1 2 3 670 -510 1070 -570 N
-preplace netloc xdma_0_axi_aresetn1 1 2 3 680 -500 1080 -550 N
-preplace netloc proc_sys_reset_0_interconnect_aresetn 1 1 5 300 -190 650 -290 1050J -190 1450 -240 N
+preplace port pcie_mgt -pg 1 -lvl 6 -x 1770 -y 170 -defaultsOSRD
+preplace port host_bram -pg 1 -lvl 6 -x 1770 -y 40 -defaultsOSRD
+preplace port ocu0_data -pg 1 -lvl 6 -x 1770 -y 660 -defaultsOSRD
+preplace port ocu0_master -pg 1 -lvl 6 -x 1770 -y 630 -defaultsOSRD
+preplace port ocu0_slave -pg 1 -lvl 0 -x -100 -y 500 -defaultsOSRD
+preplace port pcie_refclk -pg 1 -lvl 0 -x -100 -y 20 -defaultsOSRD
+preplace port ocu0_refclk -pg 1 -lvl 0 -x -100 -y 350 -defaultsOSRD
+preplace port port-id_pcie_perstn -pg 1 -lvl 0 -x -100 -y 50 -defaultsOSRD
+preplace port port-id_ocu0_rstn -pg 1 -lvl 0 -x -100 -y 750 -defaultsOSRD
+preplace port port-id_usr_clk -pg 1 -lvl 6 -x 1770 -y 210 -defaultsOSRD
+preplace portBus usr_rstn -pg 1 -lvl 6 -x 1770 -y -240 -defaultsOSRD
+preplace inst xdma_0 -pg 1 -lvl 2 -x 460 -y -50 -defaultsOSRD
+preplace inst util_ds_buf -pg 1 -lvl 1 -x 100 -y -10 -defaultsOSRD
+preplace inst axi_bram_ctrl_0 -pg 1 -lvl 4 -x 1260 -y -110 -defaultsOSRD
+preplace inst system_ila_0 -pg 1 -lvl 5 -x 1610 -y -580 -defaultsOSRD
+preplace inst axi_bram_ctrl_1 -pg 1 -lvl 4 -x 1260 -y -300 -defaultsOSRD
+preplace inst axi_bram_ctrl_1_bram -pg 1 -lvl 5 -x 1610 -y -350 -defaultsOSRD
+preplace inst xdma_1 -pg 1 -lvl 3 -x 830 -y 300 -defaultsOSRD
+preplace inst util_ds_buf_0 -pg 1 -lvl 2 -x 460 -y 350 -defaultsOSRD
+preplace inst axi_interconnect_0 -pg 1 -lvl 4 -x 1260 -y 380 -defaultsOSRD
+preplace inst axi_interconnect_1 -pg 1 -lvl 2 -x 460 -y 580 -defaultsOSRD
+preplace inst system_ila_1 -pg 1 -lvl 4 -x 1260 -y 810 -defaultsOSRD
+preplace inst clk_wiz_0 -pg 1 -lvl 4 -x 1260 -y 40 -defaultsOSRD
+preplace inst axi_clock_converter_0 -pg 1 -lvl 3 -x 830 -y -400 -defaultsOSRD
+preplace inst axi_clock_converter_1 -pg 1 -lvl 3 -x 830 -y -190 -defaultsOSRD
+preplace inst system_ila_2 -pg 1 -lvl 5 -x 1610 -y -150 -defaultsOSRD
+preplace inst proc_sys_reset_0 -pg 1 -lvl 4 -x 1260 -y 180 -defaultsOSRD
+preplace inst system_ila_3 -pg 1 -lvl 1 -x 100 -y 780 -defaultsOSRD
+preplace netloc S00_ACLK_1 1 1 3 290 720 630 1500 1000
+preplace netloc S00_ARESETN_1 1 1 3 300 730 620 1510 990
+preplace netloc clk_wiz_0_clk_out1 1 0 6 -40 690 280 -190 640 -300 1060 -190 1430J 210 N
+preplace netloc proc_sys_reset_0_interconnect_aresetn 1 0 6 -60 680 240 -200 670 -290 1040J -200 1440 -250 1750
+preplace netloc reset_rtl_0_1 1 0 2 -70J -80 250
+preplace netloc sys_rst_n_0_1 1 0 3 -70J 280 N 280 640J
+preplace netloc util_ds_buf_0_IBUF_DS_ODIV2 1 2 1 650 300n
+preplace netloc util_ds_buf_0_IBUF_OUT 1 2 1 620 320n
+preplace netloc util_ds_buf_IBUF_DS_ODIV2 1 1 1 260 -70n
+preplace netloc util_ds_buf_IBUF_OUT 1 1 1 270 -50n
+preplace netloc xdma_0_axi_aclk1 1 2 3 650 -510 1070 -570 N
+preplace netloc xdma_0_axi_aresetn1 1 2 3 660 -500 1080 -550 N
 preplace netloc CLK_IN_D_0_1 1 0 2 NJ 350 N
-preplace netloc S00_AXI_1 1 3 1 1040 230n
-preplace netloc axi_bram_ctrl_0_BRAM_PORTA 1 4 2 1470J 40 NJ
+preplace netloc S00_AXI_1 1 3 1 1030 230n
+preplace netloc axi_bram_ctrl_0_BRAM_PORTA 1 4 2 1450J -240 1740J
 preplace netloc axi_bram_ctrl_1_BRAM_PORTA 1 4 1 1460 -360n
 preplace netloc axi_bram_ctrl_1_BRAM_PORTB 1 4 1 1470 -340n
 preplace netloc axi_clock_converter_0_M_AXI 1 3 1 1060 -400n
-preplace netloc axi_clock_converter_1_M_AXI 1 3 1 1020 -190n
-preplace netloc axi_interconnect_0_M00_AXI 1 4 2 N 380 1710
-preplace netloc axi_interconnect_1_M00_AXI 1 2 2 670 770 N
-preplace netloc axi_interconnect_1_M01_AXI 1 2 2 680 810 N
+preplace netloc axi_clock_converter_1_M_AXI 1 3 1 1050 -190n
+preplace netloc axi_interconnect_0_M00_AXI 1 0 6 -50 440 N 440 N 440 1010 500 1450 630 N
+preplace netloc axi_interconnect_1_M00_AXI 1 2 2 660 770 N
+preplace netloc axi_interconnect_1_M01_AXI 1 2 2 670 810 N
 preplace netloc diff_clock_rtl_0_1 1 0 1 -50J -10n
-preplace netloc ocu0_slave_1 1 0 2 N 510 N
-preplace netloc xdma_0_M_AXI 1 2 3 640 -610 N -610 N
-preplace netloc xdma_0_M_AXI_LITE 1 2 3 660 -590 N -590 N
-preplace netloc xdma_0_pcie_mgt 1 2 4 690 -30 N -30 1440 170 N
-preplace netloc xdma_1_pcie_mgt 1 3 3 1030 660 NJ 660 NJ
-levelinfo -pg 1 -80 120 480 850 1270 1590 1730
-pagesize -pg 1 -db -bbox -sgen -210 -740 1860 910
+preplace netloc ocu0_slave_1 1 0 2 -80 500 N
+preplace netloc xdma_0_M_AXI 1 2 3 620 -610 N -610 N
+preplace netloc xdma_0_M_AXI_LITE 1 2 3 630 -590 N -590 N
+preplace netloc xdma_0_pcie_mgt 1 2 4 670 -20 N -20 N -20 1730
+preplace netloc xdma_1_pcie_mgt 1 3 3 1020 660 NJ 660 NJ
+levelinfo -pg 1 -100 100 460 830 1260 1610 1770
+pagesize -pg 1 -db -bbox -sgen -230 -740 1900 1840
 "
 }
 {
