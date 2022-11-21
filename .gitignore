@@ -14,3 +14,11 @@ vivado_pid*.str
 
 # temporary files
 *.swp
+build
+*.o
+*.cmd
+*.symvers
+*.order
+*.ko
+*.mod
+*.mod.c
