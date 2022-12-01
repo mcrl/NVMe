@@ -1,7 +1,19 @@
+#include <cstdio>
 #include <cstdlib>
+#include <cassert>
 
 #include <suda_runtime.h>
 #include <suda.h>
+
+#define CHECK_SUDA(call)                                              \
+  do {                                                                \
+    sudaError_t status_ = call;                                       \
+    if (status_ != sudaSuccess) {                                     \
+      fprintf(stderr, "SUDA error (%s:%d): %s\n", __FILE__, __LINE__, \
+              sudaGetErrorString(status_));                           \
+      assert(false);                                                  \
+    }                                                                 \
+  } while (0)
 
 int main() {
   sudaDeviceReset();
@@ -35,6 +47,8 @@ int main() {
   suModuleLoad(&mod, "");
   suModuleGetFunction(&func, mod, "");
   suLaunchKernel(func, 1, 1, 1, 1, 1, 1, 0, 0, nullptr, nullptr);
+
+  CHECK_SUDA(sudaDeviceReset());
 
   return 0;
 }

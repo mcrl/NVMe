@@ -168,6 +168,8 @@ extern __host__ __sudart_builtin__ sudaError_t SUDARTAPI sudaMemcpyAsync(void *d
 extern __host__ __sudart_builtin__ sudaError_t SUDARTAPI sudaMalloc(void **devPtr, size_t size);
 extern __host__ __sudart_builtin__ sudaError_t SUDARTAPI sudaFree(void *devPtr);
 
+extern __host__ __sudart_builtin__ const char* SUDARTAPI sudaGetErrorString(sudaError_t error);
+
 #if defined(__cplusplus)
 }
 #endif /* __cplusplus */
