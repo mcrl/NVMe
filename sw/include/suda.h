@@ -107,6 +107,9 @@ SUresult SUDAAPI suModuleLoad(SUmodule *module, const char *fname);
 SUresult SUDAAPI suModuleGetFunction(SUfunction *hfunc, SUmodule hmod, const char *name);
 SUresult SUDAAPI suLaunchKernel(SUfunction f, unsigned int gridDimX, unsigned int gridDimY, unsigned int gridDimZ, unsigned int blockDimX, unsigned int blockDimY, unsigned int blockDimZ, unsigned int sharedMemBytes, SUstream hStream, void **kernelParams, void **extra);
 
+SUresult SUDAAPI suGetErrorName(SUresult error, const char **pStr);
+SUresult SUDAAPI suGetErrorString(SUresult error, const char **pStr);
+
 #if defined(__cplusplus)
 }
 #endif /* __cplusplus */
