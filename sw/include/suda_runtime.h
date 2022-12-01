@@ -4,7 +4,7 @@
 
 #define __host__
 #define __device_builtin__
-#define __cudart_builtin__
+#define __sudart_builtin__
 #define SUDARTAPI
 
 #if !defined(__dv)
@@ -20,7 +20,7 @@ enum __device_builtin__ sudaError {
   sudaErrorInvalidValue                 =     1,
   sudaErrorMemoryAllocation             =      2,
   sudaErrorInitializationError          =      3,
-  sudaErrorCudartUnloading              =     4,
+  sudaErrorSudartUnloading              =     4,
   sudaErrorProfilerDisabled             =     5,
   sudaErrorProfilerNotInitialized       =     6,
   sudaErrorProfilerAlreadyStarted       =     7,
@@ -160,13 +160,13 @@ extern "C" {
 #endif /* __cplusplus */
 
 extern __host__ sudaError_t SUDARTAPI sudaDeviceReset(void);
-extern __host__ __cudart_builtin__ sudaError_t SUDARTAPI sudaDeviceSynchronize(void);
+extern __host__ __sudart_builtin__ sudaError_t SUDARTAPI sudaDeviceSynchronize(void);
 
 extern __host__ sudaError_t SUDARTAPI sudaMemcpy(void *dst, const void *src, size_t count, enum sudaMemcpyKind kind);
-extern __host__ __cudart_builtin__ sudaError_t SUDARTAPI sudaMemcpyAsync(void *dst, const void *src, size_t count, enum sudaMemcpyKind kind, sudaStream_t stream __dv(0));
+extern __host__ __sudart_builtin__ sudaError_t SUDARTAPI sudaMemcpyAsync(void *dst, const void *src, size_t count, enum sudaMemcpyKind kind, sudaStream_t stream __dv(0));
 
-extern __host__ __cudart_builtin__ sudaError_t SUDARTAPI sudaMalloc(void **devPtr, size_t size);
-extern __host__ __cudart_builtin__ sudaError_t SUDARTAPI sudaFree(void *devPtr);
+extern __host__ __sudart_builtin__ sudaError_t SUDARTAPI sudaMalloc(void **devPtr, size_t size);
+extern __host__ __sudart_builtin__ sudaError_t SUDARTAPI sudaFree(void *devPtr);
 
 #if defined(__cplusplus)
 }

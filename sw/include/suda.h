@@ -103,9 +103,9 @@ typedef struct SUstream_st *SUstream;                        /**< suda stream */
 extern "C" {
 #endif /* __cplusplus */
 
-SUresult SUDAAPI cuModuleLoad(SUmodule *module, const char *fname);
-SUresult SUDAAPI cuModuleGetFunction(SUfunction *hfunc, SUmodule hmod, const char *name);
-SUresult SUDAAPI cuLaunchKernel(SUfunction f, unsigned int gridDimX, unsigned int gridDimY, unsigned int gridDimZ, unsigned int blockDimX, unsigned int blockDimY, unsigned int blockDimZ, unsigned int sharedMemBytes, SUstream hStream, void **kernelParams, void **extra);
+SUresult SUDAAPI suModuleLoad(SUmodule *module, const char *fname);
+SUresult SUDAAPI suModuleGetFunction(SUfunction *hfunc, SUmodule hmod, const char *name);
+SUresult SUDAAPI suLaunchKernel(SUfunction f, unsigned int gridDimX, unsigned int gridDimY, unsigned int gridDimZ, unsigned int blockDimX, unsigned int blockDimY, unsigned int blockDimZ, unsigned int sharedMemBytes, SUstream hStream, void **kernelParams, void **extra);
 
 #if defined(__cplusplus)
 }

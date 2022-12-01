@@ -1,0 +1,2 @@
+add_executable(TestSudaAPI TestSudaAPI.cpp)
+target_link_libraries(TestSudaAPI sudart)
