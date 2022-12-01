@@ -1,6 +1,7 @@
 #include <cstdlib>
 
 #include <suda_runtime.h>
+#include <suda.h>
 
 int main() {
   sudaDeviceReset();
@@ -28,6 +29,12 @@ int main() {
   free(h_b);
   sudaFree(d_a);
   sudaFree(d_b);
+
+  SUmodule mod;
+  SUfunction func;
+  suModuleLoad(&mod, "");
+  suModuleGetFunction(&func, mod, "");
+  suLaunchKernel(func, 1, 1, 1, 1, 1, 1, 0, 0, nullptr, nullptr);
 
   return 0;
 }

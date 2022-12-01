@@ -1,1 +1,0 @@
-add_library(sudart SHARED libsudart.cpp)
