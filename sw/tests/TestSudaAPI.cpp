@@ -15,6 +15,19 @@
     }                                                                 \
   } while (0)
 
+#define CHECK_SU(call)                                                  \
+  do {                                                                  \
+    SUresult status_ = call;                                            \
+    if (status_ != SUDA_SUCCESS) {                                      \
+      const char *name, *string;                                        \
+      suGetErrorName(status_, &name);                                   \
+      suGetErrorString(status_, &string);                               \
+      fprintf(stderr, "SU error (%s:%d): %s(%s)\n", __FILE__, __LINE__, \
+              name, string);                                            \
+      assert(false);                                                    \
+    }                                                                   \
+  } while (0)
+
 int main() {
   sudaDeviceReset();
 
@@ -48,6 +61,7 @@ int main() {
   suModuleGetFunction(&func, mod, "");
   suLaunchKernel(func, 1, 1, 1, 1, 1, 1, 0, 0, nullptr, nullptr);
 
+  CHECK_SU(suModuleLoad(&mod, ""));
   CHECK_SUDA(sudaDeviceReset());
 
   return 0;
