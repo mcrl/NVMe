@@ -1,4 +1,4 @@
-#include <suda_runtime_api.h>
+#include <suda_runtime.h>
 
 #include <spdlog/spdlog.h>
 
