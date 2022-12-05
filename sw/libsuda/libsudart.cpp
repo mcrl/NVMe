@@ -293,3 +293,8 @@ extern __host__ __sudart_builtin__ const char* SUDARTAPI sudaGetErrorString(suda
     default: return "<invalid error>";
   }
 }
+
+extern __host__ sudaError_t SUDARTAPI sudaMemset(void *devPtr, int value, size_t count) {
+  spdlog::warn("sudaMemset not implemented");
+  return sudaErrorUnknown;
+}

@@ -171,6 +171,8 @@ extern __host__ __sudart_builtin__ sudaError_t SUDARTAPI sudaFree(void *devPtr);
 extern __host__ __sudart_builtin__ const char* SUDARTAPI sudaGetErrorName(sudaError_t error);
 extern __host__ __sudart_builtin__ const char* SUDARTAPI sudaGetErrorString(sudaError_t error);
 
+extern __host__ sudaError_t SUDARTAPI sudaMemset(void *devPtr, int value, size_t count);
+
 #if defined(__cplusplus)
 }
 #endif /* __cplusplus */
