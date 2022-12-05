@@ -5,16 +5,35 @@
 #include <spdlog/spdlog.h>
 #include <vector>
 
+/*
+ * ATTENTION!
+ * Xilinx DMA IP seems to have a bug that only 32-bit is applied to C_AXIBAR. (Check xci file of xdma.)
+ * For example, even if you map 4G range starting at 0x1_0000_0000 to AXI of xdma in address editor,
+ * C_AXIBAR will become 0x0000_0000. (which is incorrect!) Then, if you send request at 0x1_0000_0000,
+ * it does not belong to [C_AXIBAR, C_AXIBAR + 4G) which result in DECERR on AXI.
+ * 
+ * Solution
+ * We mapped AXI of xdma to 4G range starting at 0 so that it resides in 32-bit address space.
+ * We mapped AXI-lite of xdma (for ecam) to 4G range starting at 4G.
+ */
 const size_t ecam_addr_base = 0x100000000UL;
-void* bar0base;
-size_t nvme_bar0;
+
+// We can map nvme bar to any 32-bit address; we just choose 0 here.
+const size_t nvme_bar0 = 0;
+
+// This will be determined during PCIe enumeration
+size_t nvme_bar0_size = 0;
+
+// This is bar0 of host-fpga PCIe (not internal PCIe for NVMe) in virtual address in userspace.
+// This should be set by mmap.
+void* fpga_bar0;
 
 void KernelWrite(size_t addr, uint32_t data) {
   if (addr % 4 != 0) {
     spdlog::warn("KernelWrite skipped due to unaligned access (addr={}, data={})", addr, data);
     exit(0);
   }
-  volatile uint32_t* p = (uint32_t*)((size_t)bar0base + addr);
+  volatile uint32_t* p = (uint32_t*)((size_t)fpga_bar0 + addr);
   *p = data;
 }
 
@@ -23,7 +42,7 @@ uint32_t KernelRead(size_t addr) {
     spdlog::warn("KernelRead skipped due to unaligned access (addr={})", addr);
     exit(0);
   }
-  volatile uint32_t* p = (uint32_t*)((size_t)bar0base + addr);
+  volatile uint32_t* p = (uint32_t*)((size_t)fpga_bar0 + addr);
   return *p;
 }
 
@@ -57,6 +76,10 @@ uint32_t OculinkRead32(size_t addr) {
   uint32_t rresp = KernelRead(0x10) & 0b11;
   uint32_t rid = (KernelRead(0x10) >> 2) & 0b1111;
   spdlog::info("OculinkRead addr=0x{:08X} -> rdata=0x{:08X}, rresp={}, rid={}", addr, rdata, rresp, rid);
+  if (rresp != 0) {
+    spdlog::info("Exit now due to error");
+    exit(0);
+  }
   return rdata;
 }
 
@@ -86,6 +109,10 @@ void OculinkWrite32(size_t addr, uint32_t data) {
   uint32_t bresp = KernelRead(0x00) & 0b11;
   uint32_t bid = (KernelRead(0x00) >> 2) & 0b1111;
   spdlog::info("OculinkWrite addr=0x{:08X}, data=0x{:08X} -> bresp={}, bid={}", addr, data, bresp, bid);
+  if (bresp != 0) {
+    spdlog::info("Exit now due to error");
+    exit(0);
+  }
 }
 
 void OculinkRespondWrite() {
@@ -254,63 +281,151 @@ int main(int argc, char** argv) {
 	spdlog::info("character device {} opened. fd={}", devname, fd);
 
   size_t bar0sz = 1024 * 1024; // 1MB
-	bar0base = mmap(NULL, bar0sz, PROT_READ | PROT_WRITE, MAP_SHARED, fd, 0);
-	if (bar0base == (void *)-1) {
+	fpga_bar0 = mmap(NULL, bar0sz, PROT_READ | PROT_WRITE, MAP_SHARED, fd, 0);
+	if (fpga_bar0 == (void *)-1) {
     spdlog::info("mmap failed: {}", strerror(errno));
     close(fd);
     return 0;
 	}
-  spdlog::info("mmap done. bar0base={}", bar0base);
+  spdlog::info("mmap done. fpga_bar0={}", fpga_bar0);
 
   AssertOcuReset();
   DeassertOcuReset();
 
+  // TODO should be replaced with kernel reset
   while (!CheckAllQueueIsEmpty());
 
-  // Set secondary bus number
-  OculinkWriteECAM(0, 0, 0, 0x18, 0x00010100);
-  // Enable interrupt
-  //OculinkWriteECAM(0, 0, 0, 0x13c, 0xffffffff);
-  // Enable Memory Space and BusMaster
-  //OculinkWriteECAM(0, 0, 0, 0x04, 0x00000006); // rq-rc
-  //PrintPCIConfigSpaceHeader(0, 0, 0);
-  //PrintPCIConfigSpaceHeader(1, 0, 0);
+  /*
+   * PCIe Transport-specific controller initialization START
+   */
 
-  while (OculinkReadECAM(1, 0, 0, 0x00) == 0xFFFFFFFF);
+  // Set secondary bus number to 1 (at 0x18 on config space of PCIe IP)
+  OculinkWriteECAM(0, 0, 0, 0x18, 0x00000100);
+
+  // Poll until the NVMe device is detected on bus 1.
+  // If the device is found, we will read device ID and vendor ID.
+  // (at 0x00 on config space of NVMe)
+  // Otherwise, we get 0xFFFFFFFF.
+  while (OculinkReadECAM(1, 0, 0, 0x00) == 0xFFFFFFFF) {
+    std::this_thread::sleep_for(std::chrono::milliseconds(1));
+  }
   spdlog::info("NVMe found on 01:00.0");
 
-  //// Enable Memory Space and BusMaster
-  OculinkWriteECAM(1, 0, 0, 0x04, 0x00000006); // rq-rc
+  /*
+   * Enable memory space of NVMe. (at 0x02 on config space of NVMe)
+   * Without it, all requests will result in "Unsupported Requests" in PCIe or "DECERR" in AXI.
+   */
+  OculinkWriteECAM(1, 0, 0, 0x04, 0x00000002);
 
-  CheckAllQueueIsEmpty();
+  /*
+   * BAR size detection
+   */
 
-  OculinkWriteECAM(1, 0, 0, 0x10, 0xffffffff); // rq-rc
-  size_t bar_size = OculinkReadECAM(1, 0, 0, 0x10); // rq-rc
-  if (bar_size == 0) {
+  // 1. try to set all bits in BAR
+  OculinkWriteECAM(1, 0, 0, 0x10, 0xffffffff);
+
+  // 2. Read BAR and find the lowest set bit in address bits.
+  // (4 lsb are not address bits, so ignore them.)
+  uint32_t bar = OculinkReadECAM(1, 0, 0, 0x10) & 0xfffffff0;
+  if (bar == 0) {
     spdlog::info("bar_size==0 something wrong");
     exit(0);
   }
-  bar_size &= 0xfffffff0;
-  size_t cnt0 = 0;
-  while ((bar_size & 1) == 0) {
-  spdlog::info("bar_size={} cnt0={}", bar_size, cnt0);
-    ++cnt0;
-    bar_size >>= 1;
-  }
-  bar_size = 1 << cnt0;
-  spdlog::info("Detected bar_size = {}", bar_size);
-  //// Assign NVMe's BAR0 (64-bit) to 4GB offset
-  nvme_bar0 = 0x00004000;
-  OculinkWriteECAM(1, 0, 0, 0x10, nvme_bar0); // rq-rc
-  OculinkWriteECAM(1, 0, 0, 0x14, 0x00000000); // rq-rc
 
-  //// Enum done, Bridge Enable
+  // 3. Infer BAR size from unchanged bits
+  nvme_bar0_size = 1 << __builtin_ctz(bar);
+  spdlog::info("Detected bar_size = {}", nvme_bar0_size);
+
+  // 4. Assign NVMe's BAR0 (64-bit) at given address
+  OculinkWriteECAM(1, 0, 0, 0x10, nvme_bar0);
+  OculinkWriteECAM(1, 0, 0, 0x14, 0x00000000);
+
+  // Bridge Enable after enumeration is done.
+  // This is described in Xilinx PG194.
   OculinkWriteECAM(0, 0, 0, 0x148, 0x00000001);
 
-  PrintPCIConfigSpaceHeader(0, 0, 0);
-  //PrintPCIConfigSpaceHeader(1, 0, 0);
+  /*
+   * PCIe Transport-specific controller initialization DONE
+   */
+
+  /*
+   * Memory-based transport controller initialization START
+   * We follow "3.5.1 Memory-based Transport Controller Initialization" in spec.
+   */
+
+  // 1. The host waits for the controller to indicate that any previous reset
+  //    is complete by waiting for CSTS.RDY to become ‘0’;
+  while (OculinkReadNVMe(0x1c) != 0) {
+    std::this_thread::sleep_for(std::chrono::milliseconds(1));
+  }
+
+  /*
+   * 2. The host configures the Admin Queue by setting the Admin Queue Attributes (AQA), Admin
+   * Submission Queue Base Address (ASQ), and Admin Completion Queue Base Address (ACQ) to
+   * appropriate values;
+   */
+  // We put ASQ right after NVMe BAR0, and ACQ right after ASQ.
+  // admin submission queue size
+  size_t asqs = 16;
+  // admin completion queue size
+  size_t acqs = 16;
+  // admin submission queue base
+  size_t asqb = nvme_bar0 + nvme_bar0_size;
+  // admin completion queue base
+  size_t acqb = asqb + asqs * 64; // each queue entry is 64-byte
+  OculinkWriteNVMe(0x24, (acqs << 16) | asqs); // AQA set (CQ size, SQ size)
+  OculinkWriteNVMe(0x28, asqb); // ASQ low adddr
+  OculinkWriteNVMe(0x2c, 0x00000000); // ASQ high addr
+  OculinkWriteNVMe(0x30, acqb); // ACQ low adddr
+  OculinkWriteNVMe(0x34, 0x00000000); // ASQ high addr
+
+  /*
+    3. The host determines the supported I/O Command Sets by checking the state of CAP.CSS and
+       appropriately initializing CC.CSS as follows:
+       a. If the CAP.CSS bit 7 is set to ‘1’, then the CC.CSS field should be set to 111b;
+       b. If the CAP.CSS bit 6 is set to ‘1’, then the CC.CSS field should be set to 110b; and
+       c. If the CAP.CSS bit 6 is cleared to ‘0’ and bit 0 is set to ‘1’, then the CC.CSS field should be set
+       to 000b;
+   */
+  // CAP.CSS is bits 44:37 at 0x00. (thus, 12:5 at 0x04)
+  // CC.CSS is bits 6:4 at 0x14
+  uint32_t CAP0 = OculinkReadNVMe(0x00);
+  uint32_t CAP4 = OculinkReadNVMe(0x04);
+  uint32_t CAP_CSS = (CAP4 >> 5) & 0xff;
+  uint32_t CC = OculinkReadNVMe(0x14);
+  // Clear CC.CSS
+  CC &= ~(0b111 << 4);
+  spdlog::info("CAP4={:#032b} CAP.CSS={:#08b}", CAP4, CAP_CSS);
+  if (CAP_CSS & 0b10000000) {
+    spdlog::info("CSS Case a");
+    OculinkWriteNVMe(0x14, CC | (0b111 << 4));
+  } else if (CAP_CSS & 0b1000000) { 
+    spdlog::info("CSS Case b");
+    OculinkWriteNVMe(0x14, CC | (0b110 << 4));
+  } else if (!(CAP_CSS & 0b1000000) && (CAP_CSS & 0b1)) {
+    spdlog::info("CSS Case c");
+    OculinkWriteNVMe(0x14, CC | (0b000 << 4));
+  } else {
+    spdlog::info("CSS Case Invalid");
+    exit(0);
+  }
+
+  /*
+  4. The controller settings should be configured. Specifically:
+    a. The arbitration mechanism should be selected in CC.AMS; and
+    b. The memory page size should be initialized in CC.MPS;
+  */
+ // CAP.AMS @ 18:17, CAP.MPSMAX @ 55:52, CAP.MPSMIN @ 51:48
+ // CAP.MPSMA
 
 
+  spdlog::info("Done.");
+
+  return 0;
+
+
+
+/*
 
   // CAP 0x0
   // CC  0x14
@@ -352,4 +467,5 @@ int main(int argc, char** argv) {
   CheckAllQueueIsEmpty();
 
   return 0;
+  */
 }
