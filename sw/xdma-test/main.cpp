@@ -153,7 +153,7 @@ void OculinkRespondWrite() {
   spdlog::info("OculinkRespondWrite bid={}", bid);
 }
 
-void OculinkRespondRead() {
+void OculinkRespondRead(std::vector<uint32_t>& data) {
   // o2k_ar
   while (true) {
     uint32_t valid = KernelRead(0x90);
@@ -168,21 +168,32 @@ void OculinkRespondRead() {
   uint32_t arid = (KernelRead(0x08) >> 11) & 0b1111;
   spdlog::info("o2k_ar entry found araddr={},{} arsize={}, arlen={}, arid={}", araddr1, araddr0, arsize, arlen, arid);
 
+  size_t addr = ((size_t)araddr1 << 32) + araddr0;
+
+  // 1 << arsize is bytes in transfer (single beat in a burst)
+  assert((1 << arsize) % sizeof(uint32_t) == 0);
+  assert(addr % (1 << arsize) == 0);
+  assert((1 << arsize) * (arlen + 1) / sizeof(uint32_t) == data.size());
+
   // o2k_r
+  int addr_idx = addr % 16 / 4;
+  int data_idx = 0;
   for (int i = 0; i <= arlen; ++i) {
-    uint32_t rdata0 = 0xdeadbeef;
-    uint32_t rdata1 = 0xdebdbeef;
-    uint32_t rdata2 = 0xdecdbeef;
-    uint32_t rdata3 = 0xdeddbeef;
+    uint32_t rdatas[4] = {0xdeadbeef, 0xdeadbeef, 0xdeadbeef, 0xdeadbeef};
+    for (int j = 0; j < (1 << arsize) / sizeof(uint32_t); ++j) {
+      rdatas[addr_idx] = data[data_idx];
+      addr_idx = (addr_idx + 1) % 4;
+      ++data_idx;
+    }
     uint32_t rlast = i == arlen;
     uint32_t rid = arid;
-    KernelWrite(0x00, rdata0);
-    KernelWrite(0x04, rdata1);
-    KernelWrite(0x08, rdata2);
-    KernelWrite(0x0c, rdata3);
+    KernelWrite(0x00, rdatas[0]);
+    KernelWrite(0x04, rdatas[1]);
+    KernelWrite(0x08, rdatas[2]);
+    KernelWrite(0x0c, rdatas[3]);
     KernelWrite(0x10, (rid << 1) | rlast);
     KernelWrite(0xb0, 0);
-    spdlog::info("OculinkRespondRead rdata={},{},{},{}, rlast={}, rid={}", rdata3, rdata2, rdata1, rdata0, rlast, rid);
+    spdlog::info("OculinkRespondRead rdata={:#010x},{:#010x},{:#010x},{:#010x}, rlast={}, rid={}", rdatas[3], rdatas[2], rdatas[1], rdatas[0], rlast, rid);
   }
 }
 
@@ -272,6 +283,18 @@ void PrintPCIConfigSpaceHeader(int bus, int dev, int func) {
 }
 
 int main(int argc, char** argv) {
+  {
+    const char* pcie_rst_name = "/sys/bus/pci/devices/0000:86:00.0/reset";
+    FILE* f = fopen(pcie_rst_name, "w");
+    if (f == NULL) {
+      spdlog::info("sysfs pcie reset node {} opened failed: {}.", pcie_rst_name, strerror(errno));
+      return 0;
+    }
+    fprintf(f, "1\n");
+    fclose(f);
+    spdlog::info("reset done. ({})", pcie_rst_name);
+  }
+
   const char* devname = "/dev/xdma0_user";
   int fd;
 	if ((fd = open(devname, O_RDWR | O_SYNC)) == -1) {
@@ -289,8 +312,9 @@ int main(int argc, char** argv) {
 	}
   spdlog::info("mmap done. fpga_bar0={}", fpga_bar0);
 
-  AssertOcuReset();
-  DeassertOcuReset();
+  // Unnecessary as we reset the whole board
+  //AssertOcuReset();
+  //DeassertOcuReset();
 
   // TODO should be replaced with kernel reset
   while (!CheckAllQueueIsEmpty());
@@ -300,6 +324,7 @@ int main(int argc, char** argv) {
    */
 
   // Set secondary bus number to 1 (at 0x18 on config space of PCIe IP)
+  // TODO limit write to secondary bus number (not 4byte)
   OculinkWriteECAM(0, 0, 0, 0x18, 0x00000100);
 
   // Poll until the NVMe device is detected on bus 1.
@@ -315,6 +340,7 @@ int main(int argc, char** argv) {
    * Enable memory space of NVMe. (at 0x02 on config space of NVMe)
    * Without it, all requests will result in "Unsupported Requests" in PCIe or "DECERR" in AXI.
    */
+  // TODO limit write to memory space (not 4byte)
   OculinkWriteECAM(1, 0, 0, 0x04, 0x00000002);
 
   /*
@@ -342,6 +368,7 @@ int main(int argc, char** argv) {
 
   // Bridge Enable after enumeration is done.
   // This is described in Xilinx PG194.
+  // TODO limit write to bridge enable (not 4byte)
   OculinkWriteECAM(0, 0, 0, 0x148, 0x00000001);
 
   /*
@@ -355,7 +382,8 @@ int main(int argc, char** argv) {
 
   // 1. The host waits for the controller to indicate that any previous reset
   //    is complete by waiting for CSTS.RDY to become ‘0’;
-  while (OculinkReadNVMe(0x1c) != 0) {
+  // CSTS.RDY at [0] at 0x1c
+  while (OculinkReadNVMe(0x1c) & 0b1 != 0) {
     std::this_thread::sleep_for(std::chrono::milliseconds(1));
   }
 
@@ -379,6 +407,14 @@ int main(int argc, char** argv) {
   OculinkWriteNVMe(0x30, acqb); // ACQ low adddr
   OculinkWriteNVMe(0x34, 0x00000000); // ASQ high addr
 
+  // Just print CAP for debugging
+  {
+    uint32_t CAP0 = OculinkReadNVMe(0x00);
+    uint32_t CAP4 = OculinkReadNVMe(0x04);
+    spdlog::info("CAP0={:032b}", CAP0);
+    spdlog::info("CAP4={:032b}", CAP4);
+  }
+
   /*
     3. The host determines the supported I/O Command Sets by checking the state of CAP.CSS and
        appropriately initializing CC.CSS as follows:
@@ -389,25 +425,27 @@ int main(int argc, char** argv) {
    */
   // CAP.CSS is bits 44:37 at 0x00. (thus, 12:5 at 0x04)
   // CC.CSS is bits 6:4 at 0x14
-  uint32_t CAP0 = OculinkReadNVMe(0x00);
-  uint32_t CAP4 = OculinkReadNVMe(0x04);
-  uint32_t CAP_CSS = (CAP4 >> 5) & 0xff;
-  uint32_t CC = OculinkReadNVMe(0x14);
-  // Clear CC.CSS
-  CC &= ~(0b111 << 4);
-  spdlog::info("CAP4={:#032b} CAP.CSS={:#08b}", CAP4, CAP_CSS);
-  if (CAP_CSS & 0b10000000) {
-    spdlog::info("CSS Case a");
-    OculinkWriteNVMe(0x14, CC | (0b111 << 4));
-  } else if (CAP_CSS & 0b1000000) { 
-    spdlog::info("CSS Case b");
-    OculinkWriteNVMe(0x14, CC | (0b110 << 4));
-  } else if (!(CAP_CSS & 0b1000000) && (CAP_CSS & 0b1)) {
-    spdlog::info("CSS Case c");
-    OculinkWriteNVMe(0x14, CC | (0b000 << 4));
-  } else {
-    spdlog::info("CSS Case Invalid");
-    exit(0);
+  {
+    uint32_t CAP0 = OculinkReadNVMe(0x00);
+    uint32_t CAP4 = OculinkReadNVMe(0x04);
+    uint32_t CAP_CSS = (CAP4 >> 5) & 0xff;
+    uint32_t CC = OculinkReadNVMe(0x14);
+    // Clear CC.CSS
+    CC &= ~(0b111 << 4);
+    spdlog::info("CAP.CSS={:#b}", CAP_CSS);
+    if (CAP_CSS & 0b10000000) {
+      spdlog::info("CSS Case a");
+      OculinkWriteNVMe(0x14, CC | (0b111 << 4));
+    } else if (CAP_CSS & 0b1000000) { 
+      spdlog::info("CSS Case b");
+      OculinkWriteNVMe(0x14, CC | (0b110 << 4));
+    } else if (!(CAP_CSS & 0b1000000) && (CAP_CSS & 0b1)) {
+      spdlog::info("CSS Case c");
+      OculinkWriteNVMe(0x14, CC | (0b000 << 4));
+    } else {
+      spdlog::info("CSS Case Invalid");
+      exit(0);
+    }
   }
 
   /*
@@ -415,15 +453,89 @@ int main(int argc, char** argv) {
     a. The arbitration mechanism should be selected in CC.AMS; and
     b. The memory page size should be initialized in CC.MPS;
   */
- // CAP.AMS @ 18:17, CAP.MPSMAX @ 55:52, CAP.MPSMIN @ 51:48
- // CAP.MPSMA
+  // CAP.AMS @ 18:17, CAP.MPSMAX @ 55:52, CAP.MPSMIN @ 51:48 at 0x00
+  // CC.AMS @ 13:11, CC.MPS @ 10:7 at 0x14
+  {
+    uint32_t CAP0 = OculinkReadNVMe(0x00);
+    uint32_t CAP4 = OculinkReadNVMe(0x04);
+    uint32_t CAP_AMS = (CAP0 >> 17) & 0b11;
+    uint32_t CAP_MPSMAX = (CAP4 >> (52 - 32)) & 0b1111;
+    uint32_t CAP_MPSMIN = (CAP4 >> (48 - 32)) & 0b1111;
+    spdlog::info("CAP.AMS={:#b} CAP.MPSMAX={:#b} CAP.MPSMIN={:#b}", CAP_AMS, CAP_MPSMAX, CAP_MPSMIN);
+    uint32_t CC = OculinkReadNVMe(0x14);
+    // Clear CC.AMS
+    CC &= ~(0b111 << 11);
+    // Clear CC.MPS
+    CC &= ~(0b1111 << 7);
+    // Set CC.AMS to 000 (round robin)
+    CC |= 0b000 << 11;
+    // Set CC.MPS to CAP.MPSMIN
+    CC |= CAP_MPSMIN << 7;
+    OculinkWriteNVMe(0x14, CC);
+  }
 
+  /*
+  5. The host enables the controller by setting CC.EN to ‘1’;
+  */
+  // CC.EN @ 0 at 0x14
+  {
+    uint32_t CC = OculinkReadNVMe(0x14);
+    // Set CC.EN
+    CC |= 0b1;
+    OculinkWriteNVMe(0x14, CC);
+  }
 
+  /*
+  6. The host waits for the controller to indicate that the controller is ready to process commands. The
+controller is ready to process commands when CSTS.RDY is set to ‘1’;
+  */
+  // CSTS.RDY at [0] at 0x1c
+  while (OculinkReadNVMe(0x1c) & 0b1 != 1) {
+    std::this_thread::sleep_for(std::chrono::milliseconds(1));
+  }
+
+  /*
+  7. The host determines the configuration of the controller by issuing the Identify command specifying
+the Identify Controller data structure (i.e., CNS 01h);
+  */
+  // SQ0TDBL at 0x1000
+  OculinkWriteNVMe(0x1000, 1);
+  {
+    // 3.3.3.1 Submission Queue Entry
+    std::vector<uint32_t> data;
+    uint32_t cid = 42; // unique identifier
+    uint32_t psdt = 0; // PRP shall be used for all Admin command for NVMe over PCIe.
+    uint32_t fuse = 0; // not fused
+    uint32_t opcode = 0; // TODO command specific
+    uint32_t cdw0 = (cid << 16) | (psdt << 14) | (fuse << 8) | opcode;
+    uint32_t nsid = 0; // namespace identifier 0
+    uint32_t cdw2 = 0; // TODO command specific
+    uint32_t cdw3 = 0; // TODO command specific
+    uint64_t mptr = 0; // TODO metadata pointer what is this???
+    uint64_t prp1 = 0; // TODO prp entry 1 what is this???
+    uint64_t prp2 = 0; // TODO prp entry 2 what is this???
+
+    data.push_back(cdw0);
+    data.push_back(nsid);
+    data.push_back(cdw2);
+    data.push_back(cdw3); // 16B
+    data.push_back(mptr);
+    data.push_back(mptr >> 32);
+    data.push_back(prp1);
+    data.push_back(prp1 >> 32);
+    data.push_back(prp2);
+    data.push_back(prp2 >> 32); // 40B
+    data.push_back(0);
+    data.push_back(0);
+    data.push_back(0);
+    data.push_back(0);
+    data.push_back(0);
+    data.push_back(0); // 64B
+  }
+
+  while (!CheckAllQueueIsEmpty());
   spdlog::info("Done.");
-
   return 0;
-
-
 
 /*
 
