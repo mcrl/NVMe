@@ -62,13 +62,13 @@
     <Option Name="WTVcsLaunchSim" Val="0"/>
     <Option Name="WTRivieraLaunchSim" Val="0"/>
     <Option Name="WTActivehdlLaunchSim" Val="0"/>
-    <Option Name="WTXSimExportSim" Val="0"/>
-    <Option Name="WTModelSimExportSim" Val="0"/>
-    <Option Name="WTQuestaExportSim" Val="0"/>
+    <Option Name="WTXSimExportSim" Val="1"/>
+    <Option Name="WTModelSimExportSim" Val="1"/>
+    <Option Name="WTQuestaExportSim" Val="1"/>
     <Option Name="WTIesExportSim" Val="0"/>
-    <Option Name="WTVcsExportSim" Val="0"/>
-    <Option Name="WTRivieraExportSim" Val="0"/>
-    <Option Name="WTActivehdlExportSim" Val="0"/>
+    <Option Name="WTVcsExportSim" Val="1"/>
+    <Option Name="WTRivieraExportSim" Val="1"/>
+    <Option Name="WTActivehdlExportSim" Val="1"/>
     <Option Name="GenerateIPUpgradeLog" Val="TRUE"/>
     <Option Name="XSimRadix" Val="hex"/>
     <Option Name="XSimTimeUnit" Val="ns"/>
@@ -85,45 +85,12 @@
   <FileSets Version="1" Minor="31">
     <FileSet Name="sources_1" Type="DesignSrcs" RelSrcDir="$PSRCDIR/sources_1" RelGenDir="$PGENDIR/sources_1">
       <Filter Type="Srcs"/>
-      <File Path="$PSRCDIR/sources_1/bd/bd0/bd0.bd">
+      <File Path="$PPRDIR/../../IP/xdma-test/bd0.bd">
         <FileInfo>
           <Attr Name="UsedIn" Val="synthesis"/>
           <Attr Name="UsedIn" Val="implementation"/>
           <Attr Name="UsedIn" Val="simulation"/>
         </FileInfo>
-        <CompFileExtendedInfo CompFileName="bd0.bd" FileRelPathName="ip/bd0_xbar_0/bd0_xbar_0.xci">
-          <Proxy FileSetName="bd0_xbar_0"/>
-        </CompFileExtendedInfo>
-        <CompFileExtendedInfo CompFileName="bd0.bd" FileRelPathName="ip/bd0_clk_wiz_0_0/bd0_clk_wiz_0_0.xci">
-          <Proxy FileSetName="bd0_clk_wiz_0_0"/>
-        </CompFileExtendedInfo>
-        <CompFileExtendedInfo CompFileName="bd0.bd" FileRelPathName="ip/bd0_axi_clock_converter_0_0/bd0_axi_clock_converter_0_0.xci">
-          <Proxy FileSetName="bd0_axi_clock_converter_0_0"/>
-        </CompFileExtendedInfo>
-        <CompFileExtendedInfo CompFileName="bd0.bd" FileRelPathName="ip/bd0_util_ds_buf_1/bd0_util_ds_buf_1.xci">
-          <Proxy FileSetName="bd0_util_ds_buf_1"/>
-        </CompFileExtendedInfo>
-        <CompFileExtendedInfo CompFileName="bd0.bd" FileRelPathName="ip/bd0_xdma_0_2/bd0_xdma_0_2.xci">
-          <Proxy FileSetName="bd0_xdma_0_2"/>
-        </CompFileExtendedInfo>
-        <CompFileExtendedInfo CompFileName="bd0.bd" FileRelPathName="ip/bd0_proc_sys_reset_0_0/bd0_proc_sys_reset_0_0.xci">
-          <Proxy FileSetName="bd0_proc_sys_reset_0_0"/>
-        </CompFileExtendedInfo>
-        <CompFileExtendedInfo CompFileName="bd0.bd" FileRelPathName="ip/bd0_axi_clock_converter_1_0/bd0_axi_clock_converter_1_0.xci">
-          <Proxy FileSetName="bd0_axi_clock_converter_1_0"/>
-        </CompFileExtendedInfo>
-        <CompFileExtendedInfo CompFileName="bd0.bd" FileRelPathName="ip/bd0_axi_bram_ctrl_0_0/bd0_axi_bram_ctrl_0_0.xci">
-          <Proxy FileSetName="bd0_axi_bram_ctrl_0_0"/>
-        </CompFileExtendedInfo>
-        <CompFileExtendedInfo CompFileName="bd0.bd" FileRelPathName="ip/bd0_axi_bram_ctrl_1_0/bd0_axi_bram_ctrl_1_0.xci">
-          <Proxy FileSetName="bd0_axi_bram_ctrl_1_0"/>
-        </CompFileExtendedInfo>
-        <CompFileExtendedInfo CompFileName="bd0.bd" FileRelPathName="ip/bd0_axi_bram_ctrl_1_bram_0/bd0_axi_bram_ctrl_1_bram_0.xci">
-          <Proxy FileSetName="bd0_axi_bram_ctrl_1_bram_0"/>
-        </CompFileExtendedInfo>
-        <CompFileExtendedInfo CompFileName="bd0.bd" FileRelPathName="ip/bd0_xdma_1_0/bd0_xdma_1_0.xci">
-          <Proxy FileSetName="bd0_xdma_1_0"/>
-        </CompFileExtendedInfo>
       </File>
       <File Path="$PPRDIR/../../RTL/xdma-test/kernel.sv">
         <FileInfo>
