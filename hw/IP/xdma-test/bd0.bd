@@ -628,11 +628,8 @@
           "pcie_blk_locn": {
             "value": "X0Y3"
           },
-          "pf0_bar0_64bit": {
-            "value": "true"
-          },
           "pf0_bar0_enabled": {
-            "value": "true"
+            "value": "false"
           },
           "pf0_bar0_type_mqdma": {
             "value": "Memory"
@@ -1975,7 +1972,7 @@
               "SEG_ocu0_master_Reg": {
                 "address_block": "/ocu0_master/Reg",
                 "offset": "0x0000000000000000",
-                "range": "64K"
+                "range": "16E"
               }
             }
           }
