@@ -288,4 +288,14 @@ always_comb begin
   hp_wready = wb_wready;
 end
 
+// Nullify sq_ar, sq_r
+always_comb begin
+  sq_araddr = 0;
+  sq_arlen = 0;
+  sq_arsize = 0;
+  sq_arburst = 0;
+  sq_arvalid = 0;
+  sq_rready = 0;
+end
+
 endmodule
