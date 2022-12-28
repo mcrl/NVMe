@@ -32,6 +32,9 @@ int main(int argc, char** argv) {
   CheckCond(fd < 0, "file open error");
   descr.handle.fd = fd;
   descr.type = CU_FILE_HANDLE_TYPE_OPAQUE_FD;
+  CUfileHandle_t fh;
+  cferr = cuFileHandleRegister(&fh, &descr);
+  CheckCuFile(cferr, "cuFileHandleRegister error");
 
   return 0;
 }
