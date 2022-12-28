@@ -55,4 +55,24 @@ module kernel #(
   output logic       hp_rready
 );
 
+// Register map
+// 0x00 WO kernel start trigger
+// 0x04 RO kernel state (0=idle, 1=running, 2=done)
+// 0x08 WO reset kernel state to idle
+// 0x0c RW driver reset (0=reset, 1=normal)
+// 0x10 RW start address (low)
+// 0x14 RW start address (high)
+// 0x18 RW end address (low)
+// 0x1c RW end address (high)
+// 0x20 RW start value (DW0)
+// 0x24 RW start value (DW1)
+// 0x28 RW start value (DW2)
+// 0x2c RW start value (DW3)
+// 0x30 RW stride (DW0)
+// 0x34 RW stride (DW1)
+// 0x38 RW stride (DW2)
+// 0x3c RW stride (DW3)
+// 0x40 RW benchmode (write=0, read=1)
+// 0x44 RO checksum (after read)
+
 endmodule
