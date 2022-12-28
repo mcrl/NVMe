@@ -625,5 +625,69 @@ the Identify Controller data structure (i.e., CNS 01h);
   }
   //OculinkWriteNVMe(0x1004, ++cqhead);
 
+  /*
+  8. The host determines any I/O Command Set specific configuration information as follows:
+    a. If the CAP.CSS bit 6 is set to ‘1’, then the host does the following:
+    (We do not belong to this case.)
+    b. For each I/O Command Set that is enabled (Note: the NVM Command Set is enabled if the
+    CC.CSS field is set to 000b):
+       i. Issue the Identify command specifying the I/O Command Set specific Active Namespace
+       ID list (CNS 07h) with the appropriate Command Set Identifier (CSI) value of that I/O
+       Command Set; and
+       ii. For each NSID that is returned:
+         1. If the enabled I/O Command Set is the NVM Command Set or an I/O Command Set
+         based on the NVM Command Set (e.g., the Zoned Namespace Command Set) issue
+         the Identify command specifying the Identify Namespace data structure (CNS 00h);
+         and
+         2. Issue the Identify command specifying each of the following data structures (refer to
+         Figure 274): the I/O Command Set specific Identify Namespace data structure, the I/O
+         Command Set specific Identify Controller data structure, and the I/O Command Set
+         independent Identify Namespace data structure;
+  */
+  uint32_t CC = OculinkReadNVMe(0x14);
+  spdlog::info("CC={:32b}", CC);
+  OculinkWriteNVMe(0x1000, ++sqtail);
+  {
+    // Find active namespaces with CNS 02 -> we expect single namespace with NSID 1
+    // Query namespace data structe with CNS 00 -> give NSID 1
+    std::vector<uint32_t> data;
+    uint32_t cid = 42; // unique identifier
+    uint32_t psdt = 0; // PRP shall be used for all Admin command for NVMe over PCIe.
+    uint32_t fuse = 0; // not fused
+    uint32_t opcode = 0x06; // IDENTIFY command
+    uint32_t cdw0 = (cid << 16) | (psdt << 14) | (fuse << 8) | opcode;
+    uint32_t nsid = 1; // namespace identifier not used
+    uint32_t cdw2 = 0; // TODO command specific
+    uint32_t cdw3 = 0; // TODO command specific
+    uint64_t mptr = 0; // TODO metadata pointer what is this???
+    // prp1 and prp2 is dptr
+    uint64_t prp1 = 2 * 1024 * 1024; // prp entry 1; we give dptr as 2MB
+    uint64_t prp2 = 0; // prp entry 2
+    uint32_t cdw10 = 0x00; // cntid == 0 (not used), cns = 00h
+    uint32_t cdw11 = 0; // csi == 0 (NVM command set), CNS specific Identifier == 0 (not used)
+    uint32_t cdw12 = 0;
+    uint32_t cdw13 = 0;
+    uint32_t cdw14 = 0; // uuid index == 0 (not used)
+    uint32_t cdw15 = 0;
+
+    data.push_back(cdw0);
+    data.push_back(nsid);
+    data.push_back(cdw2);
+    data.push_back(cdw3); // 16B
+    data.push_back(mptr);
+    data.push_back(mptr >> 32);
+    data.push_back(prp1);
+    data.push_back(prp1 >> 32);
+    data.push_back(prp2);
+    data.push_back(prp2 >> 32); // 40B
+    data.push_back(cdw10);
+    data.push_back(cdw11);
+    data.push_back(cdw12);
+    data.push_back(cdw13);
+    data.push_back(cdw14);
+    data.push_back(cdw15); // 64B
+
+    OculinkRespondRead(data);
+  }
   return 0;
 }
