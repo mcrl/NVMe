@@ -233,4 +233,50 @@ always_ff @(posedge clk, negedge rstn) begin
   end
 end
 
+always_comb begin
+  sq_awaddr = sq_sqtail * 64;
+  sq_awlen = 0; // no burst (single beat)
+  sq_awsize = 6; // 512b = 64B = 2^6B
+  sq_awburst = 1; // INCR
+
+  // synthesize write command
+  sq_wdata[0 +: 32] = {
+    16'(sq_sqtail), // sqtail as cid
+    2'b00, // use prp
+    4'b0000, // reserved
+    2'b00, // not fused
+    8'h01 // opcode WRITE
+  };
+  sq_wdata[32 +: 32] = 1; // nsid == 1
+  sq_wdata[64 +: 64] = 0; // CDW2-3 (not used; no end-to-end protection)
+  sq_wdata[128 +: 64] = 0; // MPTR (not used)
+  sq_wdata[192 +: 128] = WRITE_BUF_BASE + sq_sqtail * 4096; // DPTR
+  // Starting LBA is address divided by 4KB
+  sq_wdata[320 +: 64] = hp_awaddr >> 12; // CDW10-11
+  // Specify number of logical blocks as 0 (which means 1)
+  // Other options are not used
+  sq_wdata[384 +: 32] = 0; // CDW12
+  // Not hint for compression, sequential, latency, and frequency
+  sq_wdata[416 +: 32] = 0; // CDW13
+  sq_wdata[448 +: 32] = 0; // CDW14 (not used; no end-to-end protection)
+  sq_wdata[480 +: 32] = 0; // CDW15 (not used; no end-to-end protection)
+  sq_wstrb = '1;
+  sq_wlast = 1;
+
+  wb_awaddr = sq_sqtail * 4096;
+  wb_awlen = hp_awlen;
+  wb_awsize = hp_awsize;
+  wb_awburst = hp_awburst;
+
+  sq_valid = hp_awvalid & ((sq_sqtail + 1) % OUTSTANDING != cqdb_sqhead);
+  sq_awvalid = sq_valid & ~hp_aw_sq_aw_block;
+  sq_wvalid = sq_valid & ~hp_aw_sq_w_block;
+  wb_awvalid = sq_valid & ~hp_aw_wb_aw_block;
+  sq_ready = (~sq_awvalid | sq_awready)
+             & (~sq_wvalid | sq_wready)
+             & (~wb_awvalid | wb_awready);
+  hp_awready = sq_ready;
+  
+end
+
 endmodule
