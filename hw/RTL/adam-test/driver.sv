@@ -335,6 +335,21 @@ always_comb begin
                  & (~nmsq_wvalid | nmsq_wready);
   sq_bready = doorbell_ready & (doorbell_valid | ~sq_bvalid);
   wb_bready = doorbell_ready & (doorbell_valid | ~wb_bvalid);
+
+  nmsq_awaddr = 1008; // SQ1TDBL
+  nmsq_awlen = 0; // single beat
+  nmsq_awsize = 2; // 4B transfer
+  nmsq_awburst = 1; // INCR
+
+  // align at 8B since the bus is 16B
+  nmsq_wdata = {
+    32'0,
+    32'((doorbell_sqtail + 1) % OUTSTANDING),
+    32'0,
+    32'0
+  };
+  nmsq_wstrb = '1;
+  nmsq_wlast = 1;
 end
 
 endmodule
