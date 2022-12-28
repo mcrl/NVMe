@@ -413,6 +413,23 @@ always_comb begin
   // cq_rdata[112] Phase Tag
   // cq_rdata[113 +: 15] Status
   cqdb_valid = cq_rvalid & (cq_rdata[112] == cqdb_phase);
+
+  nmcq_awaddr = 1012; // CQ1HDBL
+  nmcq_awlen = 0; // single beat
+  nmcq_awsize = 2; // 4B transfer
+  nmcq_awburst = 1; // INCR
+
+  // align at 12B since the bus is 16B
+  nmcq_wdata = {
+    32'((cqdb_cqhead + 1) % OUTSTANDING),
+    32'0,
+    32'0,
+    32'0
+  };
+  nmcq_wstrb = '1;
+  nmcq_wlast = 1;
+
+  hp_bresp = 0;
 end
 
 endmodule
