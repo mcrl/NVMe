@@ -327,4 +327,14 @@ always_ff @(posedge clk, negedge rstn) begin
   end
 end
 
+always_comb begin
+  doorbell_valid = sq_bvalid & wb_bvalid;
+  nmsq_awvalid = doorbell_valid & ~doorbell_nmsq_aw_block;
+  nmsq_wvalid = doorbell_valid & ~doorbell_nmsq_w_block;
+  doorbell_ready = (~nmsq_awvalid | nmsq_awready)
+                 & (~nmsq_wvalid | nmsq_wready);
+  sq_bready = doorbell_ready & (doorbell_valid | ~sq_bvalid);
+  wb_bready = doorbell_ready & (doorbell_valid | ~wb_bvalid);
+end
+
 endmodule
