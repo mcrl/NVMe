@@ -357,4 +357,14 @@ always_comb begin
   nmsq_bready = 1;
 end
 
+// CQ polling step
+// Generate cq_ar
+always_comb begin
+  cq_araddr = cqdb_cqhead * 16;
+  cq_arlen = 0;
+  cq_arsize = 4; // 16B = 2^4B
+  cq_arburst = 1; // INCR
+  cq_arvalid = 1;
+end
+
 endmodule
