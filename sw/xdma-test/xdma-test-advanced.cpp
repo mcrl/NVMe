@@ -860,5 +860,13 @@ the Identify Controller data structure (i.e., CNS 01h);
   supported by the controller. The I/O Submission Queues are allocated using the Create I/O
   Submission Queue command; and
   */
+
+  /*
+  12. To enable asynchronous notification of optional events, the host should issue a Set Features
+  command specifying the events to enable. To enable asynchronous notification of events, the host
+  should submit an appropriate number of Asynchronous Event Request commands. This step may
+  be done at any point after the controller signals that the controller is ready (i.e., CSTS.RDY is set
+  to ‘1’)
+  */
   return 0;
 }
