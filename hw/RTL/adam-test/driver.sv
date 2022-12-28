@@ -440,4 +440,9 @@ always_comb begin
   cq_rready = cqdb_ready;
 end
 
+// Nullify nmcq_b
+always_comb begin
+  nmcq_bready = 1;
+end
+
 endmodule
