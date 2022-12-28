@@ -305,4 +305,12 @@ always_comb begin
   wb_rready = 0;
 end
 
+// Doorbell step
+// (sq_b, wb_b) -> (nmsq_aw, nmsq_w) glue logic
+logic doorbell_valid;
+logic doorbell_ready;
+logic doorbell_nmsq_aw_block;
+logic doorbell_nmsq_w_block;
+logic [$clog2(OUTSTANDING)-1:0] doorbell_sqtail;
+
 endmodule
