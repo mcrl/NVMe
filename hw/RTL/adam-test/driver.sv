@@ -382,4 +382,26 @@ logic [$clog2(OUTSTANDING)-1:0] cqdb_cqhead;
 logic cqdb_phase;
 logic [$clog2(OUTSTANDING)-1:0] cqdb_sqhead;
 
+always_ff @(posedge clk, negedge rstn) begin
+  if (~rstn) begin
+    cqdb_nmcq_aw_block <= 0;
+    cqdb_nmcq_w_block <= 0;
+    cqdb_hp_b_block <= 0;
+    cqdb_cqhead <= 0;
+    cqdb_phase <= 1;
+    cqdb_sqhead <= 0;
+  end else begin
+    cqdb_nmcq_aw_block <= cqdb_valid & ~cqdb_ready & (nmcq_awready | cqdb_nmcq_aw_block);
+    cqdb_nmcq_w_block <= cqdb_valid & ~cqdb_ready & (nmcq_wready | cqdb_nmcq_w_block);
+    cqdb_hp_b_block <= cqdb_valid & ~cqdb_ready & (hp_bready | cqdb_hp_b_block);
+    if (cqdb_valid & cqdb_ready) begin
+      cqdb_cqhead <= cqdb_cqhead + 1;
+      if (cqdb_cqhead == OUTSTANDING - 1) begin
+        cqdb_phase <= ~cqdb_phase;
+      end
+      cqdb_sqhead <= cq_rdata[64 +: 16];
+    end
+  end
+end
+
 endmodule
