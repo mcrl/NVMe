@@ -1,0 +1,42 @@
+// AXI spec defines required signals and default values.
+// * p.110 A9.3 Default signal values
+// * p.120 B1.1 Definition of AXI4-Lite
+// But I personally build minimal "essential" set of signals, here.
+// Thumb of rules:
+// * valid, ready, data signals
+// * non-zero default value signals
+// * burst signals (except axi-lite)
+// * AXI4 should be superset of AXI-Lite
+// * master and slave should have the same number of signals (so that I can connect my modules)
+// * AXIB == AXI4 with burst, AXIL == AXI-Lite
+
+// AXIB master (29 signals, 25 signals without ID)
+output wire [M_ID_WIDTH-1:0]     m_awid,
+output wire [M_ADDR_WIDTH-1:0]   m_awaddr,
+output wire [M_DATA_WIDTH-1:0]   m_wdata,
+output wire [M_DATA_WIDTH/8-1:0] m_wstrb,
+input  wire [M_ID_WIDTH-1:0]     m_bid,
+output wire [M_ID_WIDTH-1:0]     m_arid,
+output wire [M_ADDR_WIDTH-1:0]   m_araddr,
+input  wire [M_ID_WIDTH-1:0]     m_rid,
+input  wire [M_DATA_WIDTH-1:0]   m_rdata,
+output wire [7:0] m_awlen,
+output wire [2:0] m_awsize,
+output wire [1:0] m_awburst,
+output wire       m_awvalid,
+input  wire       m_awready,
+output wire       m_wlast,
+output wire       m_wvalid,
+input  wire       m_wready,
+input  wire [1:0] m_bresp,
+input  wire       m_bvalid,
+output wire       m_bready,
+output wire [7:0] m_arlen,
+output wire [2:0] m_arsize,
+output wire [1:0] m_arburst,
+output wire       m_arvalid,
+input  wire       m_arready,
+input  wire [1:0] m_rresp,
+input  wire       m_rlast,
+input  wire       m_rvalid,
+output wire       m_rready,
