@@ -688,6 +688,13 @@ the Identify Controller data structure (i.e., CNS 01h);
     data.push_back(cdw15); // 64B
 
     OculinkRespondRead(data);
+
+    for (int i = 0; i < 32; ++i) { // 4KB expected; NVMe sends 32 txn with burst length 8 (32 * 8 * 16B = 4KB)
+      std::vector<uint32_t> ret;
+      OculinkRespondWrite(ret);
+      assert(ret.size() == 32); // (32 * 32b = 128B per txn)
+    }
+
   }
   return 0;
 }
