@@ -225,6 +225,37 @@ always_comb begin
   // AR is always ready
   host_arready = 1;
   host_rresp = 0;
+
+  hp_awaddr = cur_addr;
+  hp_wdata = cur_value;
+  hp_wstrb = '1;
+  hp_araddr = cur_addr;
+  hp_awlen = 255; // 128b * 256 = 4KB
+  hp_awsize = 4; // 128b = 16B = 2^4B
+  hp_awburst = 1; // INCR
+  hp_awvalid = 0;
+  hp_wlast = (cur_value_addr & 4095) == (4096 - 16); // last beat
+  hp_wvalid = 0;
+  hp_bready = 1;
+  hp_arlen = 255;
+  hp_arsize = 4;
+  hp_arburst = 1;
+  hp_arvalid = 0;
+  hp_rready = 1;
+  if (kernel_state == KERNEL_STATE_RUNNING) begin
+    if (benchmode == 0) begin // WRITE
+      if (cur_addr < end_addr) begin
+        hp_awvalid = 1;
+      end
+      if (cur_value_addr < end_addr) begin
+        hp_wvalid = 1;
+      end
+    end else begin // READ
+      if (cur_addr < end_addr) begin
+        hp_arvalid = 1;
+      end
+    end
+  end
 end
 
 endmodule
