@@ -115,7 +115,7 @@ void OculinkWrite32(size_t addr, uint32_t data) {
   }
 }
 
-void OculinkRespondWrite() {
+void OculinkRespondWrite(std::vector<uint32_t>& data) {
   // o2k_aw
   while (true) {
     uint32_t valid = KernelRead(0x70);
@@ -130,7 +130,15 @@ void OculinkRespondWrite() {
   uint32_t awid = (KernelRead(0x08) >> 11) & 0b1111;
   spdlog::info("o2k_aw entry found awaddr={},{} awsize={}, awlen={}, awid={}", awaddr1, awaddr0, awsize, awlen, awid);
 
+  size_t addr = ((size_t)awaddr1 << 32) + awaddr0;
+
+  // 1 << awsize is bytes in transfer (single beat in a burst)
+  assert((1 << awsize) % sizeof(uint32_t) == 0);
+  assert(addr % (1 << awsize) == 0);
+  data.clear();
+
   // o2k_w
+  int addr_idx = addr % 16 / 4;
   for (int i = 0; i <= awlen; ++i) {
     while (true) {
       uint32_t valid = KernelRead(0x80);
@@ -138,13 +146,20 @@ void OculinkRespondWrite() {
       std::this_thread::sleep_for(std::chrono::milliseconds(1));
     }
     KernelWrite(0x84, 0);
-    uint32_t wdata0 = KernelRead(0x00);
-    uint32_t wdata1 = KernelRead(0x04);
-    uint32_t wdata2 = KernelRead(0x08);
-    uint32_t wdata3 = KernelRead(0x0c);
+    uint32_t wdatas[4] = {0xdeadbeef, 0xdeadbeef, 0xdeadbeef, 0xdeadbeef};
+    wdatas[0] = KernelRead(0x00);
+    wdatas[1] = KernelRead(0x04);
+    wdatas[2] = KernelRead(0x08);
+    wdatas[3] = KernelRead(0x0c);
+    for (int j = 0; j < (1 << awsize) / sizeof(uint32_t); ++j) {
+      data.push_back(wdatas[addr_idx]);
+      addr_idx = (addr_idx + 1) % 4;
+    }
     uint32_t wstrb = KernelRead(0x10) & 0xffff;
-    spdlog::info("o2k_w entry found wdata={},{},{},{}, wstrb={}", wdata3, wdata2, wdata1, wdata0, wstrb);
+    spdlog::info("o2k_w entry found wdata={:#010x},{:#010x},{:#010x},{:#010x}, wstrb={}", wdatas[3], wdatas[2], wdatas[1], wdatas[0], wstrb);
   }
+
+  assert((1 << awsize) * (awlen + 1) / sizeof(uint32_t) == data.size());
 
   // o2k_b
   uint32_t bid = awid;
