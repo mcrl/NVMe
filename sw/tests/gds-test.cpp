@@ -45,5 +45,17 @@ int main(int argc, char** argv) {
   cferr = cuFileBufRegister(devmem, devmemsz, 0);
   CheckCuFile(cferr, "cuFileBufRegister error");
 
+  // Fill devmem
+  void* hostmem;
+  hostmem = malloc(devmemsz);
+  CheckCond(hostmem == nullptr, "malloc error");
+  for (size_t i = 0; i < devmemsz; ++i) {
+    *((unsigned char*)hostmem + i) = i % 256;
+  }
+  st = GetTime();
+  cudaMemcpy(devmem, hostmem, devmemsz, cudaMemcpyHostToDevice);
+  et = GetTime();
+  printf("cudaMemcpy H2D %f MB/s\n", devmemsz / 1e6 / (et - st));
+
   return 0;
 }
