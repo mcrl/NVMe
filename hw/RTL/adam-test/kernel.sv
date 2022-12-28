@@ -217,4 +217,14 @@ always_ff @(posedge clk, negedge rstn) begin
   end
 end
 
+always_comb begin
+  // sync AW and W
+  host_awready = host_awvalid & host_wvalid;
+  host_wready = host_awvalid & host_wvalid;
+  host_bresp = 0;
+  // AR is always ready
+  host_arready = 1;
+  host_rresp = 0;
+end
+
 endmodule
