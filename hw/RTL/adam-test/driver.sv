@@ -313,4 +313,18 @@ logic doorbell_nmsq_aw_block;
 logic doorbell_nmsq_w_block;
 logic [$clog2(OUTSTANDING)-1:0] doorbell_sqtail;
 
+always_ff @(posedge clk, negedge rstn) begin
+  if (~rstn) begin
+    doorbell_nmsq_aw_block <= 0;
+    doorbell_nmsq_w_block <= 0;
+    doorbell_sqtail <= 0;
+  end else begin
+    doorbell_nmsq_aw_block <= doorbell_valid & ~doorbell_ready & (nmsq_awready | doorbell_nmsq_aw_block);
+    doorbell_nmsq_w_block <= doorbell_valid & ~doorbell_ready & (nmsq_wready | doorbell_nmsq_w_block);
+    if (doorbell_valid & doorbell_ready) begin
+      doorbell_sqtail <= doorbell_sqtail + 1;
+    end
+  end
+end
+
 endmodule
