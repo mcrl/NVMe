@@ -159,3 +159,24 @@ input  wire       s_rready,
 .m_rresp   (m_rresp),
 .m_rvalid  (m_rvalid),
 .m_rready  (m_rready),
+
+// AXIL bypass pattern
+always_comb begin
+  m_awaddr = s_awaddr;
+  m_wdata = s_wdata;
+  m_wstrb = s_wstrb;
+  m_araddr = s_araddr;
+  s_rdata = m_rdata;
+  m_awvalid = s_awvalid;
+  s_awready = m_awready;
+  m_wvalid = s_wvalid;
+  s_wready = m_wready;
+  s_bresp = m_bresp;
+  s_bvalid = m_bvalid;
+  m_bready = s_bready;
+  m_arvalid = s_arvalid;
+  s_arready = m_arready;
+  s_rresp = m_rresp;
+  s_rvalid = m_rvalid;
+  m_rready = s_rready; 
+end
