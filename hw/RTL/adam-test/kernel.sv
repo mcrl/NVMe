@@ -146,6 +146,42 @@ always_ff @(posedge clk, negedge rstn) begin
         benchmode <= host_wdata;
       end
     end
+    if (host_arvalid) begin
+      host_rvalid <= 1;
+      if          (host_araddr == 'h04) begin
+        host_rdata <= kernel_state;
+      end else if (host_araddr == 'h0c) begin
+        host_rdata <= driver_rstn_sw;
+      end else if (host_araddr == 'h10) begin
+        host_rdata <= start_addr[0 +: 32];
+      end else if (host_araddr == 'h14) begin
+        host_rdata <= start_addr[32 +: 32];
+      end else if (host_araddr == 'h18) begin
+        host_rdata <= end_addr[0 +: 32];
+      end else if (host_araddr == 'h1c) begin
+        host_rdata <= end_addr[32 +: 32];
+      end else if (host_araddr == 'h20) begin
+        host_rdata <= start_value[0 +: 32];
+      end else if (host_araddr == 'h24) begin
+        host_rdata <= start_value[32 +: 32];
+      end else if (host_araddr == 'h28) begin
+        host_rdata <= start_value[64 +: 32];
+      end else if (host_araddr == 'h2c) begin
+        host_rdata <= start_value[96 +: 32];
+      end else if (host_araddr == 'h30) begin
+        host_rdata <= value_stride[0 +: 32];
+      end else if (host_araddr == 'h34) begin
+        host_rdata <= value_stride[32 +: 32];
+      end else if (host_araddr == 'h38) begin
+        host_rdata <= value_stride[64 +: 32];
+      end else if (host_araddr == 'h3c) begin
+        host_rdata <= value_stride[96 +: 32];
+      end else if (host_araddr == 'h40) begin
+        host_rdata <= benchmode;
+      end else if (host_araddr == 'h44) begin
+        host_rdata <= checksum;
+      end
+    end
   end
 end
 
