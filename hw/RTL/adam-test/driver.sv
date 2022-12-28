@@ -367,4 +367,19 @@ always_comb begin
   cq_arvalid = 1;
 end
 
+// CQ doorbell step
+// cq_r -> (nmcq_aw, nmcq_w, hp_b)
+// Fix cq_rready to 1, check phase tag to consume or not
+
+logic cqdb_valid;
+logic cqdb_ready;
+
+logic cqdb_nmcq_aw_block;
+logic cqdb_nmcq_w_block;
+logic cqdb_hp_b_block;
+
+logic [$clog2(OUTSTANDING)-1:0] cqdb_cqhead;
+logic cqdb_phase;
+logic [$clog2(OUTSTANDING)-1:0] cqdb_sqhead;
+
 endmodule
