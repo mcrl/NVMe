@@ -87,6 +87,7 @@ int main(int argc, char** argv) {
 
   // Cleanup
   CheckCuFile(cuFileBufDeregister(devmem), "cuFileBufDeregister error");
+  cuFileHandleDeregister(fh);
 
   return 0;
 }
