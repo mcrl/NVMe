@@ -64,5 +64,12 @@ int main(int argc, char** argv) {
   et = GetTime();
   printf("cuFileWrite %ld B written, %f MB/s\n", wsz, devmemsz / 1e6 / (et - st));
 
+  // Read test
+  st = GetTime();
+  ssize_t rsz = cuFileRead(fh, devmem, devmemsz, 0, 0);
+  CheckCond(rsz < 0 || rsz < devmemsz, "cuFileRead error");
+  et = GetTime();
+  printf("cuFileRead %ld B read, %f MB/s\n", rsz, devmemsz / 1e6 / (et - st));
+
   return 0;
 }
