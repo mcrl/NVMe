@@ -352,4 +352,9 @@ always_comb begin
   nmsq_wlast = 1;
 end
 
+// Nullify nmsq_b
+always_comb begin
+  nmsq_bready = 1;
+end
+
 endmodule
