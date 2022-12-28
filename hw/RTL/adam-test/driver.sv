@@ -430,6 +430,14 @@ always_comb begin
   nmcq_wlast = 1;
 
   hp_bresp = 0;
+
+  nmcq_awvalid = cqdb_valid & ~cqdb_nmcq_aw_block;
+  nmcq_wvalid = cqdb_valid & ~cqdb_nmcq_w_block;
+  hp_bvalid = cqdb_valid & ~cqdb_hp_b_block;
+  cqdb_ready = (~nmcq_awvalid | nmcq_awready)
+             & (~nmcq_wvalid | nmcq_wready)
+             & (~hp_bvalid | hp_bready);
+  cq_rready = cqdb_ready;
 end
 
 endmodule
