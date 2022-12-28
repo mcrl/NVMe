@@ -205,6 +205,8 @@ always_ff @(posedge clk, negedge rstn) begin
     o2k_aw_fifo_rready <= 0;
     o2k_w_fifo_rready <= 0;
     o2k_ar_fifo_rready <= 0;
+    o2k_b_fifo_wvalid <= 0;
+    o2k_r_fifo_wvalid <= 0;
     ocu_rstn <= 0;
     ocu_rstn_sw <= 1;
   end else begin
@@ -216,6 +218,8 @@ always_ff @(posedge clk, negedge rstn) begin
     o2k_aw_fifo_rready <= 0;
     o2k_w_fifo_rready <= 0;
     o2k_ar_fifo_rready <= 0;
+    o2k_b_fifo_wvalid <= 0;
+    o2k_r_fifo_wvalid <= 0;
     ocu_rstn <= ocu_rstn_sw;
     if (host_en && host_we != 0) begin
       if          (host_addr == 'h00) begin
