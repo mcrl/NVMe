@@ -6,11 +6,15 @@
 *.ip_user_files
 *.runs
 *.sim
-*.srcs
 vivado_pid*.str
 *.dmp
 *.log
 *.jou
+*.bda
+*.ui
+*.dcp
+# ignore xci inside board design
+hw/IP/**/bd*/*.xci
 
 # temporary files
 *.swp
@@ -22,3 +26,4 @@ build
 *.ko
 *.mod
 *.mod.c
+*.zip
