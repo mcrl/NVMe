@@ -404,4 +404,15 @@ always_ff @(posedge clk, negedge rstn) begin
   end
 end
 
+always_comb begin
+  // cq_rdata[0 +: 32] Command Specific DW0
+  // cq_rdata[32 +: 32] Command Specific DW1
+  // cq_rdata[64 +: 16] SQ Head Pointer
+  // cq_rdata[80 +: 16] SQ Identifier
+  // cq_rdata[96 +: 16] Command Identifier
+  // cq_rdata[112] Phase Tag
+  // cq_rdata[113 +: 15] Status
+  cqdb_valid = cq_rvalid & (cq_rdata[112] == cqdb_phase);
+end
+
 endmodule
