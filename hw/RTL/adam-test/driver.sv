@@ -167,4 +167,17 @@ module driver #(
   output logic       sq_rready
 );
 
+// Address mapping (assuming 16 outstanding txns)
+// from nvme
+// 0 ~ 64KB (64KB) write buf
+// 64KB ~ 128KB (64KB) read buf
+// 128KB ~ 129KB (1KB) SQ
+// 129KB ~ 129.25KB (256B) CQ
+localparam OUTSTANDING = 16;
+localparam WRITE_BUF_BASE = 0;
+localparam WRITE_BUF_SIZE = OUTSTANDING * 4096;
+localparam READ_BUF_BASE = WRITE_BUF_BASE + WRITE_BUF_SIZE;
+localparam SQ_BASE = READ_BUF_BASE + OUTSTANDING * 4096;
+localparam CQ_BASE = SQ_BASE + OUTSTANDING * 64;
+
 endmodule
