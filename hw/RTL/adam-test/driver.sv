@@ -200,4 +200,20 @@ localparam CQ_BASE = SQ_BASE + OUTSTANDING * 64;
 // C6. ns_aw and ns_w comes (for CQ)
 // C7. ns_b goes
 
+// SQ step
+logic sq_valid;
+logic sq_ready;
+
+logic [$clog2(OUTSTANDING)-1:0] sq_sqtail;
+
+always_ff @(posedge clk, negedge rstn) begin
+  if (~rstn) begin
+    sq_sqtail <= 0;
+  end else begin
+    if (hp_awvalid & hp_awready) begin
+      sq_sqtail <= sq_sqtail + 1;
+    end
+  end
+end
+
 endmodule
