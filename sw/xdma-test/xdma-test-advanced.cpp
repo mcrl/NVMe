@@ -868,5 +868,8 @@ the Identify Controller data structure (i.e., CNS 01h);
   be done at any point after the controller signals that the controller is ready (i.e., CSTS.RDY is set
   to ‘1’)
   */
+
+  while (!CheckAllQueueIsEmpty());
+  spdlog::info("Done.");
   return 0;
 }
