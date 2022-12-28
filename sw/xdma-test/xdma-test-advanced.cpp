@@ -352,6 +352,11 @@ int main(int argc, char** argv) {
   spdlog::info("NVMe found on 01:00.0");
 
   /*
+   * Expand Memory Limit of RP
+   */
+  //OculinkWriteECAM(0, 0, 0, 0x20, 0xFFFF0000);
+
+  /*
    * Enable memory space of NVMe. (at 0x02 on config space of NVMe)
    * Without it, all requests will result in "Unsupported Requests" in PCIe or "DECERR" in AXI.
    */
