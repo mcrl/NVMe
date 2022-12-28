@@ -75,4 +75,78 @@ module kernel #(
 // 0x40 RW benchmode (write=0, read=1)
 // 0x44 RO checksum (after read)
 
+typedef enum logic [1:0] {
+  KERNEL_STATE_IDLE,
+  KERNEL_STATE_RUNNING,
+  KERNEL_STATE_DONE
+} kernel_state_t;
+
+// regs R/W by host
+logic [63:0] start_addr;
+logic [63:0] end_addr;
+logic [127:0] start_value;
+logic [127:0] value_stride;
+logic benchmode;
+logic [31:0] checksum;
+logic driver_rstn_sw;
+
+kernel_state_t kernel_state;
+logic [HP_ADDR_WIDTH-1:0] cur_addr;
+logic [HP_ADDR_WIDTH-1:0] cur_value_addr;
+logic [HP_DATA_WIDTH-1:0] cur_value;
+
+always_ff @(posedge clk, negedge rstn) begin
+  if (~rstn) begin
+    host_bvalid <= 0;
+    host_rvalid <= 0;
+    kernel_state <= KERNEL_STATE_IDLE;
+    driver_rstn <= 0;
+    driver_rstn_sw <= 1;
+  end else begin
+    host_bvalid <= 0;
+    host_rvalid <= 0;
+    driver_rstn <= driver_rstn_sw;
+    if (host_awvalid & host_wvalid) begin
+      host_bvalid <= 1;
+      if          (host_awaddr == 'h00) begin
+        kernel_state <= KERNEL_STATE_RUNNING;
+        cur_addr <= start_addr;
+        cur_value_addr <= start_addr;
+        cur_value <= start_value;
+        checksum <= 0;
+      end else if (host_awaddr == 'h08) begin
+        kernel_state <= KERNEL_STATE_IDLE;
+      end else if (host_awaddr == 'h0c) begin
+        driver_rstn_sw <= host_wdata;
+      end else if (host_awaddr == 'h10) begin
+        start_addr[31:0] <= host_wdata;
+      end else if (host_awaddr == 'h14) begin
+        start_addr[63:32] <= host_wdata;
+      end else if (host_awaddr == 'h18) begin
+        end_addr[31:0] <= host_wdata;
+      end else if (host_awaddr == 'h1c) begin
+        end_addr[63:32] <= host_wdata;
+      end else if (host_awaddr == 'h20) begin
+        start_value[31:0] <= host_wdata;
+      end else if (host_awaddr == 'h24) begin
+        start_value[63:32] <= host_wdata;
+      end else if (host_awaddr == 'h28) begin
+        start_value[95:64] <= host_wdata;
+      end else if (host_awaddr == 'h2c) begin
+        start_value[127:96] <= host_wdata;
+      end else if (host_awaddr == 'h30) begin
+        value_stride[31:0] <= host_wdata;
+      end else if (host_awaddr == 'h34) begin
+        value_stride[63:32] <= host_wdata;
+      end else if (host_awaddr == 'h38) begin
+        value_stride[95:64] <= host_wdata;
+      end else if (host_awaddr == 'h3c) begin
+        value_stride[127:96] <= host_wdata;
+      end else if (host_awaddr == 'h40) begin
+        benchmode <= host_wdata;
+      end
+    end
+  end
+end
+
 endmodule
