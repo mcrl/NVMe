@@ -574,6 +574,22 @@ the Identify Controller data structure (i.e., CNS 01h);
     data.push_back(cdw15); // 64B
 
     OculinkRespondRead(data);
+
+    std::vector<uint32_t> cds; // controller data structure
+    for (int i = 0; i < 32; ++i) { // 4KB expected; NVMe sends 32 txn with burst length 8 (32 * 8 * 16B = 4KB)
+      std::vector<uint32_t> ret;
+      OculinkRespondWrite(ret);
+      assert(ret.size() == 32); // (32 * 32b = 128B per txn)
+      cds.insert(cds.end(), ret.begin(), ret.end());
+    }
+    // sqes at 512, cqes at 513
+
+    uint32_t cds512 = cds[512 / sizeof(uint32_t)];
+    int min_sqes = cds512 & 0b1111;
+    int max_sqes = (cds512 >> 4) & 0b1111;
+    int min_cqes = (cds512 >> 8) & 0b1111;
+    int max_cqes = (cds512 >> 12) & 0b1111;
+    spdlog::info("min_sqes={} max_sqes={} min_cqes={} max_cqes={}", min_sqes, max_sqes, min_cqes, max_cqes);
   }
   //OculinkWriteNVMe(0x1004, ++cqhead);
 
