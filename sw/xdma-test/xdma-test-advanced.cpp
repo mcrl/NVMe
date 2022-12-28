@@ -423,9 +423,9 @@ int main(int argc, char** argv) {
    */
   // We put ASQ right after NVMe BAR0, and ACQ right after ASQ.
   // admin submission queue size
-  size_t asqs = 16;
+  size_t asqs = 64;
   // admin completion queue size
-  size_t acqs = 16;
+  size_t acqs = 64;
   // admin submission queue base
   size_t asqb = nvme_bar0 + nvme_bar0_size;
   // admin completion queue base
