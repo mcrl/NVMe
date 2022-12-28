@@ -279,4 +279,13 @@ always_comb begin
   
 end
 
+// hp_w -> wb_w glue logic
+always_comb begin
+  wb_wdata = hp_wdata;
+  wb_wstrb = hp_wstrb;
+  wb_wlast = hp_wlast;
+  wb_wvalid = hp_wvalid;
+  hp_wready = wb_wready;
+end
+
 endmodule
