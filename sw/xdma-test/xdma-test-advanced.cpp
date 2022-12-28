@@ -608,6 +608,20 @@ the Identify Controller data structure (i.e., CNS 01h);
       spdlog::info("sqid={} sqhd={}", sqid, sqhd);
       spdlog::info("status={:015b} phase_tag={} cid={}", status, phase_tag, cid);
     }
+
+    {
+      // CC.IOCQES @ 23:20, CC.IOSQES @ 19:16
+      uint32_t CC = OculinkReadNVMe(0x14);
+      // Clear CC.IOCQES
+      CC &= ~(0b1111 << 20);
+      // Clear CC.IOSQES
+      CC &= ~(0b1111 << 16);
+      // Set CC.IOCQES to 4 (16B)
+      CC |= max_cqes << 20;
+      // Set CC.IOSQES to 6 (64B)
+      CC |= max_sqes << 16;
+      OculinkWriteNVMe(0x14, CC);
+    }
   }
   //OculinkWriteNVMe(0x1004, ++cqhead);
 
