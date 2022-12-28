@@ -180,4 +180,24 @@ localparam READ_BUF_BASE = WRITE_BUF_BASE + WRITE_BUF_SIZE;
 localparam SQ_BASE = READ_BUF_BASE + OUTSTANDING * 4096;
 localparam CQ_BASE = SQ_BASE + OUTSTANDING * 64;
 
+// A1. hp_aw comes
+// A2. syntehsize command and write to sq_aw and sq_w
+// A3. sq_b comes
+
+// B1. hp_w comes
+// B2. write to wb_aw and wb_w
+// B3. wb_b comes (for full beats)
+
+// C1. wait A3 and B3
+// C2. goes hp_b
+// C2. write doorbell via nm_aw and nm_w
+// C3. nm_b comes
+
+// below 2 steps happen outside of driver
+// C4. ns_ar comes (for data)
+// C5. ns_r goes
+
+// C6. ns_aw and ns_w comes (for CQ)
+// C7. ns_b goes
+
 endmodule
