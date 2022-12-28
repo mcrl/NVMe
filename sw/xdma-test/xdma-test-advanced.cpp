@@ -853,5 +853,12 @@ the Identify Controller data structure (i.e., CNS 01h);
       spdlog::info("status={:015b} phase_tag={} cid={}", status, phase_tag, cid);
     }
   }
+
+  /*
+  11. If the controller implements I/O queues, then the host should allocate the appropriate number of
+  I/O Submission Queues based on the number required for the system configuration and the number
+  supported by the controller. The I/O Submission Queues are allocated using the Create I/O
+  Submission Queue command; and
+  */
   return 0;
 }
