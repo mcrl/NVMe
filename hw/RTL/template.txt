@@ -180,3 +180,16 @@ always_comb begin
   s_rvalid = m_rvalid;
   m_rready = s_rready; 
 end
+
+// BRAM interface example
+  (* X_INTERFACE_MODE = "master" *)
+  (* X_INTERFACE_INFO = "xilinx.com:interface:bram_rtl:1.0 sq ADDR" *)
+  output wire [SQ_ADDR_WIDTH-1:0] sq_addr,
+  (* X_INTERFACE_INFO = "xilinx.com:interface:bram_rtl:1.0 sq CLK" *)
+  output wire sq_clk,
+  (* X_INTERFACE_INFO = "xilinx.com:interface:bram_rtl:1.0 sq DIN" *)
+  output wire [SQ_DATA_WIDTH-1:0] sq_din,
+  (* X_INTERFACE_INFO = "xilinx.com:interface:bram_rtl:1.0 sq EN" *)
+  output wire sq_en,
+  (* X_INTERFACE_INFO = "xilinx.com:interface:bram_rtl:1.0 sq WE" *)
+  output wire sq_we,
