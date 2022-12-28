@@ -713,5 +713,57 @@ the Identify Controller data structure (i.e., CNS 01h);
       spdlog::info("status={:015b} phase_tag={} cid={}", status, phase_tag, cid);
     }
   }
+
+  /*
+  9. If the controller implements I/O queues, then the host should determine the number of I/O
+  Submission Queues and I/O Completion Queues supported using the Set Features command with
+  the Number of Queues feature identifier. After determining the number of I/O Queues, the NVMe
+  Transport specific interrupt registers (e.g. MSI and/or MSI-X registers) should be configured;
+  */
+
+  // 5.27 Set Features command
+  OculinkWriteNVMe(0x1000, ++sqtail);
+  {
+    // Find active namespaces with CNS 02 -> we expect single namespace with NSID 1
+    // Query namespace data structe with CNS 00 -> give NSID 1
+    std::vector<uint32_t> data;
+    uint32_t cid = 42; // unique identifier
+    uint32_t psdt = 0; // PRP shall be used for all Admin command for NVMe over PCIe.
+    uint32_t fuse = 0; // not fused
+    uint32_t opcode = 0x09; // Set Features
+    uint32_t cdw0 = (cid << 16) | (psdt << 14) | (fuse << 8) | opcode;
+    uint32_t nsid = 1; // namespace identifier
+    uint32_t cdw2 = 0; // TODO command specific
+    uint32_t cdw3 = 0; // TODO command specific
+    uint64_t mptr = 0; // TODO metadata pointer what is this???
+    // prp1 and prp2 is dptr
+    uint64_t prp1 = 2 * 1024 * 1024; // prp entry 1; we give dptr as 2MB
+    uint64_t prp2 = 0; // prp entry 2
+    uint32_t cdw10 = 0x7; // feature id: number of queues
+    uint32_t cdw11 = (1 << 16) | 1; // ncqr = 1, nsqr = 1
+    uint32_t cdw12 = 0;
+    uint32_t cdw13 = 0;
+    uint32_t cdw14 = 0;
+    uint32_t cdw15 = 0;
+
+    data.push_back(cdw0);
+    data.push_back(nsid);
+    data.push_back(cdw2);
+    data.push_back(cdw3); // 16B
+    data.push_back(mptr);
+    data.push_back(mptr >> 32);
+    data.push_back(prp1);
+    data.push_back(prp1 >> 32);
+    data.push_back(prp2);
+    data.push_back(prp2 >> 32); // 40B
+    data.push_back(cdw10);
+    data.push_back(cdw11);
+    data.push_back(cdw12);
+    data.push_back(cdw13);
+    data.push_back(cdw14);
+    data.push_back(cdw15); // 64B
+
+    OculinkRespondRead(data);
+  }
   return 0;
 }
