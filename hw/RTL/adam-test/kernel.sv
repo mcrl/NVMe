@@ -182,6 +182,23 @@ always_ff @(posedge clk, negedge rstn) begin
         host_rdata <= checksum;
       end
     end
+    if (kernel_state == KERNEL_STATE_RUNNING) begin
+      if (benchmode == 0) begin // WRITE
+        if (~hp_awvalid & ~hp_wvalid) begin
+          kernel_state <= KERNEL_STATE_DONE;
+        end
+        if (hp_awvalid & hp_awready) begin
+          cur_addr <= cur_addr + 4096; // 4KB stride
+        end
+        if (hp_wvalid & hp_wready) begin
+          cur_value_addr <= cur_value_addr + 16; // 16B per beat
+          cur_value[0 +: 32] <= cur_value[0 +: 32] + value_stride[0 +: 32];
+          cur_value[32 +: 32] <= cur_value[32 +: 32] + value_stride[32 +: 32];
+          cur_value[64 +: 32] <= cur_value[64 +: 32] + value_stride[64 +: 32];
+          cur_value[96 +: 32] <= cur_value[96 +: 32] + value_stride[96 +: 32];
+        end
+      end
+    end
   end
 end
 
