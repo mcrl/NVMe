@@ -528,21 +528,33 @@ controller is ready to process commands when CSTS.RDY is set to ‘1’;
 the Identify Controller data structure (i.e., CNS 01h);
   */
   // SQ0TDBL at 0x1000
-  OculinkWriteNVMe(0x1000, 1);
+  int sqtail = 0;
+  int cqhead = 0;
+  OculinkWriteNVMe(0x1000, ++sqtail);
   {
-    // 3.3.3.1 Submission Queue Entry
+    // 3.3.3.1 Submission Queue Entry : for generic submission queue entry architecture
+    // 5. Admin Command Set : for opcode
+    // 5.17.1 Identify Command : for command-specific information
+    // 5.17.2.1 Identify Controller Data Structure (CNS 01h)
     std::vector<uint32_t> data;
     uint32_t cid = 42; // unique identifier
     uint32_t psdt = 0; // PRP shall be used for all Admin command for NVMe over PCIe.
     uint32_t fuse = 0; // not fused
-    uint32_t opcode = 0; // TODO command specific
+    uint32_t opcode = 0x06; // IDENTIFY command
     uint32_t cdw0 = (cid << 16) | (psdt << 14) | (fuse << 8) | opcode;
-    uint32_t nsid = 0; // namespace identifier 0
+    uint32_t nsid = 0; // namespace identifier not used
     uint32_t cdw2 = 0; // TODO command specific
     uint32_t cdw3 = 0; // TODO command specific
     uint64_t mptr = 0; // TODO metadata pointer what is this???
-    uint64_t prp1 = 0; // TODO prp entry 1 what is this???
-    uint64_t prp2 = 0; // TODO prp entry 2 what is this???
+    // prp1 and prp2 is dptr
+    uint64_t prp1 = 6 * 1024 * 1024; // prp entry 1; we give dptr as 2MB
+    uint64_t prp2 = 0; // prp entry 2
+    uint32_t cdw10 = 0x01; // cntid == 0 (not used), cns = 01h
+    uint32_t cdw11 = 0; // csi == 0 (not used), CNS specific Identifier == 0 (not used)
+    uint32_t cdw12 = 0;
+    uint32_t cdw13 = 0;
+    uint32_t cdw14 = 0; // uuid index == 0 (not used)
+    uint32_t cdw15 = 0;
 
     data.push_back(cdw0);
     data.push_back(nsid);
@@ -554,59 +566,16 @@ the Identify Controller data structure (i.e., CNS 01h);
     data.push_back(prp1 >> 32);
     data.push_back(prp2);
     data.push_back(prp2 >> 32); // 40B
-    data.push_back(0);
-    data.push_back(0);
-    data.push_back(0);
-    data.push_back(0);
-    data.push_back(0);
-    data.push_back(0); // 64B
+    data.push_back(cdw10);
+    data.push_back(cdw11);
+    data.push_back(cdw12);
+    data.push_back(cdw13);
+    data.push_back(cdw14);
+    data.push_back(cdw15); // 64B
+
+    OculinkRespondRead(data);
   }
-
-  while (!CheckAllQueueIsEmpty());
-  spdlog::info("Done.");
-  return 0;
-
-/*
-
-  // CAP 0x0
-  // CC  0x14
-  // AQA 0x24
-  // ASQ 0x28
-  // ACQ 0x30
-
-  OculinkWriteNVMe(0x14, 0x00000000); // CC.EN = 0
-  while (OculinkReadNVMe(0x1c) != 0); // wait CSTS.RDY to be 0
-
-  size_t sq_len = 16;
-  size_t sq_nbytes = sq_len * 64; // one queue entry is 64-byte
-  size_t cq_len = 16;
-  size_t cq_nbytes = cq_len * 64;
-  // memory layout : | BAR (bar_size) | ASQ (sq_nbytes) | ACQ (cq_nbytes) |
-  OculinkWriteNVMe(0x24, (cq_len << 16) | sq_len); // AQA set (CQ size, SQ size)
-  OculinkWriteNVMe(0x28, bar_size); // ASQ low adddr
-  OculinkWriteNVMe(0x2c, 0x00000000); // ASQ high addr
-  OculinkWriteNVMe(0x30, bar_size + sq_nbytes); // ACQ low adddr
-  OculinkWriteNVMe(0x34, 0x00000000); // ASQ high addr
-
-  CheckAllQueueIsEmpty();
-
-  OculinkReadNVMe(0x24);
-  OculinkReadNVMe(0x28);
-  OculinkReadNVMe(0x2c);
-  OculinkReadNVMe(0x30);
-  OculinkReadNVMe(0x34);
-
-  CheckAllQueueIsEmpty();
-
-  OculinkWriteNVMe(0x14, 0x00000001); // CC.EN = 1
-  while (OculinkReadNVMe(0x1c) != 1) { // wait CSTS.RDY to be 1
-    std::this_thread::sleep_for(std::chrono::milliseconds(1));
-  }
-
-  OculinkWriteNVMe(0x1000, 0x00000001); // ASQTDBL <- 1
-  std::this_thread::sleep_for(std::chrono::milliseconds(1));
-  CheckAllQueueIsEmpty();
+  //OculinkWriteNVMe(0x1004, ++cqhead);
 
   return 0;
-  */
 }
