@@ -71,5 +71,19 @@ int main(int argc, char** argv) {
   et = GetTime();
   printf("cuFileRead %ld B read, %f MB/s\n", rsz, devmemsz / 1e6 / (et - st));
 
+  // Read devmem
+  st = GetTime();
+  cudaMemcpy(hostmem, devmem, devmemsz, cudaMemcpyDeviceToHost);
+  et = GetTime();
+  printf("cudaMemcpy D2H %f MB/s\n", devmemsz / 1e6 / (et - st));
+  for (size_t i = 0; i < devmemsz; ++i) {
+    if (*((unsigned char*)hostmem + i) != i % 256) {
+      printf("mem[%lu] expected %02lX, got %02X ", i, i % 256, *((unsigned char*)hostmem + i));
+      break;
+    }
+    //printf("%02X ", *((char*)hostmem + i));
+  }
+  //printf("\n");
+
   return 0;
 }
