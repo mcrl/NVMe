@@ -216,4 +216,21 @@ always_ff @(posedge clk, negedge rstn) begin
   end
 end
 
+// hp_aw -> (sq_aw, sq_w, wb_aw) glue logic
+logic hp_aw_sq_aw_block;
+logic hp_aw_sq_w_block;
+logic hp_aw_wb_aw_block;
+
+always_ff @(posedge clk, negedge rstn) begin
+  if (~rstn) begin
+    hp_aw_sq_aw_block <= 0;
+    hp_aw_sq_w_block <= 0;
+    hp_aw_wb_aw_block <= 0;
+  end else begin
+    hp_aw_sq_aw_block <= hp_awvalid & ~hp_awready & (sq_awready | hp_aw_sq_aw_block);
+    hp_aw_sq_w_block <= hp_awvalid & ~hp_awready & (sq_wready | hp_aw_sq_w_block);
+    hp_aw_wb_aw_block <= hp_awvalid & ~hp_awready & (wb_awready | hp_aw_wb_aw_block);
+  end
+end
+
 endmodule
