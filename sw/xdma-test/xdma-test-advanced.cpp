@@ -764,6 +764,24 @@ the Identify Controller data structure (i.e., CNS 01h);
     data.push_back(cdw15); // 64B
 
     OculinkRespondRead(data);
+
+    {
+      // 3.3.3.2 Common Completion Queue Entry
+      std::vector<uint32_t> ret;
+      OculinkRespondWrite(ret);
+      assert(ret.size() == 4); // CQE expected
+      uint32_t cqe0 = ret[0];
+      uint32_t cqe1 = ret[1];
+      uint32_t sqid = (ret[2] >> 16) & 0xffff;
+      uint32_t sqhd = ret[2] & 0xffff;
+      uint32_t status = (ret[3] >> 17) & 0x7fff;
+      uint32_t phase_tag = (ret[3] >> 16) & 0x1;
+      uint32_t cid = ret[3] & 0xffff;
+      spdlog::info("cq allocated={} sq allocated={}", cqe0 >> 16, cqe0 & 0xffff);
+      spdlog::info("cqe1={}", cqe1);
+      spdlog::info("sqid={} sqhd={}", sqid, sqhd);
+      spdlog::info("status={:015b} phase_tag={} cid={}", status, phase_tag, cid);
+    }
   }
   return 0;
 }
