@@ -57,5 +57,12 @@ int main(int argc, char** argv) {
   et = GetTime();
   printf("cudaMemcpy H2D %f MB/s\n", devmemsz / 1e6 / (et - st));
 
+  // Write test
+  st = GetTime();
+  ssize_t wsz = cuFileWrite(fh, devmem, devmemsz, 0, 0);
+  CheckCond(wsz < 0 || wsz < devmemsz, "cuFileWrite error");
+  et = GetTime();
+  printf("cuFileWrite %ld B written, %f MB/s\n", wsz, devmemsz / 1e6 / (et - st));
+
   return 0;
 }
