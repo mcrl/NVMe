@@ -197,6 +197,21 @@ always_ff @(posedge clk, negedge rstn) begin
           cur_value[64 +: 32] <= cur_value[64 +: 32] + value_stride[64 +: 32];
           cur_value[96 +: 32] <= cur_value[96 +: 32] + value_stride[96 +: 32];
         end
+      end else begin // READ
+        if (cur_value_addr == end_addr) begin
+          kernel_state <= KERNEL_STATE_DONE;
+        end
+        if (hp_arvalid & hp_arready) begin
+          cur_addr <= cur_addr + 4096;
+        end
+        if (hp_rvalid & hp_rready) begin
+          cur_value_addr <= cur_value_addr + 16; // 16B per beat
+          checksum <= checksum
+                    + hp_rdata[0 +: 32]
+                    + hp_rdata[32 +: 32]
+                    + hp_rdata[64 +: 32]
+                    + hp_rdata[96 +: 32];
+        end
       end
     end
   end
