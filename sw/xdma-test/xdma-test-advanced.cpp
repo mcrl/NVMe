@@ -394,6 +394,15 @@ int main(int argc, char** argv) {
   /*
    * PCIe Transport-specific controller initialization DONE
    */
+  
+  // Just checking headers
+  spdlog::info("RP CAP = {:32b}", OculinkReadECAM(0, 0, 0, 0x04));
+  spdlog::info("RP CTL = {:32b}", OculinkReadECAM(0, 0, 0, 0x08));
+  spdlog::info("EP CAP = {:32b}", OculinkReadECAM(1, 0, 0, 0x04));
+  spdlog::info("EP CTL = {:32b}", OculinkReadECAM(1, 0, 0, 0x08));
+
+  PrintPCIConfigSpaceHeader(0, 0, 0);
+  PrintPCIConfigSpaceHeader(1, 0, 0);
 
   /*
    * Memory-based transport controller initialization START
