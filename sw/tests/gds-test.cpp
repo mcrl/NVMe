@@ -36,5 +36,14 @@ int main(int argc, char** argv) {
   cferr = cuFileHandleRegister(&fh, &descr);
   CheckCuFile(cferr, "cuFileHandleRegister error");
 
+  // Alloc and register device memory
+  void* devmem;
+  size_t devmemsz = 1LL * 1024 * 1024 * 1024;
+  //size_t devmemsz = 1LL * 10;
+  cerr = cudaMalloc(&devmem, devmemsz);
+  CheckCuda(cerr, "cudaMalloc error");
+  cferr = cuFileBufRegister(devmem, devmemsz, 0);
+  CheckCuFile(cferr, "cuFileBufRegister error");
+
   return 0;
 }
