@@ -5,16 +5,36 @@
 #include <spdlog/spdlog.h>
 #include <vector>
 
+/*
+ * ATTENTION!
+ * Xilinx DMA IP seems to have a bug that only 32-bit is applied to C_AXIBAR. (Check xci file of xdma.)
+ * For example, even if you map 4G range starting at 0x1_0000_0000 to AXI of xdma in address editor,
+ * C_AXIBAR will become 0x0000_0000. (which is incorrect!) Then, if you send request at 0x1_0000_0000,
+ * it does not belong to [C_AXIBAR, C_AXIBAR + 4G) which result in DECERR on AXI.
+ * 
+ * Solution
+ * We mapped AXI of xdma to 4G range starting at 0 so that it resides in 32-bit address space.
+ * We mapped AXI-lite of xdma (for ecam) to 4G range starting at 4G.
+ */
 const size_t ecam_addr_base = 0x100000000UL;
-void* bar0base;
-size_t nvme_bar0;
+
+// We can map nvme bar to any 32-bit address; we just choose 0 here.
+size_t nvme_bar0 = 0;
+
+// This will be determined during PCIe enumeration
+size_t nvme_bar0_size = 0;
+size_t bar_size=0;
+
+// This is bar0 of host-fpga PCIe (not internal PCIe for NVMe) in virtual address in userspace.
+// This should be set by mmap.
+void* fpga_bar0;
 
 void KernelWrite(size_t addr, uint32_t data) {
   if (addr % 4 != 0) {
     spdlog::warn("KernelWrite skipped due to unaligned access (addr={}, data={})", addr, data);
     exit(0);
   }
-  volatile uint32_t* p = (uint32_t*)((size_t)bar0base + addr);
+  volatile uint32_t* p = (uint32_t*)((size_t)fpga_bar0 + addr);
   *p = data;
 }
 
@@ -23,7 +43,7 @@ uint32_t KernelRead(size_t addr) {
     spdlog::warn("KernelRead skipped due to unaligned access (addr={})", addr);
     exit(0);
   }
-  volatile uint32_t* p = (uint32_t*)((size_t)bar0base + addr);
+  volatile uint32_t* p = (uint32_t*)((size_t)fpga_bar0 + addr);
   return *p;
 }
 
@@ -300,7 +320,16 @@ void OculinkRespondIOWrite() {
 
 
 
+  size_t addr = ((size_t)araddr1 << 32) + araddr0;
+
+  // 1 << arsize is bytes in transfer (single beat in a burst)
+  //assert((1 << arsize) % sizeof(uint32_t) == 0);
+  //assert(addr % (1 << arsize) == 0);
+  //assert((1 << arsize) * (arlen + 1) / sizeof(uint32_t) == data.size());
+
   // o2k_r
+  int addr_idx = addr % 16 / 4;
+  int data_idx = 0;
   for (int i = 0; i <= arlen; ++i) {
     uint32_t rdata0 = count++;
     uint32_t rdata1 = count++; 
@@ -418,18 +447,20 @@ int main(int argc, char** argv) {
 
   
   size_t bar0sz = 1024 * 1024; // 1MB
-	bar0base = mmap(NULL, bar0sz, PROT_READ | PROT_WRITE, MAP_SHARED, fd, 0);
-	if (bar0base == (void *)-1) {
+  fpga_bar0 = mmap(NULL, bar0sz, PROT_READ | PROT_WRITE, MAP_SHARED, fd, 0);
+	//fpga_bar0 = mmap(NULL, bar0sz, PROT_READ | PROT_WRITE, MAP_SHARED, fd, 0);
+	if (fpga_bar0 == (void *)-1) {
     spdlog::info("[2] mmap failed: {}", strerror(errno));
     close(fd);
     return 0;
 	}
-  spdlog::info("[SYS] mmap done. bar0base={}", bar0base);
+  spdlog::info("[SYS] mmap done. fpga_bar0={}", fpga_bar0);
 
   AssertOcuReset();
   DeassertOcuReset();
   spdlog::info("[SYS] Reset done.");
 
+  // TODO should be replaced with kernel reset
   while (!CheckAllQueueIsEmpty());
   spdlog::info("[SYS] All queue is empty.");
 
@@ -442,22 +473,30 @@ int main(int argc, char** argv) {
   // Enable Memory Space and BusMaster
   OculinkWriteECAM(1, 0, 0, 0x04, 0x00000006); // rq-rc
 
-  CheckAllQueueIsEmpty();
+  /*
+   * BAR size detection
+   */
 
-  OculinkWriteECAM(1, 0, 0, 0x10, 0xffffffff); // rq-rc
-  size_t bar_size = OculinkReadECAM(1, 0, 0, 0x10); // rq-rc
-  if (bar_size == 0) {
+  // 1. try to set all bits in BAR
+  OculinkWriteECAM(1, 0, 0, 0x10, 0xffffffff);
+
+  // 2. Read BAR and find the lowest set bit in address bits.
+  // (4 lsb are not address bits, so ignore them.)
+  uint32_t bar = OculinkReadECAM(1, 0, 0, 0x10) & 0xfffffff0;
+  if (bar == 0) {
     spdlog::info("bar_size==0 something wrong");
     exit(0);
   }
   bar_size &= 0xfffffff0;
   size_t cnt0 = 0;
+  /*
   while ((bar_size & 1) == 0) {
-    //spdlog::info("bar_size={} cnt0={}", bar_size, cnt0);
+    spdlog::info("bar_size={} cnt0={}", bar_size, cnt0);
     ++cnt0;
     bar_size >>= 1;
   }
   bar_size = 1 << cnt0;
+  */
   spdlog::info("[SYS] Detected bar_size = 0x{:08X}", bar_size);
   
   //// Assign NVMe's BAR0 (64-bit) to 4GB offset
@@ -470,7 +509,6 @@ int main(int argc, char** argv) {
 
   PrintPCIConfigSpaceHeader(0, 0, 0);
   PrintPCIConfigSpaceHeader(1, 0, 0);
-
 
   // CAP 0x0
   // CC  0x14
@@ -597,6 +635,26 @@ int main(int argc, char** argv) {
   std::this_thread::sleep_for(std::chrono::milliseconds(10));
   while(KernelRead(0x80)) OculinkRespondWrite();
 
+
+   
+  // Write command 
+  // -> kernel write (0x100, nvme addr)
+  // -> kernel write (0x104, fpga addr)
+  // -> kernel write (0x108, data length, 8'h0, opcode)
+  // -> kernel write (0x110, command push into SQ)
+
+  KernelWrite(0x100, 0x00001234);
+  KernelWrite(0x104, 0x00005678);
+  KernelWrite(0x108, 0x00100002);
+  KernelWrite(0x110, 0x00000000);
+
+  spdlog::info("{:08X}", KernelRead(0x114));
+  spdlog::info("{:08X}, {:08X}, {:08X}, {:08X}", KernelRead(0x120), KernelRead(0x124), KernelRead(0x128), KernelRead(0x12C));
+  KernelRead(0x110);
+  spdlog::info("{:08X}, {:08X}, {:08X}, {:08X}", KernelRead(0x120), KernelRead(0x124), KernelRead(0x128), KernelRead(0x12C));
+  KernelRead(0x110);
+  spdlog::info("{:08X}, {:08X}, {:08X}, {:08X}", KernelRead(0x120), KernelRead(0x124), KernelRead(0x128), KernelRead(0x12C));
+  KernelRead(0x110);
 
   return 0;
 }

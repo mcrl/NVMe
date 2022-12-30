@@ -1,0 +1,195 @@
+// AXI spec defines required signals and default values.
+// * p.110 A9.3 Default signal values
+// * p.120 B1.1 Definition of AXI4-Lite
+// But I personally build minimal "essential" set of signals, here.
+// Thumb of rules:
+// * valid, ready, data signals
+// * non-zero default value signals
+// * burst signals (except axi-lite)
+// * AXI4 should be superset of AXI-Lite
+// * master and slave should have the same number of signals (so that I can connect my modules)
+// * AXIB == AXI4 with burst, AXIL == AXI-Lite
+
+// AXIB master (29 signals, 25 signals without ID)
+output wire [M_ID_WIDTH-1:0]     m_awid,
+output wire [M_ADDR_WIDTH-1:0]   m_awaddr,
+output wire [M_DATA_WIDTH-1:0]   m_wdata,
+output wire [M_DATA_WIDTH/8-1:0] m_wstrb,
+input  wire [M_ID_WIDTH-1:0]     m_bid,
+output wire [M_ID_WIDTH-1:0]     m_arid,
+output wire [M_ADDR_WIDTH-1:0]   m_araddr,
+input  wire [M_ID_WIDTH-1:0]     m_rid,
+input  wire [M_DATA_WIDTH-1:0]   m_rdata,
+output wire [7:0] m_awlen,
+output wire [2:0] m_awsize,
+output wire [1:0] m_awburst,
+output wire       m_awvalid,
+input  wire       m_awready,
+output wire       m_wlast,
+output wire       m_wvalid,
+input  wire       m_wready,
+input  wire [1:0] m_bresp,
+input  wire       m_bvalid,
+output wire       m_bready,
+output wire [7:0] m_arlen,
+output wire [2:0] m_arsize,
+output wire [1:0] m_arburst,
+output wire       m_arvalid,
+input  wire       m_arready,
+input  wire [1:0] m_rresp,
+input  wire       m_rlast,
+input  wire       m_rvalid,
+output wire       m_rready,
+
+// AXIB slave (29 signals, 25 signals without ID)
+input  wire [S_ID_WIDTH-1:0]     s_awid,
+input  wire [S_ADDR_WIDTH-1:0]   s_awaddr,
+input  wire [S_DATA_WIDTH-1:0]   s_wdata,
+input  wire [S_DATA_WIDTH/8-1:0] s_wstrb,
+output wire [S_ID_WIDTH-1:0]     s_bid,
+input  wire [S_ID_WIDTH-1:0]     s_arid,
+input  wire [S_ADDR_WIDTH-1:0]   s_araddr,
+output wire [S_ID_WIDTH-1:0]     s_rid,
+output wire [S_DATA_WIDTH-1:0]   s_rdata,
+input  wire [7:0] s_awlen,
+input  wire [2:0] s_awsize,
+input  wire [1:0] s_awburst,
+input  wire       s_awvalid,
+output wire       s_awready,
+input  wire       s_wlast,
+input  wire       s_wvalid,
+output wire       s_wready,
+output wire [1:0] s_bresp,
+output wire       s_bvalid,
+input  wire       s_bready,
+input  wire [7:0] s_arlen,
+input  wire [2:0] s_arsize,
+input  wire [1:0] s_arburst,
+input  wire       s_arvalid,
+output wire       s_arready,
+output wire [1:0] s_rresp,
+output wire       s_rlast,
+output wire       s_rvalid,
+input  wire       s_rready,
+
+// AXIB instantiation
+.m_awid    (m_awid),
+.m_awaddr  (m_awaddr),
+.m_wdata   (m_wdata),
+.m_wstrb   (m_wstrb),
+.m_bid     (m_bid),
+.m_arid    (m_arid),
+.m_araddr  (m_araddr),
+.m_rid     (m_rid),
+.m_rdata   (m_rdata),
+.m_awlen   (m_awlen),
+.m_awsize  (m_awsize),
+.m_awburst (m_awburst),
+.m_awvalid (m_awvalid),
+.m_awready (m_awready),
+.m_wlast   (m_wlast),
+.m_wvalid  (m_wvalid),
+.m_wready  (m_wready),
+.m_bresp   (m_bresp),
+.m_bvalid  (m_bvalid),
+.m_bready  (m_bready),
+.m_arlen   (m_arlen),
+.m_arsize  (m_arsize),
+.m_arburst (m_arburst),
+.m_arvalid (m_arvalid),
+.m_arready (m_arready),
+.m_rresp   (m_rresp),
+.m_rlast   (m_rlast),
+.m_rvalid  (m_rvalid),
+.m_rready  (m_rready),
+
+// AXIL master (17 signals)
+output wire [M_ADDR_WIDTH-1:0]   m_awaddr,
+output wire [M_DATA_WIDTH-1:0]   m_wdata,
+output wire [M_DATA_WIDTH/8-1:0] m_wstrb,
+output wire [M_ADDR_WIDTH-1:0]   m_araddr,
+input  wire [M_DATA_WIDTH-1:0]   m_rdata,
+output wire       m_awvalid,
+input  wire       m_awready,
+output wire       m_wvalid,
+input  wire       m_wready,
+input  wire [1:0] m_bresp,
+input  wire       m_bvalid,
+output wire       m_bready,
+output wire       m_arvalid,
+input  wire       m_arready,
+input  wire [1:0] m_rresp,
+input  wire       m_rvalid,
+output wire       m_rready,
+
+// AXIL slave (17 signals)
+input  wire [S_ADDR_WIDTH-1:0]   s_awaddr,
+input  wire [S_DATA_WIDTH-1:0]   s_wdata,
+input  wire [S_DATA_WIDTH/8-1:0] s_wstrb,
+input  wire [S_ADDR_WIDTH-1:0]   s_araddr,
+output wire [S_DATA_WIDTH-1:0]   s_rdata,
+input  wire       s_awvalid,
+output wire       s_awready,
+input  wire       s_wvalid,
+output wire       s_wready,
+output wire [1:0] s_bresp,
+output wire       s_bvalid,
+input  wire       s_bready,
+input  wire       s_arvalid,
+output wire       s_arready,
+output wire [1:0] s_rresp,
+output wire       s_rvalid,
+input  wire       s_rready,
+
+// AXIL instantiation
+.m_awaddr  (m_awaddr),
+.m_wdata   (m_wdata),
+.m_wstrb   (m_wstrb),
+.m_araddr  (m_araddr),
+.m_rdata   (m_rdata),
+.m_awvalid (m_awvalid),
+.m_awready (m_awready),
+.m_wvalid  (m_wvalid),
+.m_wready  (m_wready),
+.m_bresp   (m_bresp),
+.m_bvalid  (m_bvalid),
+.m_bready  (m_bready),
+.m_arvalid (m_arvalid),
+.m_arready (m_arready),
+.m_rresp   (m_rresp),
+.m_rvalid  (m_rvalid),
+.m_rready  (m_rready),
+
+// AXIL bypass pattern
+always_comb begin
+  m_awaddr = s_awaddr;
+  m_wdata = s_wdata;
+  m_wstrb = s_wstrb;
+  m_araddr = s_araddr;
+  s_rdata = m_rdata;
+  m_awvalid = s_awvalid;
+  s_awready = m_awready;
+  m_wvalid = s_wvalid;
+  s_wready = m_wready;
+  s_bresp = m_bresp;
+  s_bvalid = m_bvalid;
+  m_bready = s_bready;
+  m_arvalid = s_arvalid;
+  s_arready = m_arready;
+  s_rresp = m_rresp;
+  s_rvalid = m_rvalid;
+  m_rready = s_rready; 
+end
+
+// BRAM interface example
+  (* X_INTERFACE_MODE = "master" *)
+  (* X_INTERFACE_INFO = "xilinx.com:interface:bram_rtl:1.0 sq ADDR" *)
+  output wire [SQ_ADDR_WIDTH-1:0] sq_addr,
+  (* X_INTERFACE_INFO = "xilinx.com:interface:bram_rtl:1.0 sq CLK" *)
+  output wire sq_clk,
+  (* X_INTERFACE_INFO = "xilinx.com:interface:bram_rtl:1.0 sq DIN" *)
+  output wire [SQ_DATA_WIDTH-1:0] sq_din,
+  (* X_INTERFACE_INFO = "xilinx.com:interface:bram_rtl:1.0 sq EN" *)
+  output wire sq_en,
+  (* X_INTERFACE_INFO = "xilinx.com:interface:bram_rtl:1.0 sq WE" *)
+  output wire sq_we,
