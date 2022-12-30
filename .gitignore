@@ -13,8 +13,13 @@ vivado_pid*.str
 *.bda
 *.ui
 *.dcp
-# ignore xci inside board design
+# for xdma-test board design
 hw/IP/**/bd*/*.xci
+# for adam-test board design
+hw/IP/adam-test/design_1/*
+hw/IP/adam-test/design_2/*
+hw/IP/adam-test/design_3/*
+!hw/IP/adam-test/**/*.bd
 
 # temporary files
 *.swp
