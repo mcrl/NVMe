@@ -206,6 +206,7 @@ logic [127:0] sq_dout;
 logic sq_full;
 logic sq_empty;
 
+
 always_ff @(posedge clk, negedge rstn) begin
   if (~rstn) begin
     k2o_aw_fifo_wvalid <= 0;
@@ -221,10 +222,7 @@ always_ff @(posedge clk, negedge rstn) begin
     ocu_rstn <= 0;
     ocu_rstn_sw <= 1;
 
-    command_id <= 0;
-    sq_head_ptr <= 0;
-    sq_pop <= 0;
-    sq_push <= 0;
+
   end else begin
     k2o_aw_fifo_wvalid <= 0;
     k2o_w_fifo_wvalid <= 0;
@@ -238,9 +236,7 @@ always_ff @(posedge clk, negedge rstn) begin
     o2k_r_fifo_wvalid <= 0;
     ocu_rstn <= ocu_rstn_sw;
     
-    sq_pop <= 0;
-    sq_push <= 0;
-    command[1 * 32 +: 32] <= 32'h1; // NSID
+
 
     if (host_en && host_we != 0) begin
       if          (host_addr == 'h00) begin
@@ -293,18 +289,6 @@ always_ff @(posedge clk, negedge rstn) begin
         ocu_rstn_sw <= 0;
       end else if (host_addr == 'hc4) begin
         ocu_rstn_sw <= 1;
-      end else if (host_addr == 'h100) begin
-        command[10 * 32 +: 32] <= host_din;  // nvme address (LBA)
-      end else if (host_addr == 'h104) begin
-        command[6 * 32 +: 32] <= host_din;  // fpga data pointer (DPTR)
-      end else if (host_addr == 'h108) begin
-        command[10 * 32 +: 16] <= host_din[31:16];  // 4KB * n length (NLB)
-        command[0 * 32 +: 32] <= {command_id, 8'h0, host_din[7:0]};  // Read Opeation + CID
-      end else if (host_addr == 'h110) begin // push command + write doorbell
-        sq_din <= command;
-        sq_push <= 1'b1;
-        command_id <= command_id + 16'b1;
-        sq_head_ptr <= sq_head_ptr + 16'b1;
       end 
     end else begin
       if          (host_addr == 'h00) begin
@@ -350,6 +334,41 @@ always_ff @(posedge clk, negedge rstn) begin
     end
   end
 end
+
+always_ff @(posedge clk, negedge rstn) begin
+  if (~rstn) begin
+    command_id <= 0;
+    sq_head_ptr <= 0;
+    sq_pop <= 0;
+    sq_push <= 0;
+  end
+  else begin
+    sq_pop <= 0;
+    sq_push <= 0;
+    command[1 * 32 +: 32] <= 32'h1; // NSID
+
+    if (host_en && host_we != 0) begin    
+      if (host_addr == 'h100) begin
+        command[10 * 32 +: 32] <= host_din;  // nvme address (LBA)
+      end else if (host_addr == 'h104) begin
+        command[6 * 32 +: 32] <= host_din;  // fpga data pointer (DPTR)
+      end else if (host_addr == 'h108) begin
+        command[10 * 32 +: 16] <= host_din[31:16];  // 4KB * n length (NLB)
+        command[0 * 32 +: 32] <= {command_id, 8'h0, host_din[7:0]};  // Read Opeation + CID
+      end else if (host_addr == 'h110) begin // push command + write doorbell
+        sq_din <= command;
+        sq_push <= 1'b1;
+        command_id <= command_id + 16'b1;
+        sq_head_ptr <= sq_head_ptr + 16'b1;
+      end
+    end
+    else if(host_en && host_we) begin
+
+    end
+  end
+end
+
+
 
 fifo_bp #(
   .DATA_WIDTH(K2O_AW_FIFO_WIDTH),
