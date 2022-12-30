@@ -195,6 +195,17 @@ logic                            o2k_r_fifo_wready;
 logic [255 : 0] data;
 logic ocu_rstn_sw;
 
+
+logic [511:0] command;
+logic [15:0] command_id;
+logic sq_push;
+logic sq_pop;
+logic [15:0] sq_head_ptr;
+logic [511:0] sq_din;
+logic [127:0] sq_dout;
+logic sq_full;
+logic sq_empty;
+
 always_ff @(posedge clk, negedge rstn) begin
   if (~rstn) begin
     k2o_aw_fifo_wvalid <= 0;
@@ -209,6 +220,11 @@ always_ff @(posedge clk, negedge rstn) begin
     o2k_r_fifo_wvalid <= 0;
     ocu_rstn <= 0;
     ocu_rstn_sw <= 1;
+
+    command_id <= 0;
+    sq_head_ptr <= 0;
+    sq_pop <= 0;
+    sq_push <= 0;
   end else begin
     k2o_aw_fifo_wvalid <= 0;
     k2o_w_fifo_wvalid <= 0;
@@ -221,6 +237,11 @@ always_ff @(posedge clk, negedge rstn) begin
     o2k_b_fifo_wvalid <= 0;
     o2k_r_fifo_wvalid <= 0;
     ocu_rstn <= ocu_rstn_sw;
+    
+    sq_pop <= 0;
+    sq_push <= 0;
+    command[1 * 32 +: 32] <= 32'h1; // NSID
+
     if (host_en && host_we != 0) begin
       if          (host_addr == 'h00) begin
         data[0 * 32 +: 32] <= host_din;
@@ -272,7 +293,19 @@ always_ff @(posedge clk, negedge rstn) begin
         ocu_rstn_sw <= 0;
       end else if (host_addr == 'hc4) begin
         ocu_rstn_sw <= 1;
-      end
+      end else if (host_addr == 'h100) begin
+        command[10 * 32 +: 32] <= host_din;  // nvme address (LBA)
+      end else if (host_addr == 'h104) begin
+        command[6 * 32 +: 32] <= host_din;  // fpga data pointer (DPTR)
+      end else if (host_addr == 'h108) begin
+        command[10 * 32 +: 16] <= host_din[31:16];  // 4KB * n length (NLB)
+        command[0 * 32 +: 32] <= {command_id, 8'h0, host_din[7:0]};  // Read Opeation + CID
+      end else if (host_addr == 'h110) begin // push command + write doorbell
+        sq_din <= command;
+        sq_push <= 1'b1;
+        command_id <= command_id + 16'b1;
+        sq_head_ptr <= sq_head_ptr + 16'b1;
+      end 
     end else begin
       if          (host_addr == 'h00) begin
         host_dout <= data[0 * 32 +: 32];
@@ -300,6 +333,19 @@ always_ff @(posedge clk, negedge rstn) begin
         host_dout <= o2k_w_fifo_rvalid;
       end else if (host_addr == 'h90) begin
         host_dout <= o2k_ar_fifo_rvalid;
+      end else if (host_addr == 'h110) begin
+        sq_pop <= 1'b1;
+        host_dout <= sq_dout[0 * 32 +: 32];
+      end else if (host_addr == 'h114) begin
+        host_dout <= {command_id, sq_head_ptr};
+      end else if (host_addr == 'h120) begin
+        host_dout <= sq_dout[0 * 32 +: 32];
+      end else if (host_addr == 'h124) begin
+        host_dout <= sq_dout[1 * 32 +: 32];
+      end else if (host_addr == 'h128) begin
+        host_dout <= sq_dout[2 * 32 +: 32];
+      end else if (host_addr == 'h12C) begin
+        host_dout <= sq_dout[3 * 32 +: 32];
       end
     end
   end
@@ -523,5 +569,35 @@ always_comb begin
   o2k_rvalid = o2k_r_fifo_rvalid;
   o2k_r_fifo_rready = o2k_rready;
 end
+
+
+
+// I/O submission queue
+sq sq_inst (
+  .clk(clk),                  // input wire clk
+  .srst(~rstn),                // input wire srst
+  .din(sq_din),                  // input wire [511 : 0] din
+  .wr_en(sq_push),              // input wire wr_en
+  .rd_en(sq_pop),              // input wire rd_en
+  .dout(sq_dout),                // output wire [127 : 0] dout
+  .full(sq_full),                // output wire full
+  .empty(sq_empty),              // output wire empty
+  .wr_rst_busy(),  // output wire wr_rst_busy
+  .rd_rst_busy()  // output wire rd_rst_busy
+);
+
+
+ila_0 ila_0_inst (
+	.clk(clk), // input wire clk
+	.probe0(sq_din), // input wire [511:0]  probe0  
+	.probe1(sq_push), // input wire [0:0]  probe1 
+	.probe2(sq_pop), // input wire [0:0]  probe2 
+	.probe3(sq_dout), // input wire [127:0]  probe3 
+	.probe4(sq_full), // input wire [0:0]  probe4 
+	.probe5(sq_empty), // input wire [0:0]  probe5 
+	.probe6(command), // input wire [511:0]  probe6
+  .probe7(host_addr) // input wire [14:0] probe7
+);
+
 
 endmodule
