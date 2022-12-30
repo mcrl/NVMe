@@ -362,9 +362,9 @@ always_ff @(posedge clk, negedge rstn) begin
         sq_head_ptr <= sq_head_ptr + 16'b1;
       end
     end
-    else if(host_en && host_we) begin
+    //else if(host_en && host_we) begin
 
-    end
+    //end
   end
 end
 
