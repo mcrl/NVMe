@@ -19,10 +19,11 @@
 const size_t ecam_addr_base = 0x100000000UL;
 
 // We can map nvme bar to any 32-bit address; we just choose 0 here.
-const size_t nvme_bar0 = 0;
+size_t nvme_bar0 = 0;
 
 // This will be determined during PCIe enumeration
 size_t nvme_bar0_size = 0;
+size_t bar_size=0;
 
 // This is bar0 of host-fpga PCIe (not internal PCIe for NVMe) in virtual address in userspace.
 // This should be set by mmap.
@@ -322,9 +323,9 @@ void OculinkRespondIOWrite() {
   size_t addr = ((size_t)araddr1 << 32) + araddr0;
 
   // 1 << arsize is bytes in transfer (single beat in a burst)
-  assert((1 << arsize) % sizeof(uint32_t) == 0);
-  assert(addr % (1 << arsize) == 0);
-  assert((1 << arsize) * (arlen + 1) / sizeof(uint32_t) == data.size());
+  //assert((1 << arsize) % sizeof(uint32_t) == 0);
+  //assert(addr % (1 << arsize) == 0);
+  //assert((1 << arsize) * (arlen + 1) / sizeof(uint32_t) == data.size());
 
   // o2k_r
   int addr_idx = addr % 16 / 4;
@@ -446,13 +447,14 @@ int main(int argc, char** argv) {
 
   
   size_t bar0sz = 1024 * 1024; // 1MB
-	bar0base = mmap(NULL, bar0sz, PROT_READ | PROT_WRITE, MAP_SHARED, fd, 0);
-	if (bar0base == (void *)-1) {
+  fpga_bar0 = mmap(NULL, bar0sz, PROT_READ | PROT_WRITE, MAP_SHARED, fd, 0);
+	//fpga_bar0 = mmap(NULL, bar0sz, PROT_READ | PROT_WRITE, MAP_SHARED, fd, 0);
+	if (fpga_bar0 == (void *)-1) {
     spdlog::info("[2] mmap failed: {}", strerror(errno));
     close(fd);
     return 0;
 	}
-  spdlog::info("[SYS] mmap done. bar0base={}", bar0base);
+  spdlog::info("[SYS] mmap done. fpga_bar0={}", fpga_bar0);
 
   AssertOcuReset();
   DeassertOcuReset();
@@ -487,12 +489,14 @@ int main(int argc, char** argv) {
   }
   bar_size &= 0xfffffff0;
   size_t cnt0 = 0;
+  /*
   while ((bar_size & 1) == 0) {
-    //spdlog::info("bar_size={} cnt0={}", bar_size, cnt0);
+    spdlog::info("bar_size={} cnt0={}", bar_size, cnt0);
     ++cnt0;
     bar_size >>= 1;
   }
   bar_size = 1 << cnt0;
+  */
   spdlog::info("[SYS] Detected bar_size = 0x{:08X}", bar_size);
   
   //// Assign NVMe's BAR0 (64-bit) to 4GB offset
@@ -505,8 +509,6 @@ int main(int argc, char** argv) {
 
   PrintPCIConfigSpaceHeader(0, 0, 0);
   PrintPCIConfigSpaceHeader(1, 0, 0);
-
-/*
 
   // CAP 0x0
   // CC  0x14
@@ -634,6 +636,25 @@ int main(int argc, char** argv) {
   while(KernelRead(0x80)) OculinkRespondWrite();
 
 
+   
+  // Write command 
+  // -> kernel write (0x100, nvme addr)
+  // -> kernel write (0x104, fpga addr)
+  // -> kernel write (0x108, data length, 8'h0, opcode)
+  // -> kernel write (0x110, command push into SQ)
+
+  KernelWrite(0x100, 0x00001234);
+  KernelWrite(0x104, 0x00005678);
+  KernelWrite(0x108, 0x00100002);
+  KernelWrite(0x110, 0x00000000);
+
+  spdlog::info("{:08X}", KernelRead(0x114));
+  spdlog::info("{:08X}, {:08X}, {:08X}, {:08X}", KernelRead(0x120), KernelRead(0x124), KernelRead(0x128), KernelRead(0x12C));
+  KernelRead(0x110);
+  spdlog::info("{:08X}, {:08X}, {:08X}, {:08X}", KernelRead(0x120), KernelRead(0x124), KernelRead(0x128), KernelRead(0x12C));
+  KernelRead(0x110);
+  spdlog::info("{:08X}, {:08X}, {:08X}, {:08X}", KernelRead(0x120), KernelRead(0x124), KernelRead(0x128), KernelRead(0x12C));
+  KernelRead(0x110);
+
   return 0;
-  */
 }
