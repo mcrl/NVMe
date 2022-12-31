@@ -545,20 +545,21 @@ int main(int argc, char** argv) {
   // 2. Read BAR and find the lowest set bit in address bits.
   // (4 lsb are not address bits, so ignore them.)
   uint32_t bar = OculinkReadECAM(1, 0, 0, 0x10) & 0xfffffff0;
+  bar_size = bar;
   if (bar == 0) {
     spdlog::info("bar_size==0 something wrong");
     exit(0);
   }
   bar_size &= 0xfffffff0;
   size_t cnt0 = 0;
-  /*
+  
   while ((bar_size & 1) == 0) {
     spdlog::info("bar_size={} cnt0={}", bar_size, cnt0);
     ++cnt0;
     bar_size >>= 1;
   }
   bar_size = 1 << cnt0;
-  */
+  
   spdlog::info("[SYS] Detected bar_size = 0x{:08X}", bar_size);
   
   //// Assign NVMe's BAR0 (64-bit) to 4GB offset
@@ -602,7 +603,6 @@ int main(int argc, char** argv) {
   OculinkWriteNVMe(0x34, 0x00000000);               // ASQ high addr
 
   CheckAllQueueIsEmpty();
-
 
   //spdlog::info("[SYS] wait until all settings are done");
   OculinkWriteNVMe(0x14, 0x00000001); // CC.EN = 1
