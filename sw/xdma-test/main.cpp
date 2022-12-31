@@ -696,9 +696,7 @@ int main(int argc, char** argv) {
   std::this_thread::sleep_for(std::chrono::milliseconds(10));
   while(KernelRead(0x80)) OculinkRespondWrite();
 
-  //KernelWrite(0x114, 0x00); 
-  NVMePrepWriteCommand(0x1000, 0x2000, 0x10);
-  NVMePopCommand();
+  KernelWrite(0x114, 0x00); 
    
   
   return 0;
