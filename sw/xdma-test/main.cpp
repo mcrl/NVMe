@@ -470,6 +470,13 @@ void NVMePrepWriteCommand(size_t nvme_addr, size_t fpga_addr, size_t data_length
   
 }
 
+void NVMePopCommand(){
+  // SQ Pop
+  KernelRead(0x210);
+  
+
+}
+
 void NVMePrepReadCommand(size_t nvme_addr, size_t fpga_addr, size_t data_length){
   
   // merge opcode and data length
