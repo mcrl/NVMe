@@ -23,3 +23,4 @@ sudo ./install_n_compile_driver.sh
 * suFileDriverOpen(void) : suFile infrastructure initialize
 * suFileDriverClose(void) : suFile system finalize
 * suFileHandleRegister(SUfileHandle_t *fh, SUfileDescr_t *descr) : suFilehandle register 
+* suFileHandleDeregister(SUfileHandle_t fh) : suFileHandle and sufile descriptor deregister
