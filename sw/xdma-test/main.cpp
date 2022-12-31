@@ -528,6 +528,14 @@ void NVMeWriteDoorbell(){
   // write sqhead ptr into doorbell
   KernelWrite(0x400);
 
+  /*
+  OculinkRespondRead(io_write_cmd);
+  std::this_thread::sleep_for(std::chrono::milliseconds(10));
+  while(KernelRead(0x90)) OculinkRespondIOWrite();
+  std::this_thread::sleep_for(std::chrono::milliseconds(10));
+  while(KernelRead(0x80)) OculinkRespondWrite();
+  */
+
 }
 
 
