@@ -482,7 +482,10 @@ void NVMePrepReadCommand(size_t nvme_addr, size_t fpga_addr, size_t data_length)
 
    // SQ Push
   KernelWrite(0x110, 0x0);
- 
+  
+  // read first command DW
+  uint32_t data0 = KernelRead(0x200);
+
 }
 
 void NVMeRead(size_t nvme_addr, size_t fpga_addr){
