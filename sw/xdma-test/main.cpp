@@ -523,7 +523,7 @@ void setFPGABar(){
 int main(int argc, char** argv) {
  
   openDevice();
-
+  setFPGABar();
 	
   AssertOcuReset();
   DeassertOcuReset();
