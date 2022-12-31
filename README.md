@@ -9,15 +9,15 @@ Below are environments that authors used.
 
 # Code Structure
 ```plaintext
-NVMe/
-├── hw/
-│   ├── COMSTRAINTS/                   
-│   ├── IP/                   
-│   ├── RTL/                 
+NVMe/     
+├── hw/                       (RTL codes)
+│   ├── COMSTRAINTS/          (Constraints : Board connections)         
+│   ├── IP/                   (IPs : ILA, XDMA IP, Board design)
+│   ├── RTL/                  (NVMe Hardware Driver RTL codes)
 │   ├── scripts/             
 │   ├── SIM/                 
-│   └── SYNTH/
-├── sw/
+│   └── SYNTH/                (NVMe Hardware Driver Project directories)
+├── sw/                       (NVMe suFile Library)
 ├── SIM/
 ├── README.md
 ├── LICENSE
