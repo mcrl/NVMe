@@ -547,10 +547,6 @@ void NVMeWriteDoorbell(){
   spdlog::info("NVMe Request SQ");
   spdlog::info("o2k_ar araddr={:08X},{:08X} arsize={}, arlen={}, arid={}", araddr1, araddr0, arsize, arlen, arid);
   
-  // o2k_r write fifo
-  // send command (sq pop)
-  KernelRead(0x210);
-
 }
 
 
