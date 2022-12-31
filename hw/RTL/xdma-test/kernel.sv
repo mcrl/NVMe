@@ -347,7 +347,8 @@ always_ff @(posedge clk, negedge rstn) begin
       end else if (host_addr == 'h20C) begin
         host_dout <= sq_dout[3 * 32 +: 32];
       end else if (host_addr == 'h210) begin
-        sq_pop <= 1'b1;
+        if(!sq_empty) sq_pop <= 1;
+        else sq_pop <= 0;
       end else if (host_addr == 'h214) begin
         host_dout <= {command_id, sq_head_ptr};
       end
