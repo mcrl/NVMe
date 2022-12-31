@@ -603,16 +603,6 @@ int main(int argc, char** argv) {
 
   CheckAllQueueIsEmpty();
 
-  /*
-  spdlog::info("[SYS] check whether ASQ and ACQ is set correctly");
-  OculinkReadNVMe(0x24);
-  OculinkReadNVMe(0x28);
-  OculinkReadNVMe(0x2c);
-  OculinkReadNVMe(0x30);
-  OculinkReadNVMe(0x34);
-
-  CheckAllQueueIsEmpty();
-*/
 
   //spdlog::info("[SYS] wait until all settings are done");
   OculinkWriteNVMe(0x14, 0x00000001); // CC.EN = 1
