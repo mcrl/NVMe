@@ -603,6 +603,7 @@ int main(int argc, char** argv) {
 
   CheckAllQueueIsEmpty();
 
+  /*
   spdlog::info("[SYS] check whether ASQ and ACQ is set correctly");
   OculinkReadNVMe(0x24);
   OculinkReadNVMe(0x28);
@@ -611,9 +612,9 @@ int main(int argc, char** argv) {
   OculinkReadNVMe(0x34);
 
   CheckAllQueueIsEmpty();
+*/
 
-
-  spdlog::info("[SYS] wait until all settings are done");
+  //spdlog::info("[SYS] wait until all settings are done");
   OculinkWriteNVMe(0x14, 0x00000001); // CC.EN = 1
   while (OculinkReadNVMe(0x1c) != 1) { // wait CSTS.RDY to be 1
     std::this_thread::sleep_for(std::chrono::milliseconds(1));
