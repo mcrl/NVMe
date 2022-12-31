@@ -493,18 +493,7 @@ void NVMePrepReadCommand(size_t nvme_addr, size_t fpga_addr, size_t data_length)
 
 }
 
-void NVMeRead(size_t nvme_addr, size_t fpga_addr){
 
-  size_t x = 0x00000002;
-
-  // Setup addr, length
-  KernelWrite(0x100, nvme_addr);
-  KernelWrite(0x104, fpga_addr);
-  KernelWrite(0x108, x);
-
-  // Push command into Submission Queue
-  KernelWrite(0x110, 0);
-}
 
 int main(int argc, char** argv) {
  
