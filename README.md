@@ -1,5 +1,12 @@
 # FPGA NVMe Hardware Driver + suFile Library
 
+# Environment
+
+Below are environments that authors used.
+
+- OS: Ubuntu 20.04.3 LTS
+- CPU: Intel(R) Xeon(R) Gold 6130F CPU @ 2.10GHz
+
 
 ## How to build
 
