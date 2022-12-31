@@ -536,17 +536,6 @@ void NVMeWriteDoorbell(){
     std::this_thread::sleep_for(std::chrono::milliseconds(1));
   }
   
-  // read request address
-  // araddr0 should be sq base address
-  uint32_t araddr0 = KernelRead(0x00);
-  uint32_t araddr1 = KernelRead(0x04);
-  uint32_t arsize = KernelRead(0x08) & 0b111;
-  uint32_t arlen = (KernelRead(0x08) >> 3) & 0xff;
-  uint32_t arid = (KernelRead(0x08) >> 11) & 0b1111;
-   
-  spdlog::info("NVMe Request SQ");
-  spdlog::info("o2k_ar araddr={:08X},{:08X} arsize={}, arlen={}, arid={}", araddr1, araddr0, arsize, arlen, arid);
-  
 }
 
 
