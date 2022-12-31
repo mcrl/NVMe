@@ -475,6 +475,9 @@ void NVMePrepReadCommand(size_t nvme_addr, size_t fpga_addr, size_t data_length)
   // merge opcode and data length
   size_t dataLength_Opcode = data_length << 16;
   dataLength_Opcode += 0x2; // Write Opcode 0x1
+
+  KernelWrite(0x100, nvme_addr);  // NVMe Address (Target address to write data)
+
   
 }
 
