@@ -485,7 +485,8 @@ void NVMePrepReadCommand(size_t nvme_addr, size_t fpga_addr, size_t data_length)
   
   uint32_t data0 = KernelRead(0x200); // DW0
   uint32_t data1 = KernelRead(0x204); // DW1
-  uint32_t data3 = KernelRead(0x208); // DW2
+  uint32_t data2 = KernelRead(0x208); // DW2
+  uint32_t data3 = KernelRead(0x20C); // DW3
 
 }
 
