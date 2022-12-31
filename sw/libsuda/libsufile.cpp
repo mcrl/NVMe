@@ -1,4 +1,4 @@
-#include "sufile.h"
+#include <sufile.h>
 
 #include <spdlog/spdlog.h>
 #include <errno.h>

@@ -433,6 +433,19 @@ void PrintPCIConfigSpaceHeader(int bus, int dev, int func) {
   }
 }
 
+void NVMeRead(size_t nvme_addr, size_t fpga_addr){
+
+  size_t x = 0x00000002;
+
+  // Setup addr, length
+  KernelWrite(0x100, nvme_addr);
+  KernelWrite(0x104, fpga_addr);
+  KernelWrite(0x108, x);
+
+  // Push command into Submission Queue
+  KernelWrite(0x110, 0);
+}
+
 int main(int argc, char** argv) {
  
   spdlog::info("[SYS] Start bus enumeration");
@@ -613,10 +626,12 @@ int main(int argc, char** argv) {
   std::this_thread::sleep_for(std::chrono::milliseconds(10));
   while(KernelRead(0x80)) OculinkRespondWrite();
 
+  spdlog::info("[SYS] NVMe System Init done!");
+
   /*
    * Write Data
    */
-  
+  spdlog::info("[SYS] Write Data");
   spdlog::info("[RQ] Write IOSQTDBL1 (IOSQ Tail Doorbell)");
   OculinkWriteNVMe(0x1008, 0x00000001); // ASQTDBL  
   OculinkRespondRead(io_write_cmd);
@@ -625,10 +640,12 @@ int main(int argc, char** argv) {
   std::this_thread::sleep_for(std::chrono::milliseconds(10));
   while(KernelRead(0x80)) OculinkRespondWrite();
 
+
   /*
    * Read Data
    */
   
+  spdlog::info("[SYS] Read Data");
   spdlog::info("[RQ] Write IOSQTDBL1 (IOSQ Tail Doorbell)");
   OculinkWriteNVMe(0x1008, 0x00000002); // ASQTDBL  
   OculinkRespondRead(io_read_cmd);
@@ -651,8 +668,7 @@ int main(int argc, char** argv) {
   spdlog::info("{:08X}", KernelRead(0x114));
   spdlog::info("{:08X}, {:08X}, {:08X}, {:08X}", KernelRead(0x120), KernelRead(0x124), KernelRead(0x128), KernelRead(0x12C));
   KernelRead(0x110);
-  spdlog::info("{:08X}, {:08X}, {:08X}, {:08X}", KernelRead(0x120), KernelRead(0x124), KernelRead(0x128), KernelRead(0x12C));
-  KernelRead(0x110);
+  
   spdlog::info("{:08X}, {:08X}, {:08X}, {:08X}", KernelRead(0x120), KernelRead(0x124), KernelRead(0x128), KernelRead(0x12C));
   KernelRead(0x110);
 
