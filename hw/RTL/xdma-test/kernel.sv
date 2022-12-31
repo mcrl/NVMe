@@ -347,17 +347,9 @@ always_ff @(posedge clk, negedge rstn) begin
       end else if (host_addr == 'h90) begin
         host_dout <= o2k_ar_fifo_rvalid;
       end else if (host_addr == 'h200) begin
-        host_dout <= sq_dout[0 * 32 +: 32];
-      end else if (host_addr == 'h204) begin
-        host_dout <= sq_dout[1 * 32 +: 32];
-      end else if (host_addr == 'h208) begin
-        host_dout <= sq_dout[2 * 32 +: 32];
-      end else if (host_addr == 'h20C) begin
-        host_dout <= sq_dout[3 * 32 +: 32];
-      end else if (host_addr == 'h210) begin
         if(!sq_empty) sq_pop <= 1;
         else sq_pop <= 0;
-      end else if (host_addr == 'h214) begin
+      end else if (host_addr == 'h204) begin
         host_dout <= {command_id, sq_head_ptr};
       end
     end
