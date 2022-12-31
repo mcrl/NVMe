@@ -361,7 +361,8 @@ logic is_nvme_req_command;
 
 always_ff @(posedge clk or negedge rstn) begin
   if (~rstn) begin
-
+    is_write_doorbell <= 0;
+    is_nvme_req_command <= 0;
   end
   else begin
 
