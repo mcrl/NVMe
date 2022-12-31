@@ -446,7 +446,6 @@ void NVMePrepWriteCommand(size_t nvme_addr, size_t fpga_addr, size_t data_length
   // SQ Push
   KernelWrite(0x110, 0x0);
 
-  
   uint32_t data0 = KernelRead(0x200);
   uint32_t data1 = KernelRead(0x204);
   uint32_t data2 = KernelRead(0x208);
@@ -456,6 +455,13 @@ void NVMePrepWriteCommand(size_t nvme_addr, size_t fpga_addr, size_t data_length
   
   // SQ Pop
   KernelRead(0x210);
+  
+  data0 = KernelRead(0x200);
+  data1 = KernelRead(0x204);
+  data2 = KernelRead(0x208);
+  data3 = KernelRead(0x20C);
+
+  spdlog::info("{:08X}, {:08X}, {:08X}, {:08X}", data0, data1, data2, data3);
 
   
 }
