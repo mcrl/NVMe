@@ -5,8 +5,18 @@
 
 SUfileError_t suFileDriverOpen(void) {
   //spdlog::warn("suFileDriverOpen not implemented");
+  
+  spdlog::info("[SYS] Start bus enumeration");
+  // open device
+  const char* devname = "/dev/xdma0_user";
+  int fd;
+	if ((fd = open(devname, O_RDWR | O_SYNC)) == -1) {
+		spdlog::info("character device {} opened failed: {}.", devname, strerror(errno));
+    return {SU_FILE_DRIVER_NOT_INITIALIZED, SUDA_ERROR_UNKNOWN};
+	}
+	spdlog::info("[SYS] Device {} opened. fd={}", devname, fd);
 
-  return {SU_FILE_DRIVER_NOT_INITIALIZED, SUDA_ERROR_UNKNOWN};
+  return {SU_FILE_SUCCESS, SUDA_ERROR_UNKNOWN};
 }
 
 SUfileError_t suFileDriverClose(void) {
