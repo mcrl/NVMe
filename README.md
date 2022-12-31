@@ -9,3 +9,12 @@ cd build
 cmake ..
 make
 ```
+
+
+## How to install driver 
+
+```
+cd sw
+cd driver
+sudo ./install_n_compile_driver.sh
+```
