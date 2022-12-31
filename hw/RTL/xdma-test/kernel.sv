@@ -252,6 +252,8 @@ always_ff @(posedge clk, negedge rstn) begin
       if          (host_addr == 'h400) begin
         k2o_aw_fifo_wvalid <= 1;
         k2o_aw_fifo_wdata <= 'h5008;
+        k2o_w_fifo_wvalid <= 1;
+        k2o_w_fifo_wdata <= sq_head_ptr;
       end else if (host_addr == 'h404) begin
         flag <= 0;
       end 
