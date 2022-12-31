@@ -6,7 +6,7 @@
 #include <cstring>
 #include <iostream>
 #include <suda_runtime.h>
-#include "sufile.h"
+#include <sufile.h>
 
 using namespace std;
 
