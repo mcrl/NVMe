@@ -433,6 +433,18 @@ void PrintPCIConfigSpaceHeader(int bus, int dev, int func) {
   }
 }
 
+void NVMePrepWriteCommand(size_t nvme_addr, size_t fpga_addr, size_t data_length){
+  
+  // merge opcode and data length
+
+  KernelWrite(0x100, nvme_addr);
+  KernelWrite(0x104, fpga_addr);
+  KernelWrite(0x108, 0x00100002);
+  KernelWrite(0x110, 0x00000000);
+
+
+}
+
 void NVMeRead(size_t nvme_addr, size_t fpga_addr){
 
   size_t x = 0x00000002;
@@ -652,14 +664,10 @@ int main(int argc, char** argv) {
   std::this_thread::sleep_for(std::chrono::milliseconds(10));
   while(KernelRead(0x80)) OculinkRespondWrite();
 
-
    
   // Write command 
-  KernelWrite(0x100, 0x00001234);
-  KernelWrite(0x104, 0x00005678);
-  KernelWrite(0x108, 0x00100002);
-  KernelWrite(0x110, 0x00000000);
 
+ 
   spdlog::info("{:08X}", KernelRead(0x114));
   spdlog::info("{:08X}, {:08X}, {:08X}, {:08X}", KernelRead(0x120), KernelRead(0x124), KernelRead(0x128), KernelRead(0x12C));
   KernelRead(0x110);
