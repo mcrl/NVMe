@@ -510,7 +510,6 @@ int main(int argc, char** argv) {
   
   size_t bar0sz = 1024 * 1024; // 1MB
   fpga_bar0 = mmap(NULL, bar0sz, PROT_READ | PROT_WRITE, MAP_SHARED, fd, 0);
-	//fpga_bar0 = mmap(NULL, bar0sz, PROT_READ | PROT_WRITE, MAP_SHARED, fd, 0);
 	if (fpga_bar0 == (void *)-1) {
     spdlog::info("[2] mmap failed: {}", strerror(errno));
     close(fd);
@@ -522,7 +521,6 @@ int main(int argc, char** argv) {
   DeassertOcuReset();
   spdlog::info("[SYS] Reset done.");
 
-  // TODO should be replaced with kernel reset
   while (!CheckAllQueueIsEmpty());
   spdlog::info("[SYS] All queue is empty.");
 
