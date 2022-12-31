@@ -205,6 +205,8 @@ logic [511:0] sq_din;
 logic [127:0] sq_dout;
 logic sq_full;
 logic sq_empty;
+logic sq_rvalid;
+logic sq_wack;
 
 
 always_ff @(posedge clk, negedge rstn) begin
@@ -590,20 +592,22 @@ always_comb begin
 end
 
 
-
 // I/O submission queue
 sq sq_inst (
-  .clk(clk),                  // input wire clk
-  .srst(~rstn),                // input wire srst
-  .din(sq_din),                  // input wire [511 : 0] din
-  .wr_en(sq_push),              // input wire wr_en
-  .rd_en(sq_pop),              // input wire rd_en
-  .dout(sq_dout),                // output wire [127 : 0] dout
-  .full(sq_full),                // output wire full
-  .empty(sq_empty),              // output wire empty
-  .wr_rst_busy(),  // output wire wr_rst_busy
-  .rd_rst_busy()  // output wire rd_rst_busy
+  .clk(clk),          // input wire clk
+  .srst(~rstn),       // input wire srst
+  .din(sq_din),       // input wire [511 : 0] din
+  .wr_en(sq_push),    // input wire wr_en
+  .rd_en(sq_pop),     // input wire rd_en
+  .dout(sq_dout),     // output wire [127 : 0] dout
+  .full(sq_full),     // output wire full
+  .empty(sq_empty),   // output wire empty
+  .wr_ack(sq_wack),   // output wire wr_ack
+  .valid(sq_rvalid),  // output wire valid
+  .wr_rst_busy(),     // output wire wr_rst_busy
+  .rd_rst_busy()      // output wire rd_rst_busy
 );
+
 
 
 ila_0 ila_0_inst (
