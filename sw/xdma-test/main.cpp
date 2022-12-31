@@ -523,7 +523,7 @@ void setFPGABar(){
 void NVMeWriteDoorbell(){
 
   // set flag to write doorbell
-  kernelRead(0x300);
+  KernelRead(0x300);
 
   // write sqhead ptr into doorbell
   kernelWrite(0x400);
