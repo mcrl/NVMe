@@ -228,7 +228,6 @@ always_ff @(posedge clk, negedge rstn) begin
     sq_head_ptr <= 0;
     sq_pop <= 0;
     sq_push <= 0;
-
   end else begin
     k2o_aw_fifo_wvalid <= 0;
     k2o_w_fifo_wvalid <= 0;
@@ -354,6 +353,17 @@ always_ff @(posedge clk, negedge rstn) begin
         host_dout <= {command_id, sq_head_ptr};
       end
     end
+  end
+end
+
+
+always_ff @(posedge clk or negedge rstn) begin
+  if (~rstn) begin
+
+  end
+  else begin
+
+
   end
 end
 
