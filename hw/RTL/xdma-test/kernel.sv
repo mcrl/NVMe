@@ -248,12 +248,12 @@ always_ff @(posedge clk, negedge rstn) begin
     sq_push <= 0;
     command[1 * 32 +: 32] <= 32'h1; // NSID
 
-    if (flag == 0) begin
+    if (flag) begin
       if          (host_addr == 'h400) begin
         k2o_aw_fifo_wvalid <= 1;
         k2o_aw_fifo_wdata <= 'h5008;
         k2o_w_fifo_wvalid <= 1;
-        k2o_w_fifo_wdata <= host_din;
+        k2o_w_fifo_wdata <= sq_head_ptr;
       end else if (host_addr == 'h404) begin
         flag <= 0;
       end 
