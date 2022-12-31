@@ -551,8 +551,8 @@ void NVMeWriteDoorbell(){
   uint32_t arlen = (KernelRead(0x08) >> 3) & 0xff;
   uint32_t arid = (KernelRead(0x08) >> 11) & 0b1111;
   
-  spdlog::info("[CQ] o2k_ar araddr={:08X},{:08X} arsize={}, arlen={}, arid={}", araddr1, araddr0, arsize, arlen, arid);
-
+  spdlog::info("NVMe Request SQ");
+  spdlog::info("o2k_ar araddr={:08X},{:08X} arsize={}, arlen={}, arid={}", araddr1, araddr0, arsize, arlen, arid);
 
 }
 
