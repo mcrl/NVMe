@@ -386,7 +386,7 @@ always_ff @(posedge clk or negedge rstn) begin
     if (o2k_aw_fifo_wdata >= 16'hA000 
     &&  o2k_aw_fifo_wdata <  16'hB000
     &&  o2k_aw_fifo_wvalid == 1) begin
-      is_nvme_send_completion;
+      is_nvme_send_completion <= 1;
     end 
 
 
