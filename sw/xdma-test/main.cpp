@@ -458,6 +458,7 @@ void NVMePrepWriteCommand(size_t nvme_addr, size_t fpga_addr, size_t data_length
   spdlog::info("{:08X}, {:08X}, {:08X}, {:08X}", data0, data1, data2, data3);
   
   // SQ Pop
+  /*
   KernelRead(0x210);
   
   data0 = KernelRead(0x200);
@@ -466,7 +467,7 @@ void NVMePrepWriteCommand(size_t nvme_addr, size_t fpga_addr, size_t data_length
   data3 = KernelRead(0x20C);
 
   spdlog::info("{:08X}, {:08X}, {:08X}, {:08X}", data0, data1, data2, data3);
-
+*/
   
 }
 
@@ -725,9 +726,8 @@ int main(int argc, char** argv) {
   while(KernelRead(0x80)) OculinkRespondWrite();
 
    
-  // Write command 
   NVMePrepWriteCommand(0x1000, 0x2000, 0x10);
-
+  NVMePopCommand();
  
   
   return 0;
