@@ -668,7 +668,9 @@ int main(int argc, char** argv) {
   spdlog::info("{:08X}", KernelRead(0x114));
   spdlog::info("{:08X}, {:08X}, {:08X}, {:08X}", KernelRead(0x120), KernelRead(0x124), KernelRead(0x128), KernelRead(0x12C));
   KernelRead(0x110);
+  
   spdlog::info("{:08X}, {:08X}, {:08X}, {:08X}", KernelRead(0x120), KernelRead(0x124), KernelRead(0x128), KernelRead(0x12C));
+  KernelRead(0x110);
 
   return 0;
 }
