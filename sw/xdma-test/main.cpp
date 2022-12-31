@@ -495,9 +495,8 @@ void NVMePrepReadCommand(size_t nvme_addr, size_t fpga_addr, size_t data_length)
 
 
 int fd;
-
 void openDevice(){
-  // open device
+  
   const char* devname = "/dev/xdma0_user";
 	if ((fd = open(devname, O_RDWR | O_SYNC)) == -1) {
 		spdlog::info("character device {} opened failed: {}.", devname, strerror(errno));
@@ -507,6 +506,9 @@ void openDevice(){
 
 }
 
+void setFPGABar(){
+
+}
 
 
 int main(int argc, char** argv) {
