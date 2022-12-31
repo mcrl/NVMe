@@ -61,7 +61,9 @@ module sq (
   rd_en,
   dout,
   full,
+  wr_ack,
   empty,
+  valid,
   wr_rst_busy,
   rd_rst_busy
 );
@@ -80,8 +82,10 @@ input wire rd_en;
 output wire [127 : 0] dout;
 (* X_INTERFACE_INFO = "xilinx.com:interface:fifo_write:1.0 FIFO_WRITE FULL" *)
 output wire full;
+output wire wr_ack;
 (* X_INTERFACE_INFO = "xilinx.com:interface:fifo_read:1.0 FIFO_READ EMPTY" *)
 output wire empty;
+output wire valid;
 output wire wr_rst_busy;
 output wire rd_rst_busy;
 
@@ -109,8 +113,8 @@ output wire rd_rst_busy;
     .C_HAS_RST(0),
     .C_HAS_SRST(1),
     .C_HAS_UNDERFLOW(0),
-    .C_HAS_VALID(0),
-    .C_HAS_WR_ACK(0),
+    .C_HAS_VALID(1),
+    .C_HAS_WR_ACK(1),
     .C_HAS_WR_DATA_COUNT(0),
     .C_HAS_WR_RST(0),
     .C_IMPLEMENTATION_TYPE(6),
@@ -314,11 +318,11 @@ output wire rd_rst_busy;
     .dout(dout),
     .full(full),
     .almost_full(),
-    .wr_ack(),
+    .wr_ack(wr_ack),
     .overflow(),
     .empty(empty),
     .almost_empty(),
-    .valid(),
+    .valid(valid),
     .underflow(),
     .data_count(),
     .rd_data_count(),
