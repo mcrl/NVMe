@@ -21,3 +21,4 @@ sudo ./install_n_compile_driver.sh
 
 ## suFile API
 * suFileDriverOpen(void) : suFile infrastructure initialize
+* suFileDriverClose(void) : suFile system finalize
