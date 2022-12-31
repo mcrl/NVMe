@@ -26,4 +26,5 @@ sudo ./install_n_compile_driver.sh
 * suFileHandleDeregister(SUfileHandle_t fh) : suFileHandle and sufile descriptor deregister
 * suFileBufRegister(void *devPtr, size_t length, int flags) : set suFile pinned buffer
 * suFileBufDeregister(void *devPtr) : cleanup pinned buffer
+* suFileRead(SUfileHandle_t fh, void *devPtr, size_t size, off_t file_offset, off_t devPtr_offset) : Read at pinned buffer
 * 
