@@ -527,15 +527,7 @@ void NVMeWriteDoorbell(){
 
   // write sqhead ptr into doorbell
   KernelWrite(0x400);
-
-  /*
-  OculinkRespondRead(io_write_cmd);
-  std::this_thread::sleep_for(std::chrono::milliseconds(10));
-  while(KernelRead(0x90)) OculinkRespondIOWrite();
-  std::this_thread::sleep_for(std::chrono::milliseconds(10));
-  while(KernelRead(0x80)) OculinkRespondWrite();
-  */
-  
+   
   // o2k_ar
   // if doorbell is correctly written, o2k_ar signal should be received
   while (true) {
@@ -557,7 +549,6 @@ void NVMeWriteDoorbell(){
   
   // o2k_r write fifo
   // send command (sq pop)
-  // SQ Pop
   KernelRead(0x210);
 
 }
