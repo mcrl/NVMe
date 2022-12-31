@@ -208,6 +208,8 @@ logic sq_empty;
 logic sq_rvalid;
 logic sq_wack;
 
+logic flag;
+
 always_ff @(posedge clk, negedge rstn) begin
   if (~rstn) begin
     k2o_aw_fifo_wvalid <= 0;
@@ -228,6 +230,7 @@ always_ff @(posedge clk, negedge rstn) begin
     sq_pop <= 0;
     sq_push <= 0;
 
+    flag <= 0;
   end else begin
     k2o_aw_fifo_wvalid <= 0;
     k2o_w_fifo_wvalid <= 0;
@@ -245,7 +248,10 @@ always_ff @(posedge clk, negedge rstn) begin
     sq_push <= 0;
     command[1 * 32 +: 32] <= 32'h1; // NSID
 
-    if (host_en && host_we != 0) begin
+    if (flag == 0) begin
+    
+    end
+    else if (host_en && host_we != 0) begin
       if          (host_addr == 'h00) begin
         data[0 * 32 +: 32] <= host_din;
       end else if (host_addr == 'h04) begin
@@ -312,11 +318,16 @@ always_ff @(posedge clk, negedge rstn) begin
         sq_push <= 1'b1;
         command_id <= command_id + 16'b1;
         sq_head_ptr <= sq_head_ptr + 16'b1;
-      end else if (host_addr == 'h300) begin
+      end else if (host_addr == 'h114) begin
         // Reset ptr + command id 
         command_id <= 0;
         sq_head_ptr <= 0;
+      end else if (host_addr == 'h300) begin
+        flag <= 1;
+      end else if (host_addr == 'h304) begin
+        flag <= 0;
       end 
+
     end else begin
       sq_pop <= 0;
       
