@@ -248,20 +248,7 @@ always_ff @(posedge clk, negedge rstn) begin
     sq_push <= 0;
     command[(15-1) * 32 +: 32] <= 32'h1; // NSID
 
-    if (flag) begin
-      // Write Doorbell which command is ready
-      if          (host_addr == 'h400) begin
-        // Doorbell register address
-        k2o_aw_fifo_wvalid <= 1;
-        k2o_aw_fifo_wdata <= 'h5008;
-
-        // Doorbell data (current sq head pointer)
-        k2o_w_fifo_wvalid <= 1;
-        k2o_w_fifo_wdata <= sq_head_ptr;
-        flag <= 0;
-      end 
-    end
-    else if (host_en && host_we != 0) begin
+    if (host_en && host_we != 0) begin
       if          (host_addr == 'h00) begin
         data[0 * 32 +: 32] <= host_din;
       end else if (host_addr == 'h04) begin
