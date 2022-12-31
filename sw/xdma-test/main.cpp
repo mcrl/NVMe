@@ -594,9 +594,7 @@ int main(int argc, char** argv) {
   //                 | IOCQ 1 | IOSQ 1 | Memory spaces~ 
   //                0xA000  0xB000    0xC000
   //
-  //OculinkReadNVMe(0x00);    // CAP
-  //OculinkReadNVMe(0x04);    // CAP
-
+  
   OculinkWriteNVMe(0x24, (cq_len << 16) | sq_len);  // AQA set (CQ size, SQ size)
   OculinkWriteNVMe(0x28, nvme_bar0 + bar_size);    // ASQ low adddr
   OculinkWriteNVMe(0x2c, 0x00000000);               // ASQ high addr
