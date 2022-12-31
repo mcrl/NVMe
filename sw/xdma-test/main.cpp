@@ -434,7 +434,10 @@ void PrintPCIConfigSpaceHeader(int bus, int dev, int func) {
 }
 
 void NVMePrepWriteCommand(size_t nvme_addr, size_t fpga_addr, size_t data_length){
-  
+ 
+  // Reset counter + id
+  KernelWrite(0x300, 0x0);
+
   // merge opcode and data length
   size_t dataLength_Opcode = data_length << 16;
   dataLength_Opcode += 0x1; // Write Opcode 0x1
