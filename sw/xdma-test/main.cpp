@@ -522,6 +522,8 @@ void setFPGABar(){
 
 void NVMeWriteDoorbell(){
 
+  // set flag to write sq head ptr into doorbell
+  kernelRead(0x300);
 }
 
 
