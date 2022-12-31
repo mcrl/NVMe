@@ -319,7 +319,6 @@ always_ff @(posedge clk, negedge rstn) begin
       end 
     end else begin
       sq_pop <= 0;
-      
       if          (host_addr == 'h00) begin
         host_dout <= data[0 * 32 +: 32];
       end else if (host_addr == 'h04) begin
@@ -373,7 +372,8 @@ always_ff @(posedge clk or negedge rstn) begin
     if (k2o_aw_fifo_wdata == 16'h5008 && k2o_aw_fifo_wvalid == 1) begin
       is_write_doorbell <= 1;
     end
-    
+
+    // if NVMe request command to SQ (0xB000~) 
     if (o2k_ar_fifo_rvalid == 1 
     && o2k_ar_fifo_rdata[15:0] < 16'hC000
     && o2k_ar_fifo_rdata[15:0] >= 16'hB000) begin
