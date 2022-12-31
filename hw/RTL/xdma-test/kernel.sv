@@ -640,7 +640,11 @@ ila_0 ila_0_inst (
 	.probe6(command), // input wire [511:0]  probe6
   .probe7(host_addr), // input wire [14:0] probe7
   .probe8(sq_rvalid), // 1-bit 
-  .probe9(sq_wack)    // 1-bit
+  .probe9(sq_wack),    // 1-bit
+  .probe10(is_write_doorbell),
+  .probe11(is_nvme_req_command),
+  .probe12(is_nvme_send_completion)
 );
+
 
 endmodule
