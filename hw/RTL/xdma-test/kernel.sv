@@ -224,6 +224,10 @@ always_ff @(posedge clk, negedge rstn) begin
     ocu_rstn <= 0;
     ocu_rstn_sw <= 1;
 
+    command_id <= 0;
+    sq_head_ptr <= 0;
+    sq_pop <= 0;
+    sq_push <= 0;
 
   end else begin
     k2o_aw_fifo_wvalid <= 0;
@@ -238,6 +242,9 @@ always_ff @(posedge clk, negedge rstn) begin
     o2k_r_fifo_wvalid <= 0;
     ocu_rstn <= ocu_rstn_sw;
     
+    sq_pop <= 0;
+    sq_push <= 0;
+    command[1 * 32 +: 32] <= 32'h1; // NSID
 
 
     if (host_en && host_we != 0) begin
@@ -291,8 +298,22 @@ always_ff @(posedge clk, negedge rstn) begin
         ocu_rstn_sw <= 0;
       end else if (host_addr == 'hc4) begin
         ocu_rstn_sw <= 1;
+      end else if (host_addr == 'h100) begin
+        command[10 * 32 +: 32] <= host_din;  // nvme address (LBA)
+      end else if (host_addr == 'h104) begin
+        command[6 * 32 +: 32] <= host_din;  // fpga data pointer (DPTR)
+      end else if (host_addr == 'h108) begin
+        command[10 * 32 +: 16] <= host_din[31:16];  // 4KB * n length (NLB)
+        command[0 * 32 +: 32] <= {command_id, 8'h0, host_din[7:0]};  // Read Opeation + CID
+      end else if (host_addr == 'h110) begin // push command + write doorbell
+        sq_din <= command;
+        sq_push <= 1'b1;
+        command_id <= command_id + 16'b1;
+        sq_head_ptr <= sq_head_ptr + 16'b1;
       end 
     end else begin
+      sq_pop <= 0;
+
       if          (host_addr == 'h00) begin
         host_dout <= data[0 * 32 +: 32];
       end else if (host_addr == 'h04) begin
@@ -336,40 +357,6 @@ always_ff @(posedge clk, negedge rstn) begin
     end
   end
 end
-
-always_ff @(posedge clk, negedge rstn) begin
-  if (~rstn) begin
-    command_id <= 0;
-    sq_head_ptr <= 0;
-    sq_pop <= 0;
-    sq_push <= 0;
-  end
-  else begin
-    sq_pop <= 0;
-    sq_push <= 0;
-    command[1 * 32 +: 32] <= 32'h1; // NSID
-
-    if (host_en && host_we != 0) begin    
-      if (host_addr == 'h100) begin
-        command[10 * 32 +: 32] <= host_din;  // nvme address (LBA)
-      end else if (host_addr == 'h104) begin
-        command[6 * 32 +: 32] <= host_din;  // fpga data pointer (DPTR)
-      end else if (host_addr == 'h108) begin
-        command[10 * 32 +: 16] <= host_din[31:16];  // 4KB * n length (NLB)
-        command[0 * 32 +: 32] <= {command_id, 8'h0, host_din[7:0]};  // Read Opeation + CID
-      end else if (host_addr == 'h110) begin // push command + write doorbell
-        sq_din <= command;
-        sq_push <= 1'b1;
-        command_id <= command_id + 16'b1;
-        sq_head_ptr <= sq_head_ptr + 16'b1;
-      end
-    end
-    //else if(host_en && host_we) begin
-
-    //end
-  end
-end
-
 
 
 fifo_bp #(
@@ -619,7 +606,9 @@ ila_0 ila_0_inst (
 	.probe4(sq_full), // input wire [0:0]  probe4 
 	.probe5(sq_empty), // input wire [0:0]  probe5 
 	.probe6(command), // input wire [511:0]  probe6
-  .probe7(host_addr) // input wire [14:0] probe7
+  .probe7(host_addr), // input wire [14:0] probe7
+  .probe8(sq_rvalid), // 1-bit 
+  .probe9(sq_wack)    // 1-bit
 );
 
 
