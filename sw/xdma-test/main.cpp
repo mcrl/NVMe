@@ -509,6 +509,13 @@ void openDevice(){
 void setFPGABar(){
   size_t bar0sz = 1024 * 1024; // 1MB
   fpga_bar0 = mmap(NULL, bar0sz, PROT_READ | PROT_WRITE, MAP_SHARED, fd, 0);
+  
+  if (fpga_bar0 == (void *)-1) {
+    spdlog::info("[2] mmap failed: {}", strerror(errno));
+    close(fd);
+    return 0;
+	}
+  spdlog::info("[SYS] mmap done. fpga_bar0={}", fpga_bar0);
 
 }
 
@@ -517,13 +524,7 @@ int main(int argc, char** argv) {
  
   openDevice();
 
-	if (fpga_bar0 == (void *)-1) {
-    spdlog::info("[2] mmap failed: {}", strerror(errno));
-    close(fd);
-    return 0;
-	}
-  spdlog::info("[SYS] mmap done. fpga_bar0={}", fpga_bar0);
-
+	
   AssertOcuReset();
   DeassertOcuReset();
   spdlog::info("[SYS] Reset done.");
