@@ -7,6 +7,23 @@ Below are environments that authors used.
 - OS: Ubuntu 20.04.3 LTS
 - CPU: Intel(R) Xeon(R) Gold 6130F CPU @ 2.10GHz
 
+# Code Structure
+```plaintext
+NVMe/
+├── hw/
+│   ├── COMSTRAINTS/                   
+│   ├── IP/                   
+│   ├── RTL/                 
+│   ├── scripts/             
+│   ├── SIM/                 
+│   └── SYNTH/
+├── sw/
+├── SIM/
+├── README.md
+├── LICENSE
+└── CMakeLists.txt
+```
+
 
 ## How to build
 
