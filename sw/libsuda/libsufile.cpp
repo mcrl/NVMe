@@ -4,7 +4,8 @@
 #include <errno.h>
 
 SUfileError_t suFileDriverOpen(void) {
-  spdlog::warn("suFileDriverOpen not implemented");
+  //spdlog::warn("suFileDriverOpen not implemented");
+
   return {SU_FILE_DRIVER_NOT_INITIALIZED, SUDA_ERROR_UNKNOWN};
 }
 
