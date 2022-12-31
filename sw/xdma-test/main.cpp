@@ -494,35 +494,41 @@ void NVMePrepReadCommand(size_t nvme_addr, size_t fpga_addr, size_t data_length)
 }
 
 
-
-int main(int argc, char** argv) {
- 
-  spdlog::info("[SYS] Start bus enumeration");
-  // open device
+int fd;
+void openDevice(){
+  
   const char* devname = "/dev/xdma0_user";
-  int fd;
 	if ((fd = open(devname, O_RDWR | O_SYNC)) == -1) {
 		spdlog::info("character device {} opened failed: {}.", devname, strerror(errno));
-    return 0;
+    return ;
 	}
 	spdlog::info("[SYS] Device {} opened. fd={}", devname, fd);
 
-  
+}
+
+void setFPGABar(){
   size_t bar0sz = 1024 * 1024; // 1MB
   fpga_bar0 = mmap(NULL, bar0sz, PROT_READ | PROT_WRITE, MAP_SHARED, fd, 0);
-	//fpga_bar0 = mmap(NULL, bar0sz, PROT_READ | PROT_WRITE, MAP_SHARED, fd, 0);
-	if (fpga_bar0 == (void *)-1) {
+  
+  if (fpga_bar0 == (void *)-1) {
     spdlog::info("[2] mmap failed: {}", strerror(errno));
     close(fd);
     return 0;
 	}
   spdlog::info("[SYS] mmap done. fpga_bar0={}", fpga_bar0);
 
+}
+
+
+int main(int argc, char** argv) {
+ 
+  openDevice();
+  setFPGABar();
+
   AssertOcuReset();
   DeassertOcuReset();
   spdlog::info("[SYS] Reset done.");
 
-  // TODO should be replaced with kernel reset
   while (!CheckAllQueueIsEmpty());
   spdlog::info("[SYS] All queue is empty.");
 
