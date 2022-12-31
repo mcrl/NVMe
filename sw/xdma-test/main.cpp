@@ -525,7 +525,6 @@ int main(int argc, char** argv) {
   openDevice();
   setFPGABar();
 
-
   AssertOcuReset();
   DeassertOcuReset();
   spdlog::info("[SYS] Reset done.");
