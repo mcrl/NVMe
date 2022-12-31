@@ -383,12 +383,12 @@ always_ff @(posedge clk or negedge rstn) begin
       is_nvme_req_command <= 1;
     end
 
+    // if NVME send completion to CQ (0xA000~)
     if (o2k_aw_fifo_wdata >= 16'hA000 
     &&  o2k_aw_fifo_wdata <  16'hB000
     &&  o2k_aw_fifo_wvalid == 1) begin
       is_nvme_send_completion <= 1;
     end 
-
 
   end
 end
