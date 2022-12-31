@@ -474,6 +474,12 @@ void NVMePopCommand(){
   // SQ Pop
   KernelRead(0x210);
   
+  data0 = KernelRead(0x200);
+  data1 = KernelRead(0x204);
+  data2 = KernelRead(0x208);
+  data3 = KernelRead(0x20C);
+
+  spdlog::info("{:08X}, {:08X}, {:08X}, {:08X}", data0, data1, data2, data3);
 
 }
 
