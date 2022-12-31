@@ -526,7 +526,7 @@ void NVMeWriteDoorbell(){
   KernelRead(0x300);
 
   // write sqhead ptr into doorbell
-  kernelWrite(0x400);
+  KernelWrite(0x400);
 
 }
 
