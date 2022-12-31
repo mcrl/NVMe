@@ -545,15 +545,34 @@ void NVMeWriteDoorbell(){
   }
   
   // read request address
+  // araddr0 should be sq base address
   uint32_t araddr0 = KernelRead(0x00);
   uint32_t araddr1 = KernelRead(0x04);
   uint32_t arsize = KernelRead(0x08) & 0b111;
   uint32_t arlen = (KernelRead(0x08) >> 3) & 0xff;
   uint32_t arid = (KernelRead(0x08) >> 11) & 0b1111;
-  
+   
   spdlog::info("NVMe Request SQ");
   spdlog::info("o2k_ar araddr={:08X},{:08X} arsize={}, arlen={}, arid={}", araddr1, araddr0, arsize, arlen, arid);
-
+  
+  // o2k_r
+  // send command
+  for (int i = 0; i <= arlen; ++i) {
+    uint32_t rdata0 = sqe[15-(i*4+0)];
+    uint32_t rdata1 = sqe[15-(i*4+1)]; 
+    uint32_t rdata2 = sqe[15-(i*4+2)]; 
+    uint32_t rdata3 = sqe[15-(i*4+3)]; 
+    uint32_t rlast = i == arlen;
+    uint32_t rid = arid;
+    KernelWrite(0x00, rdata0);              
+    KernelWrite(0x04, rdata1);
+    KernelWrite(0x08, rdata2);
+    KernelWrite(0x0c, rdata3);
+    KernelWrite(0x10, (rid << 1) | rlast);  // rlast
+    KernelWrite(0xb0, 0);                   // push 
+    spdlog::info("[CC] OculinkRespondRead rdata={:08X},{:08X},{:08X},{:08X}, rlast={}, rid={}", rdata3, rdata2, rdata1, rdata0, rlast, rid);
+  }
+ 
 }
 
 
