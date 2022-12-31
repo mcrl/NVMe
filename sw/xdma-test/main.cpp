@@ -501,11 +501,9 @@ void openDevice(){
   const char* devname = "/dev/xdma0_user";
 	if ((fd = open(devname, O_RDWR | O_SYNC)) == -1) {
 		spdlog::info("character device {} opened failed: {}.", devname, strerror(errno));
-    return 0;
+    return ;
 	}
 	spdlog::info("[SYS] Device {} opened. fd={}", devname, fd);
-
-
 
 }
 
