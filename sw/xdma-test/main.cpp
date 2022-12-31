@@ -513,7 +513,7 @@ void setFPGABar(){
   if (fpga_bar0 == (void *)-1) {
     spdlog::info("[2] mmap failed: {}", strerror(errno));
     close(fd);
-    return 0;
+    return ;
 	}
   spdlog::info("[SYS] mmap done. fpga_bar0={}", fpga_bar0);
 
@@ -696,7 +696,7 @@ int main(int argc, char** argv) {
   std::this_thread::sleep_for(std::chrono::milliseconds(10));
   while(KernelRead(0x80)) OculinkRespondWrite();
 
-   
+  KernelWrite(0x114, 0x00); 
   NVMePrepWriteCommand(0x1000, 0x2000, 0x10);
   NVMePopCommand();
    
