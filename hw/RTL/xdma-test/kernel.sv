@@ -208,7 +208,6 @@ logic sq_empty;
 logic sq_rvalid;
 logic sq_wack;
 
-logic flag;
 
 always_ff @(posedge clk, negedge rstn) begin
   if (~rstn) begin
@@ -230,7 +229,6 @@ always_ff @(posedge clk, negedge rstn) begin
     sq_pop <= 0;
     sq_push <= 0;
 
-    flag <= 0;
   end else begin
     k2o_aw_fifo_wvalid <= 0;
     k2o_w_fifo_wvalid <= 0;
@@ -319,10 +317,7 @@ always_ff @(posedge clk, negedge rstn) begin
         // Reset ptr + command id 
         command_id <= 0;
         sq_head_ptr <= 0;
-      end else if (host_addr == 'h300) begin
-        flag <= 1;
       end 
-
     end else begin
       sq_pop <= 0;
       
@@ -597,7 +592,6 @@ sq sq_inst (
   .wr_rst_busy(),     // output wire wr_rst_busy
   .rd_rst_busy()      // output wire rd_rst_busy
 );
-
 
 ila_0 ila_0_inst (
 	.clk(clk), // input wire clk
