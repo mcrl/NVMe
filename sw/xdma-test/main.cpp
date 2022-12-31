@@ -535,7 +535,15 @@ void NVMeWriteDoorbell(){
   std::this_thread::sleep_for(std::chrono::milliseconds(10));
   while(KernelRead(0x80)) OculinkRespondWrite();
   */
-
+  
+  // o2k_ar
+  // if doorbell is correctly written, o2k_ar signal should be received
+  while (true) {
+    uint32_t valid = KernelRead(0x90);
+    if (valid) break;
+    std::this_thread::sleep_for(std::chrono::milliseconds(1));
+  }
+  
 }
 
 
