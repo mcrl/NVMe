@@ -520,19 +520,6 @@ void setFPGABar(){
 }
 
 
-void NVMeWriteDoorbell(){
-
-  // set flag to write doorbell
-  KernelRead(0x300);
-
-  // write sqhead ptr into doorbell
-  KernelWrite(0x400);
-   
-  // o2k_ar
-  
-}
-
-
 int main(int argc, char** argv) {
  
   openDevice();
