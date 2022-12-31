@@ -24,6 +24,7 @@ int main() {
 
   cout << "Opening suFileDriver." << std::endl;
   status = suFileDriverOpen();
+  
   if (status.err != SU_FILE_SUCCESS) {
     std::cerr << " suFile driver failed to open " << std::endl;
     return -1;
