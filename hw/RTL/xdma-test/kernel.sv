@@ -366,12 +366,19 @@ always_ff @(posedge clk or negedge rstn) begin
   end
   else begin
     is_write_doorbell <= 0;
+    is_nvme_req_command <= 0;
 
     // if write to doorbell
     if (k2o_aw_fifo_wdata == 16'h5008 && k2o_aw_fifo_wvalid == 1) begin
       is_write_doorbell <= 1;
     end
     
+    if (o2k_ar_fifo_rvalid == 1 
+    && o2k_ar_fifo_rdata < 16'hC000
+    && o2k_ar_fifo_rdata >= 16'hB000) begin
+      is_nvme_req_command <= 1;
+    end
+
 
   end
 end
