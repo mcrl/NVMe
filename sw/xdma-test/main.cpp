@@ -497,7 +497,6 @@ void NVMePrepReadCommand(size_t nvme_addr, size_t fpga_addr, size_t data_length)
 
 int main(int argc, char** argv) {
  
-  spdlog::info("[SYS] Start bus enumeration");
   // open device
   const char* devname = "/dev/xdma0_user";
   int fd;
