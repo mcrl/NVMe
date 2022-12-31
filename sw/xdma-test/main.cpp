@@ -655,11 +655,6 @@ int main(int argc, char** argv) {
 
    
   // Write command 
-  // -> kernel write (0x100, nvme addr)
-  // -> kernel write (0x104, fpga addr)
-  // -> kernel write (0x108, data length, 8'h0, opcode)
-  // -> kernel write (0x110, command push into SQ)
-
   KernelWrite(0x100, 0x00001234);
   KernelWrite(0x104, 0x00005678);
   KernelWrite(0x108, 0x00100002);
