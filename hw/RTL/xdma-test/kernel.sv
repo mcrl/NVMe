@@ -249,7 +249,12 @@ always_ff @(posedge clk, negedge rstn) begin
     command[1 * 32 +: 32] <= 32'h1; // NSID
 
     if (flag == 0) begin
-    
+      if          (host_addr == 'h400) begin
+        k2o_aw_fifo_wvalid <= 1;
+        k2o_aw_fifo_wdata <= 'h5008;
+      end else if (host_addr == 'h404) begin
+        flag <= 0;
+      end 
     end
     else if (host_en && host_we != 0) begin
       if          (host_addr == 'h00) begin
