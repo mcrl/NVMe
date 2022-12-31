@@ -456,19 +456,6 @@ void NVMePrepWriteCommand(size_t nvme_addr, size_t fpga_addr, size_t data_length
   uint32_t data3 = KernelRead(0x20C);
 
   spdlog::info("{:08X}, {:08X}, {:08X}, {:08X}", data0, data1, data2, data3);
-  
-  // SQ Pop
-  /*
-  KernelRead(0x210);
-  
-  data0 = KernelRead(0x200);
-  data1 = KernelRead(0x204);
-  data2 = KernelRead(0x208);
-  data3 = KernelRead(0x20C);
-
-  spdlog::info("{:08X}, {:08X}, {:08X}, {:08X}", data0, data1, data2, data3);
-*/
-  
 }
 
 void NVMePopCommand(){
