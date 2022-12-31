@@ -520,6 +520,11 @@ void setFPGABar(){
 }
 
 
+void NVMeWriteDoorbell(){
+
+}
+
+
 int main(int argc, char** argv) {
  
   openDevice();
@@ -699,7 +704,7 @@ int main(int argc, char** argv) {
    
   NVMePrepWriteCommand(0x1000, 0x2000, 0x10);
   NVMePopCommand();
- 
+   
   
   return 0;
 }
