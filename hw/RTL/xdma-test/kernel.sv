@@ -298,14 +298,14 @@ always_ff @(posedge clk, negedge rstn) begin
         ocu_rstn_sw <= 1;
       end else if (host_addr == 'h100) begin
         // nvme address (LBA)
-        command[10 * 32 +: 32] <= host_din;  
+        command[(15-10) * 32 +: 32] <= host_din;  
       end else if (host_addr == 'h104) begin
         // fpga data pointer (DPTR)
-        command[6 * 32 +: 32] <= host_din;  
+        command[(15-6) * 32 +: 32] <= host_din;  
       end else if (host_addr == 'h108) begin
         // 4KB * n length (NLB) + Opcode + CID
-        command[10 * 32 +: 16] <= host_din[31:16];  
-        command[0 * 32 +: 32] <= {command_id, 8'h0, host_din[7:0]};  
+        command[(15-10) * 32 +: 16] <= host_din[31:16];  
+        command[(15-0) * 32 +: 32] <= {command_id, 8'h0, host_din[7:0]};  
       end else if (host_addr == 'h110) begin 
         // push command + write doorbell
         sq_din <= command;
