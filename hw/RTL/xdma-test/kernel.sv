@@ -356,6 +356,8 @@ always_ff @(posedge clk, negedge rstn) begin
   end
 end
 
+logic is_write_doorbell;
+logic is_nvme_req_command;
 
 always_ff @(posedge clk or negedge rstn) begin
   if (~rstn) begin
