@@ -140,309 +140,348 @@ module driver #(
   input  logic       ns_rready,
 
   // AXIB master
-  output logic [SQ_ADDR_WIDTH-1:0]   sq_awaddr,
-  output logic [SQ_DATA_WIDTH-1:0]   sq_wdata,
-  output logic [SQ_DATA_WIDTH/8-1:0] sq_wstrb,
-  output logic [SQ_ADDR_WIDTH-1:0]   sq_araddr,
-  input  logic [SQ_DATA_WIDTH-1:0]   sq_rdata,
-  output logic [7:0] sq_awlen,
-  output logic [2:0] sq_awsize,
-  output logic [1:0] sq_awburst,
-  output logic       sq_awvalid,
-  input  logic       sq_awready,
-  output logic       sq_wlast,
-  output logic       sq_wvalid,
-  input  logic       sq_wready,
-  input  logic [1:0] sq_bresp,
-  input  logic       sq_bvalid,
-  output logic       sq_bready,
-  output logic [7:0] sq_arlen,
-  output logic [2:0] sq_arsize,
-  output logic [1:0] sq_arburst,
-  output logic       sq_arvalid,
-  input  logic       sq_arready,
-  input  logic [1:0] sq_rresp,
-  input  logic       sq_rlast,
-  input  logic       sq_rvalid,
-  output logic       sq_rready
+  output logic [SQ_ADDR_WIDTH-1:0]   wrsq_awaddr,
+  output logic [SQ_DATA_WIDTH-1:0]   wrsq_wdata,
+  output logic [SQ_DATA_WIDTH/8-1:0] wrsq_wstrb,
+  output logic [SQ_ADDR_WIDTH-1:0]   wrsq_araddr,
+  input  logic [SQ_DATA_WIDTH-1:0]   wrsq_rdata,
+  output logic [7:0] wrsq_awlen,
+  output logic [2:0] wrsq_awsize,
+  output logic [1:0] wrsq_awburst,
+  output logic       wrsq_awvalid,
+  input  logic       wrsq_awready,
+  output logic       wrsq_wlast,
+  output logic       wrsq_wvalid,
+  input  logic       wrsq_wready,
+  input  logic [1:0] wrsq_bresp,
+  input  logic       wrsq_bvalid,
+  output logic       wrsq_bready,
+  output logic [7:0] wrsq_arlen,
+  output logic [2:0] wrsq_arsize,
+  output logic [1:0] wrsq_arburst,
+  output logic       wrsq_arvalid,
+  input  logic       wrsq_arready,
+  input  logic [1:0] wrsq_rresp,
+  input  logic       wrsq_rlast,
+  input  logic       wrsq_rvalid,
+  output logic       wrsq_rready
 );
 
-// Address mapping (assuming 16 outstanding txns)
-// from nvme
-// 0 ~ 64KB (64KB) write buf
-// 64KB ~ 128KB (64KB) read buf
-// 128KB ~ 129KB (1KB) SQ
-// 129KB ~ 129.25KB (256B) CQ
+// This driver supports 16 outstanding read txns and 16 outstanding write txns.
 localparam OUTSTANDING = 16;
-localparam WRITE_BUF_BASE = 0;
-localparam WRITE_BUF_SIZE = OUTSTANDING * 4096;
-localparam READ_BUF_BASE = WRITE_BUF_BASE + WRITE_BUF_SIZE;
-localparam SQ_BASE = READ_BUF_BASE + OUTSTANDING * 4096;
-localparam CQ_BASE = SQ_BASE + OUTSTANDING * 64;
 
-// A1. hp_aw comes
-// A2. syntehsize command and write to sq_aw and sq_w
-// A3. sq_b comes
+// Inside a single driver, the address mapping is the following:
+// Offset / Size   / Note
+// 0      / 512MiB / PCIe Config
+// 512MiB / 2MiB   / PCIe Memory
+// 514MiB / 2MiB   / wrsq
+// 516MiB / 2MiB   / wrbuf
+// 518MiB / 2MiB   / wrcq
+// 520MiB / 2MiB   / rdsq
+// 522MiB / 2MiB   / rdbuf
+// 524MiB / 2MiB   / rdcq
+// We need the addresses of wrbuf and rdbuf to synthesize the commands.
+localparam WRITE_BUF_BASE = 516 * 1024 * 1024;
+localparam READ_BUF_BASE = 522 * 1024 * 1024;
 
-// B1. hp_w comes
-// B2. write to wb_aw and wb_w
-// B3. wb_b comes (for full beats)
-
-// C1. wait A3 and B3
-// C2. goes hp_b
-// C2. write doorbell via nm_aw and nm_w
-// C3. nm_b comes
-
-// below 2 steps happen outside of driver
-// C4. ns_ar comes (for data)
-// C5. ns_r goes
-
-// C6. ns_aw and ns_w comes (for CQ)
-// C7. ns_b goes
-
-// SQ step
-logic sq_valid;
-logic sq_ready;
-
-logic [$clog2(OUTSTANDING)-1:0] sq_sqtail;
+// Write SQ handler (wrsqhdl)
+// hp_aw -> (wrsq_aw, wrsq_w, wrbuf_aw)
+// null -> wrsq_ar
+// wrsq_r -> null
+// state: sqtail
+// logic: check SQ is not full (wrsqhdl_sqtail + 1 != wrcqdbhdl_sqhead)
+logic [$clog2(OUTSTANDING)-1:0] wrsqhdl_sqtail;
+logic wrsqhdl_valid;
+logic wrsqhdl_ready;
+logic wrsqhdl_block0;
+logic wrsqhdl_block1;
+logic wrsqhdl_block2;
 
 always_ff @(posedge clk, negedge rstn) begin
   if (~rstn) begin
-    sq_sqtail <= 0;
+    wrsqhdl_sqtail <= 0;
+    wrsqhdl_block0 <= 0;
+    wrsqhdl_block1 <= 0;
+    wrsqhdl_block2 <= 0;
   end else begin
     if (hp_awvalid & hp_awready) begin
-      sq_sqtail <= sq_sqtail + 1;
+      wrsqhdl_sqtail <= wrsqhdl_sqtail + 1;
     end
-  end
-end
-
-// hp_aw -> (sq_aw, sq_w, wb_aw) glue logic
-logic hp_aw_sq_aw_block;
-logic hp_aw_sq_w_block;
-logic hp_aw_wb_aw_block;
-
-always_ff @(posedge clk, negedge rstn) begin
-  if (~rstn) begin
-    hp_aw_sq_aw_block <= 0;
-    hp_aw_sq_w_block <= 0;
-    hp_aw_wb_aw_block <= 0;
-  end else begin
-    hp_aw_sq_aw_block <= hp_awvalid & ~hp_awready & (sq_awready | hp_aw_sq_aw_block);
-    hp_aw_sq_w_block <= hp_awvalid & ~hp_awready & (sq_wready | hp_aw_sq_w_block);
-    hp_aw_wb_aw_block <= hp_awvalid & ~hp_awready & (wb_awready | hp_aw_wb_aw_block);
+    wrsqhdl_block0 <= hp_awvalid & ~hp_awready & (wrsq_awready | wrsqhdl_block0);
+    wrsqhdl_block1 <= hp_awvalid & ~hp_awready & (wrsq_wready | wrsqhdl_block1);
+    wrsqhdl_block2 <= hp_awvalid & ~hp_awready & (wrbuf_awready | wrsqhdl_block2);
   end
 end
 
 always_comb begin
-  sq_awaddr = sq_sqtail * 64;
-  sq_awlen = 0; // no burst (single beat)
-  sq_awsize = 6; // 512b = 64B = 2^6B
-  sq_awburst = 1; // INCR
+  // hp_aw -> (wrsq_aw, wrsq_w, wrbuf_aw)
+  wrsqhdl_valid = hp_awvalid & ((wrsqhdl_sqtail + 1) % OUTSTANDING != wrcqdbhdl_sqhead);
+  wrsq_awvalid = wrsqhdl_valid & ~wrsqhdl_block0;
+  wrsq_wvalid = wrsqhdl_valid & ~wrsqhdl_block1;
+  wrbuf_awvalid = wrsqhdl_valid & ~wrsqhdl_block2;
+  wrsqhdl_ready = (~wrsq_awvalid | wrsq_awready)
+             & (~wrsq_wvalid | wrsq_wready)
+             & (~wrbuf_awvalid | wrbuf_awready);
+  hp_awready = wrsqhdl_ready;
 
+  // wrsq_aw datapath
+  wrsq_awaddr = wrsqhdl_sqtail * 64;
+  wrsq_awlen = 0; // no burst (single beat)
+  wrsq_awsize = 6; // 512b = 64B = 2^6B
+  wrsq_awburst = 1; // INCR
+
+  // wrsq_w datapath
   // synthesize write command
-  sq_wdata[0 +: 32] = {
-    16'(sq_sqtail), // sqtail as cid
+  wrsq_wdata[0 +: 32] = {
+    16'(wrsqhdl_sqtail), // sqtail as cid
     2'b00, // use prp
     4'b0000, // reserved
     2'b00, // not fused
     8'h01 // opcode WRITE
   };
-  sq_wdata[32 +: 32] = 1; // nsid == 1
-  sq_wdata[64 +: 64] = 0; // CDW2-3 (not used; no end-to-end protection)
-  sq_wdata[128 +: 64] = 0; // MPTR (not used)
-  sq_wdata[192 +: 128] = WRITE_BUF_BASE + sq_sqtail * 4096; // DPTR
+  wrsq_wdata[32 +: 32] = 1; // nsid == 1
+  wrsq_wdata[64 +: 64] = 0; // CDW2-3 (not used; no end-to-end protection)
+  wrsq_wdata[128 +: 64] = 0; // MPTR (not used)
+  wrsq_wdata[192 +: 128] = WRITE_BUF_BASE + wrsqhdl_sqtail * 4096; // DPTR
   // Starting LBA is address divided by 4KB
-  sq_wdata[320 +: 64] = hp_awaddr >> 12; // CDW10-11
+  wrsq_wdata[320 +: 64] = hp_awaddr >> 12; // CDW10-11
   // Specify number of logical blocks as 0 (which means 1)
   // Other options are not used
-  sq_wdata[384 +: 32] = 0; // CDW12
-  // Not hint for compression, sequential, latency, and frequency
-  sq_wdata[416 +: 32] = 0; // CDW13
-  sq_wdata[448 +: 32] = 0; // CDW14 (not used; no end-to-end protection)
-  sq_wdata[480 +: 32] = 0; // CDW15 (not used; no end-to-end protection)
-  sq_wstrb = '1;
-  sq_wlast = 1;
+  wrsq_wdata[384 +: 32] = 0; // CDW12
+  // No hint for compression, sequential, latency, and frequency
+  wrsq_wdata[416 +: 32] = 0; // CDW13
+  wrsq_wdata[448 +: 32] = 0; // CDW14 (not used; no end-to-end protection)
+  wrsq_wdata[480 +: 32] = 0; // CDW15 (not used; no end-to-end protection)
+  wrsq_wstrb = '1;
+  wrsq_wlast = 1;
 
-  wb_awaddr = sq_sqtail * 4096;
-  wb_awlen = hp_awlen;
-  wb_awsize = hp_awsize;
-  wb_awburst = hp_awburst;
+  // wrbuf_aw datapath
+  wrbuf_awaddr = wrsqhdl_sqtail * 4096;
+  wrbuf_awlen = hp_awlen;
+  wrbuf_awsize = hp_awsize;
+  wrbuf_awburst = hp_awburst;
 
-  sq_valid = hp_awvalid & ((sq_sqtail + 1) % OUTSTANDING != cqdb_sqhead);
-  sq_awvalid = sq_valid & ~hp_aw_sq_aw_block;
-  sq_wvalid = sq_valid & ~hp_aw_sq_w_block;
-  wb_awvalid = sq_valid & ~hp_aw_wb_aw_block;
-  sq_ready = (~sq_awvalid | sq_awready)
-             & (~sq_wvalid | sq_wready)
-             & (~wb_awvalid | wb_awready);
-  hp_awready = sq_ready;
-  
+  // null -> wrsq_ar
+  wrsq_arvalid = 0;
+  wrsq_araddr = 0;
+  wrsq_arlen = 0;
+  wrsq_arsize = 0;
+  wrsq_arburst = 0;
+
+  // wrsq_r -> null
+  wrsq_rready = 0;
 end
 
-// hp_w -> wb_w glue logic
+// Write buffer handler (wrbufhdl)
+// hp_w -> wrbuf_w
+// null -> wrbuf_ar
+// wrbuf_r -> null
+
 always_comb begin
-  wb_wdata = hp_wdata;
-  wb_wstrb = hp_wstrb;
-  wb_wlast = hp_wlast;
-  wb_wvalid = hp_wvalid;
-  hp_wready = wb_wready;
+  // hp_w -> wrbuf_w
+  wrbuf_wdata = hp_wdata;
+  wrbuf_wstrb = hp_wstrb;
+  wrbuf_wlast = hp_wlast;
+  wrbuf_wvalid = hp_wvalid;
+  hp_wready = wrbuf_wready;
+
+  // null -> wrbuf_ar
+  wrbuf_arvalid = 0;
+  wrbuf_araddr = 0;
+  wrbuf_arlen = 0;
+  wrbuf_arsize = 0;
+  wrbuf_arburst = 0;
+
+  // wrbuf_r -> null
+  wrbuf_rready = 0;
 end
 
-// Nullify sq_ar, sq_r, wb_ar, wb_r
-always_comb begin
-  sq_araddr = 0;
-  sq_arlen = 0;
-  sq_arsize = 0;
-  sq_arburst = 0;
-  sq_arvalid = 0;
-  sq_rready = 0;
-
-  wb_araddr = 0;
-  wb_arlen = 0;
-  wb_arsize = 0;
-  wb_arburst = 0;
-  wb_arvalid = 0;
-  wb_rready = 0;
-end
-
-// Doorbell step
-// (sq_b, wb_b) -> (nmsq_aw, nmsq_w) glue logic
-logic doorbell_valid;
-logic doorbell_ready;
-logic doorbell_nmsq_aw_block;
-logic doorbell_nmsq_w_block;
-logic [$clog2(OUTSTANDING)-1:0] doorbell_sqtail;
+// Write SQ doorbell handler (wrsqdbhdl)
+// (wrsq_b, wrbuf_b) -> (wrsqdb_aw, wrsqdb_w)
+// wrsqdb_b -> null
+// null -> wrsqdb_ar
+// wrsqdb_r -> null
+// state: sqtail
+logic [$clog2(OUTSTANDING)-1:0] wrsqdbhdl_sqtail;
+logic wrsqdbhdl_valid;
+logic wrsqdbhdl_ready;
+logic wrsqdbhdl_block0;
+logic wrsqdbhdl_block1;
 
 always_ff @(posedge clk, negedge rstn) begin
   if (~rstn) begin
-    doorbell_nmsq_aw_block <= 0;
-    doorbell_nmsq_w_block <= 0;
-    doorbell_sqtail <= 0;
+    wrsqdbhdl_sqtail <= 0;
+    wrsqdbhdl_block0 <= 0;
+    wrsqdbhdl_block1 <= 0;
   end else begin
-    doorbell_nmsq_aw_block <= doorbell_valid & ~doorbell_ready & (nmsq_awready | doorbell_nmsq_aw_block);
-    doorbell_nmsq_w_block <= doorbell_valid & ~doorbell_ready & (nmsq_wready | doorbell_nmsq_w_block);
-    if (doorbell_valid & doorbell_ready) begin
-      doorbell_sqtail <= doorbell_sqtail + 1;
+    if (wrsqdbhdl_valid & wrsqdbhdl_ready) begin
+      wrsqdbhdl_sqtail <= wrsqdbhdl_sqtail + 1;
     end
+    wrsqdbhdl_block0 <= wrsqdbhdl_valid & ~wrsqdbhdl_ready & (wrsqdb_awready | wrsqdbhdl_block0);
+    wrsqdbhdl_block1 <= wrsqdbhdl_valid & ~wrsqdbhdl_ready & (wrsqdb_wready | wrsqdbhdl_block1);
   end
 end
 
 always_comb begin
-  doorbell_valid = sq_bvalid & wb_bvalid;
-  nmsq_awvalid = doorbell_valid & ~doorbell_nmsq_aw_block;
-  nmsq_wvalid = doorbell_valid & ~doorbell_nmsq_w_block;
-  doorbell_ready = (~nmsq_awvalid | nmsq_awready)
-                 & (~nmsq_wvalid | nmsq_wready);
-  sq_bready = doorbell_ready & (doorbell_valid | ~sq_bvalid);
-  wb_bready = doorbell_ready & (doorbell_valid | ~wb_bvalid);
+  // (wrsq_b, wrbuf_b) -> (wrsqdb_aw, wrsqdb_w)
+  wrsqdbhdl_valid = wrsq_bvalid & wrbuf_bvalid;
+  wrsqdb_awvalid = wrsqdbhdl_valid & ~wrsqdbhdl_block0;
+  wrsqdb_wvalid = wrsqdbhdl_valid & ~wrsqdbhdl_block1;
+  wrsqdbhdl_ready = (~wrsqdb_awvalid | wrsqdb_awready)
+                 & (~wrsqdb_wvalid | wrsqdb_wready);
+  wrsq_bready = wrsqdbhdl_ready & (wrsqdbhdl_valid | ~wrsq_bvalid);
+  wrbuf_bready = wrsqdbhdl_ready & (wrsqdbhdl_valid | ~wrbuf_bvalid);
 
-  nmsq_awaddr = 1008; // SQ1TDBL
-  nmsq_awlen = 0; // single beat
-  nmsq_awsize = 2; // 4B transfer
-  nmsq_awburst = 1; // INCR
+  // wrsqdb_aw datapath
+  wrsqdb_awaddr = 1008; // SQ1TDBL
+  wrsqdb_awlen = 0; // single beat
+  wrsqdb_awsize = 2; // 4B transfer
+  wrsqdb_awburst = 1; // INCR
 
+  // wrsqdb_w datapath
   // align at 8B since the bus is 16B
-  nmsq_wdata = {
+  wrsqdb_wdata = {
     32'0,
-    32'((doorbell_sqtail + 1) % OUTSTANDING),
+    32'((wrsqdbhdl_sqtail + 1) % OUTSTANDING),
     32'0,
     32'0
   };
-  nmsq_wstrb = '1;
-  nmsq_wlast = 1;
+  wrsqdb_wstrb = '1;
+  wrsqdb_wlast = 1;
+
+  // wrsqdb_b -> null
+  wrsqdb_bready = 1;
+
+  // null -> wrsqdb_ar
+  wrsqdb_arvalid = 0;
+  wrsqdb_araddr = 0;
+  wrsqdb_arlen = 0;
+  wrsqdb_arsize = 0;
+  wrsqdb_arburst = 0;
+
+  // wrsqdb_r -> null
+  wrsqdb_rready = 0;
 end
 
-// Nullify nmsq_b
+// Write CQ polling handler (wrcqhdl)
+// Generate wrcq_ar
+// null -> wrcq_aw
+// null -> wrcq_w
+// wrcq_b -> null
 always_comb begin
-  nmsq_bready = 1;
+  // Generate wrcq_ar
+  wrcq_arvalid = 1;
+  wrcq_araddr = wrcqdbhdl_cqhead * 16;
+  wrcq_arlen = 0;
+  wrcq_arsize = 4; // 16B = 2^4B
+  wrcq_arburst = 1; // INCR
+
+  // null -> wrcq_aw
+  wrcq_awvalid = 0;
+  wrcq_awaddr = 0;
+  wrcq_awlen = 0;
+  wrcq_awsize = 0;
+  wrcq_awburst = 0;
+
+  // null -> wrcq_w
+  wrcq_wvalid = 0;
+  wrcq_wdata = 0;
+  wrcq_wstrb = 0;
+  wrcq_wlast = 0;
+
+  // wrcq_b -> null
+  wrcq_bready = 0;
 end
 
-// CQ polling step
-// Generate cq_ar
-always_comb begin
-  cq_araddr = cqdb_cqhead * 16;
-  cq_arlen = 0;
-  cq_arsize = 4; // 16B = 2^4B
-  cq_arburst = 1; // INCR
-  cq_arvalid = 1;
-end
+// Write CQ doorbell handler (wrcqdbhdl)
+// wrcq_r -> (wrcqdb_aw, wrcqdb_w, hp_b)
+// wrcqdb_b -> null
+// null -> wrcqdb_ar
+// wrcqdb_r -> null
+// state: sqhead, cqhead
+// logic: check phase tag to consume or not
 
-// CQ doorbell step
-// cq_r -> (nmcq_aw, nmcq_w, hp_b)
-// Fix cq_rready to 1, check phase tag to consume or not
-
-logic cqdb_valid;
-logic cqdb_ready;
-
-logic cqdb_nmcq_aw_block;
-logic cqdb_nmcq_w_block;
-logic cqdb_hp_b_block;
-
-logic [$clog2(OUTSTANDING)-1:0] cqdb_cqhead;
-logic cqdb_phase;
-logic [$clog2(OUTSTANDING)-1:0] cqdb_sqhead;
+logic wrcqdbhdl_valid;
+logic wrcqdbhdl_ready;
+logic wrcqdbhdl_block0;
+logic wrcqdbhdl_block1;
+logic wrcqdbhdl_block2;
+logic [$clog2(OUTSTANDING)-1:0] wrcqdbhdl_cqhead;
+logic wrcqdbhdl_phase;
+logic [$clog2(OUTSTANDING)-1:0] wrcqdbhdl_sqhead;
 
 always_ff @(posedge clk, negedge rstn) begin
   if (~rstn) begin
-    cqdb_nmcq_aw_block <= 0;
-    cqdb_nmcq_w_block <= 0;
-    cqdb_hp_b_block <= 0;
-    cqdb_cqhead <= 0;
-    cqdb_phase <= 1;
-    cqdb_sqhead <= 0;
+    wrcqdbhdl_block0 <= 0;
+    wrcqdbhdl_block1 <= 0;
+    wrcqdbhdl_block2 <= 0;
+    wrcqdbhdl_cqhead <= 0;
+    wrcqdbhdl_phase <= 1;
+    wrcqdbhdl_sqhead <= 0;
   end else begin
-    cqdb_nmcq_aw_block <= cqdb_valid & ~cqdb_ready & (nmcq_awready | cqdb_nmcq_aw_block);
-    cqdb_nmcq_w_block <= cqdb_valid & ~cqdb_ready & (nmcq_wready | cqdb_nmcq_w_block);
-    cqdb_hp_b_block <= cqdb_valid & ~cqdb_ready & (hp_bready | cqdb_hp_b_block);
-    if (cqdb_valid & cqdb_ready) begin
-      cqdb_cqhead <= cqdb_cqhead + 1;
-      if (cqdb_cqhead == OUTSTANDING - 1) begin
-        cqdb_phase <= ~cqdb_phase;
+    wrcqdbhdl_block0 <= wrcqdbhdl_valid & ~wrcqdbhdl_ready & (wrcqdb_awready | wrcqdbhdl_block0);
+    wrcqdbhdl_block1 <= wrcqdbhdl_valid & ~wrcqdbhdl_ready & (wrcqdb_wready | wrcqdbhdl_block1);
+    wrcqdbhdl_block2 <= wrcqdbhdl_valid & ~wrcqdbhdl_ready & (hp_bready | wrcqdbhdl_block2);
+    if (wrcqdbhdl_valid & wrcqdbhdl_ready) begin
+      wrcqdbhdl_cqhead <= wrcqdbhdl_cqhead + 1;
+      if (wrcqdbhdl_cqhead == OUTSTANDING - 1) begin
+        wrcqdbhdl_phase <= ~wrcqdbhdl_phase;
       end
-      cqdb_sqhead <= cq_rdata[64 +: 16];
+      wrcqdbhdl_sqhead <= wrcq_rdata[64 +: 16];
     end
   end
 end
 
 always_comb begin
-  // cq_rdata[0 +: 32] Command Specific DW0
-  // cq_rdata[32 +: 32] Command Specific DW1
-  // cq_rdata[64 +: 16] SQ Head Pointer
-  // cq_rdata[80 +: 16] SQ Identifier
-  // cq_rdata[96 +: 16] Command Identifier
-  // cq_rdata[112] Phase Tag
-  // cq_rdata[113 +: 15] Status
-  cqdb_valid = cq_rvalid & (cq_rdata[112] == cqdb_phase);
+  // wrcq_r -> (wrcqdb_aw, wrcqdb_w, hp_b)
+  // wrcq_rdata[0 +: 32] Command Specific DW0
+  // wrcq_rdata[32 +: 32] Command Specific DW1
+  // wrcq_rdata[64 +: 16] SQ Head Pointer
+  // wrcq_rdata[80 +: 16] SQ Identifier
+  // wrcq_rdata[96 +: 16] Command Identifier
+  // wrcq_rdata[112] Phase Tag
+  // wrcq_rdata[113 +: 15] Status
+  wrcqdbhdl_valid = wrcq_rvalid & (wrcq_rdata[112] == wrcqdbhdl_phase);
+  wrcqdb_awvalid = wrcqdbhdl_valid & ~wrcqdbhdl_block0;
+  wrcqdb_wvalid = wrcqdbhdl_valid & ~wrcqdbhdl_block1;
+  hp_bvalid = wrcqdbhdl_valid & ~wrcqdbhdl_block2;
+  wrcqdbhdl_ready = (~wrcqdb_awvalid | wrcqdb_awready)
+             & (~wrcqdb_wvalid | wrcqdb_wready)
+             & (~hp_bvalid | hp_bready);
+  wrcq_rready = wrcqdbhdl_ready;
 
-  nmcq_awaddr = 1012; // CQ1HDBL
-  nmcq_awlen = 0; // single beat
-  nmcq_awsize = 2; // 4B transfer
-  nmcq_awburst = 1; // INCR
+  // wrcqdb_aw datapath
+  wrcqdb_awaddr = 1012; // CQ1HDBL
+  wrcqdb_awlen = 0; // single beat
+  wrcqdb_awsize = 2; // 4B transfer
+  wrcqdb_awburst = 1; // INCR
 
+  // wrcqdb_w datapath
   // align at 12B since the bus is 16B
-  nmcq_wdata = {
-    32'((cqdb_cqhead + 1) % OUTSTANDING),
+  wrcqdb_wdata = {
+    32'((wrcqdbhdl_cqhead + 1) % OUTSTANDING),
     32'0,
     32'0,
     32'0
   };
-  nmcq_wstrb = '1;
-  nmcq_wlast = 1;
+  wrcqdb_wstrb = '1;
+  wrcqdb_wlast = 1;
 
+  // hp_b datapath
   hp_bresp = 0;
 
-  nmcq_awvalid = cqdb_valid & ~cqdb_nmcq_aw_block;
-  nmcq_wvalid = cqdb_valid & ~cqdb_nmcq_w_block;
-  hp_bvalid = cqdb_valid & ~cqdb_hp_b_block;
-  cqdb_ready = (~nmcq_awvalid | nmcq_awready)
-             & (~nmcq_wvalid | nmcq_wready)
-             & (~hp_bvalid | hp_bready);
-  cq_rready = cqdb_ready;
-end
+  // wrcqdb_b -> null
+  wrcqdb_bready = 1;
 
-// Nullify nmcq_b
-always_comb begin
-  nmcq_bready = 1;
+  // null -> wrcqdb_ar
+  wrcqdb_arvalid = 0;
+  wrcqdb_araddr = 0;
+  wrcqdb_arlen = 0;
+  wrcqdb_arsize = 0;
+  wrcqdb_arburst = 0;
+
+  // wrcqdb_r -> null
+  wrcqdb_rready = 0;
 end
 
 endmodule
