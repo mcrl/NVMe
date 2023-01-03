@@ -379,7 +379,7 @@ end
 // Goto BUSY_AR if phase does not match, Goto BUSY_DB if phase matches
 // Consume wrcq_r
 // [BUSY_DB]
-// Generate (wrcqdb_aw, wrcqdb_w, hp_b)
+// Generate (wrcqdb_aw, wrcqdb_w)
 // [ALWAYS]
 // Consume wrcqdb_b
 // Nullify wrcq_aw/w/b, wrcqdb_ar/r
@@ -395,7 +395,6 @@ logic wrcqhdl_valid;
 logic wrcqhdl_ready;
 logic wrcqhdl_block0;
 logic wrcqhdl_block1;
-logic wrcqhdl_block2;
 logic [$clog2(OUTSTANDING)-1:0] wrcqhdl_cqhead;
 logic wrcqhdl_phase;
 logic [$clog2(OUTSTANDING)-1:0] wrcqhdl_sqhead;
@@ -406,7 +405,6 @@ always_ff @(posedge clk, negedge rstn) begin
     wrcqhdl_state <= WRCQHDL_STATE_IDLE;
     wrcqhdl_block0 <= 0;
     wrcqhdl_block1 <= 0;
-    wrcqhdl_block2 <= 0;
     wrcqhdl_cqhead <= 0;
     wrcqhdl_phase <= 0;
     wrcqhdl_sqhead <= 0;
@@ -447,7 +445,6 @@ always_ff @(posedge clk, negedge rstn) begin
     end else if (wrcqhdl_state == WRCQHDL_STATE_BUSY_DB) begin
       wrcqhdl_block0 <= wrcqhdl_valid & ~wrcqhdl_ready & (wrcqdb_awready | wrcqhdl_block0);
       wrcqhdl_block1 <= wrcqhdl_valid & ~wrcqhdl_ready & (wrcqdb_wready | wrcqhdl_block1);
-      wrcqhdl_block2 <= wrcqhdl_valid & ~wrcqhdl_ready & (hp_bready | wrcqhdl_block2);
       if (wrcqhdl_valid & wrcqhdl_ready) begin
         wrcqhdl_state <= WRCQHDL_STATE_IDLE;
       end
@@ -488,10 +485,6 @@ always_comb begin
   wrcqdb_wstrb = '1;
   wrcqdb_wlast = 1;
 
-  // hp_b
-  hp_bvalid = 0;
-  hp_bresp = 0;
-
   // wrcqhdl_valid/ready
   wrcqhdl_valid = 0;
   wrcqhdl_ready = 0;
@@ -503,14 +496,12 @@ always_comb begin
   end else if (wrcqhdl_state == WRCQHDL_STATE_BUSY_R) begin
     wrcq_rready = 1;
   end else begin
-    // Generate (wrcqdb_aw, wrcqdb_w, hp_b)
+    // Generate (wrcqdb_aw, wrcqdb_w)
     wrcqhdl_valid = 1;
     wrcqdb_awvalid = wrcqhdl_valid & ~wrcqhdl_block0;
     wrcqdb_wvalid = wrcqhdl_valid & ~wrcqhdl_block1;
-    hp_bvalid = wrcqhdl_valid & ~wrcqhdl_block2;
     wrcqhdl_ready = (~wrcqdb_awvalid | wrcqdb_awready)
-              & (~wrcqdb_wvalid | wrcqdb_wready)
-              & (~hp_bvalid | hp_bready);
+                  & (~wrcqdb_wvalid | wrcqdb_wready);
   end
 
   // Consume wrcqdb_b
@@ -543,17 +534,29 @@ always_comb begin
   wrcqdb_rready = 0;
 end
 
-// 1. Generate new free cid and lock (request null, response cid) set.insert
-// output new_cid_valid
-// input new_cid_ready
-// output new_cid
-// 2. Unlock given cid (request cid, response null) set.remove
-// input unlock_cid_valid
-// output unlock_cid_ready
-// input unlock_cid
-// 3. Check cid is free in-order (request cid, response bool) set.find
-// input is_free_cid_valid
-// output is_free_cid_ready
-// input is_free_cid
+// Write response handler (wrreshdl)
+// Check cid, Generate hp_b
+logic [$clog2(OUTSTANDING)-1:0] wrreshdl_cid_idx;
+logic wrreshdl_cid_phase;
+
+always_ff @(posedge clk, negedge rstn) begin
+  if (~rstn) begin
+    wrreshdl_cid_idx <= 0;
+    wrreshdl_cid_phase <= 0;
+  end else begin
+    if (hp_bvalid & hp_bready) begin
+      wrreshdl_cid_idx <= wrreshdl_cid_idx + 1;
+      if (wrreshdl_cid_idx == OUTSTANDING - 1) begin
+        wrreshdl_cid_phase <= ~wrreshdl_cid_phase;
+      end
+    end
+  end
+end
+
+always_comb begin
+  // hp_b
+  hp_bvalid = wrcqhdl_cid_state[wrreshdl_cid_idx] != wrreshdl_cid_phase;
+  hp_bresp = 0;
+end
 
 endmodule
