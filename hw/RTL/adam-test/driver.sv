@@ -189,14 +189,15 @@ localparam READ_BUF_BASE = 522 * 1024 * 1024;
 // null -> wrsq_ar
 // wrsq_r -> null
 // state: sqtail, cid
-// logic: check SQ is not full (wrsqhdl_sqtail + 1 != wrcqdbhdl_sqhead)
+// logic: check SQ is not full (wrsqhdl_sqtail + 1 != wrcqhdl_sqhead)
 logic [$clog2(OUTSTANDING)-1:0] wrsqhdl_sqtail;
 logic wrsqhdl_valid;
 logic wrsqhdl_ready;
 logic wrsqhdl_block0;
 logic wrsqhdl_block1;
 logic wrsqhdl_block2;
-logic [15:0] wrsqhdl_cid;
+logic [$clog2(OUTSTANDING)-1:0] wrsqhdl_cid_idx;
+logic wrsqhdl_cid_phase;
 
 always_ff @(posedge clk, negedge rstn) begin
   if (~rstn) begin
@@ -204,11 +205,15 @@ always_ff @(posedge clk, negedge rstn) begin
     wrsqhdl_block0 <= 0;
     wrsqhdl_block1 <= 0;
     wrsqhdl_block2 <= 0;
-    wrsqhdl_cid <= 0;
+    wrsqhdl_cid_idx <= 0;
+    wrsqhdl_cid_phase <= 0;
   end else begin
     if (hp_awvalid & hp_awready) begin
       wrsqhdl_sqtail <= wrsqhdl_sqtail + 1;
-      wrsqhdl_cid <= wrsqhdl_cid + 1;
+      wrsqhdl_cid_idx <= wrsqhdl_cid_idx + 1;
+      if (wrsqhdl_cid_idx == OUTSTANDING - 1) begin
+        wrsqhdl_cid_phase <= ~wrsqhdl_cid_phase;
+      end
     end
     wrsqhdl_block0 <= hp_awvalid & ~hp_awready & (wrsq_awready | wrsqhdl_block0);
     wrsqhdl_block1 <= hp_awvalid & ~hp_awready & (wrsq_wready | wrsqhdl_block1);
@@ -218,7 +223,9 @@ end
 
 always_comb begin
   // hp_aw -> (wrsq_aw, wrsq_w, wrbuf_aw)
-  wrsqhdl_valid = hp_awvalid & ((wrsqhdl_sqtail + 1) % OUTSTANDING != wrcqdbhdl_sqhead);
+  wrsqhdl_valid = hp_awvalid
+                & ((wrsqhdl_sqtail + 1) % OUTSTANDING != wrcqhdl_sqhead)
+                & wrcqhdl_cid_state[wrsqhdl_cid_idx] == wrsqhdl_cid_phase;
   wrsq_awvalid = wrsqhdl_valid & ~wrsqhdl_block0;
   wrsq_wvalid = wrsqhdl_valid & ~wrsqhdl_block1;
   wrbuf_awvalid = wrsqhdl_valid & ~wrsqhdl_block2;
@@ -236,7 +243,7 @@ always_comb begin
   // wrsq_w datapath
   // synthesize write command
   wrsq_wdata[0 +: 32] = {
-    16'(wrsqhdl_cid), // cid
+    16'(wrsqhdl_cid_idx), // cid
     2'b00, // use prp
     4'b0000, // reserved
     2'b00, // not fused
@@ -384,24 +391,28 @@ typedef enum logic [1:0] {
 } wrcqhdl_state_t;
 
 wrcqhdl_state_t wrcqhdl_state;
-logic wrcqdbhdl_valid;
-logic wrcqdbhdl_ready;
-logic wrcqdbhdl_block0;
-logic wrcqdbhdl_block1;
-logic wrcqdbhdl_block2;
-logic [$clog2(OUTSTANDING)-1:0] wrcqdbhdl_cqhead;
-logic wrcqdbhdl_phase;
-logic [$clog2(OUTSTANDING)-1:0] wrcqdbhdl_sqhead;
+logic wrcqhdl_valid;
+logic wrcqhdl_ready;
+logic wrcqhdl_block0;
+logic wrcqhdl_block1;
+logic wrcqhdl_block2;
+logic [$clog2(OUTSTANDING)-1:0] wrcqhdl_cqhead;
+logic wrcqhdl_phase;
+logic [$clog2(OUTSTANDING)-1:0] wrcqhdl_sqhead;
+logic wrcqhdl_cid_state[OUTSTANDING];
 
 always_ff @(posedge clk, negedge rstn) begin
   if (~rstn) begin
     wrcqhdl_state <= WRCQHDL_STATE_IDLE;
-    wrcqdbhdl_block0 <= 0;
-    wrcqdbhdl_block1 <= 0;
-    wrcqdbhdl_block2 <= 0;
-    wrcqdbhdl_cqhead <= 0;
-    wrcqdbhdl_phase <= 1;
-    wrcqdbhdl_sqhead <= 0;
+    wrcqhdl_block0 <= 0;
+    wrcqhdl_block1 <= 0;
+    wrcqhdl_block2 <= 0;
+    wrcqhdl_cqhead <= 0;
+    wrcqhdl_phase <= 0;
+    wrcqhdl_sqhead <= 0;
+    for (int i = 0; i < OUTSTANDING; ++i) begin
+      wrcqhdl_cid_state[i] <= 0;
+    end
   end else begin
     if (wrcqhdl_state == WRCQHDL_STATE_IDLE) begin
       if (wrsqdb_bvalid & wrsqdb_bready) begin
@@ -420,22 +431,24 @@ always_ff @(posedge clk, negedge rstn) begin
         // wrcq_rdata[96 +: 16] Command Identifier
         // wrcq_rdata[112] Phase Tag
         // wrcq_rdata[113 +: 15] Status
-        if (wrcq_rdata[112] == wrcqdbhdl_phase) begin
+        if (wrcq_rdata[112] == wrcqhdl_phase) begin
           wrcqhdl_state <= WRCQHDL_STATE_BUSY_AR;
         end else begin
           wrcqhdl_state <= WRCQHDL_STATE_BUSY_DB;
-          wrcqdbhdl_cqhead <= wrcqdbhdl_cqhead + 1;
-          if (wrcqdbhdl_cqhead == OUTSTANDING - 1) begin
-            wrcqdbhdl_phase <= ~wrcqdbhdl_phase;
+          wrcqhdl_cqhead <= wrcqhdl_cqhead + 1;
+          if (wrcqhdl_cqhead == OUTSTANDING - 1) begin
+            wrcqhdl_phase <= ~wrcqhdl_phase;
           end
-          wrcqdbhdl_sqhead <= wrcq_rdata[64 +: 16];
+          wrcqhdl_sqhead <= wrcq_rdata[64 +: 16];
+          // flip cid state
+          wrcqhdl_cid_state[wrcq_rdata[96 +: $clog2(OUTSTANDING)]] <= ~wrcqhdl_cid_state[wrcq_rdata[96 +: $clog2(OUTSTANDING)]];
         end
       end
     end else if (wrcqhdl_state == WRCQHDL_STATE_BUSY_DB) begin
-      wrcqdbhdl_block0 <= wrcqdbhdl_valid & ~wrcqdbhdl_ready & (wrcqdb_awready | wrcqdbhdl_block0);
-      wrcqdbhdl_block1 <= wrcqdbhdl_valid & ~wrcqdbhdl_ready & (wrcqdb_wready | wrcqdbhdl_block1);
-      wrcqdbhdl_block2 <= wrcqdbhdl_valid & ~wrcqdbhdl_ready & (hp_bready | wrcqdbhdl_block2);
-      if (wrcqdbhdl_valid & wrcqdbhdl_ready) begin
+      wrcqhdl_block0 <= wrcqhdl_valid & ~wrcqhdl_ready & (wrcqdb_awready | wrcqhdl_block0);
+      wrcqhdl_block1 <= wrcqhdl_valid & ~wrcqhdl_ready & (wrcqdb_wready | wrcqhdl_block1);
+      wrcqhdl_block2 <= wrcqhdl_valid & ~wrcqhdl_ready & (hp_bready | wrcqhdl_block2);
+      if (wrcqhdl_valid & wrcqhdl_ready) begin
         wrcqhdl_state <= WRCQHDL_STATE_IDLE;
       end
     end
@@ -449,7 +462,7 @@ always_comb begin
   
   // wrcq_ar
   wrcq_arvalid = 0;
-  wrcq_araddr = wrcqdbhdl_cqhead * 16;
+  wrcq_araddr = wrcqhdl_cqhead * 16;
   wrcq_arlen = 0;
   wrcq_arsize = 4; // 16B = 2^4B
   wrcq_arburst = 1; // INCR
@@ -467,7 +480,7 @@ always_comb begin
   // wrcqdb_w
   wrcqdb_wvalid = 0;
   wrcqdb_wdata = {
-    32'((wrcqdbhdl_cqhead + 1) % OUTSTANDING),
+    32'(wrcqhdl_cqhead),
     32'0,
     32'0,
     32'0
@@ -479,9 +492,9 @@ always_comb begin
   hp_bvalid = 0;
   hp_bresp = 0;
 
-  // wrcqdbhdl_valid/ready
-  wrcqdbhdl_valid = 0;
-  wrcqdbhdl_ready = 0;
+  // wrcqhdl_valid/ready
+  wrcqhdl_valid = 0;
+  wrcqhdl_ready = 0;
   
   if (wrcqhdl_state == WRCQHDL_STATE_IDLE) begin
     wrsqdb_bready = 1;
@@ -491,11 +504,11 @@ always_comb begin
     wrcq_rready = 1;
   end else begin
     // Generate (wrcqdb_aw, wrcqdb_w, hp_b)
-    wrcqdbhdl_valid = 1;
-    wrcqdb_awvalid = wrcqdbhdl_valid & ~wrcqdbhdl_block0;
-    wrcqdb_wvalid = wrcqdbhdl_valid & ~wrcqdbhdl_block1;
-    hp_bvalid = wrcqdbhdl_valid & ~wrcqdbhdl_block2;
-    wrcqdbhdl_ready = (~wrcqdb_awvalid | wrcqdb_awready)
+    wrcqhdl_valid = 1;
+    wrcqdb_awvalid = wrcqhdl_valid & ~wrcqhdl_block0;
+    wrcqdb_wvalid = wrcqhdl_valid & ~wrcqhdl_block1;
+    hp_bvalid = wrcqhdl_valid & ~wrcqhdl_block2;
+    wrcqhdl_ready = (~wrcqdb_awvalid | wrcqdb_awready)
               & (~wrcqdb_wvalid | wrcqdb_wready)
               & (~hp_bvalid | hp_bready);
   end
@@ -529,5 +542,18 @@ always_comb begin
   // wrcqdb_r -> null
   wrcqdb_rready = 0;
 end
+
+// 1. Generate new free cid and lock (request null, response cid) set.insert
+// output new_cid_valid
+// input new_cid_ready
+// output new_cid
+// 2. Unlock given cid (request cid, response null) set.remove
+// input unlock_cid_valid
+// output unlock_cid_ready
+// input unlock_cid
+// 3. Check cid is free in-order (request cid, response bool) set.find
+// input is_free_cid_valid
+// output is_free_cid_ready
+// input is_free_cid
 
 endmodule
