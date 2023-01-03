@@ -184,6 +184,12 @@ localparam OUTSTANDING = 16;
 localparam WRITE_BUF_BASE = 516 * 1024 * 1024;
 localparam READ_BUF_BASE = 522 * 1024 * 1024;
 
+// NVMe Locations
+localparam SQ1TDBL = 'h1008;
+localparam CQ1HDBL = 'h100c;
+localparam SQ2TDBL = 'h1010;
+localparam CQ2HDBL = 'h1014;
+
 // Write SQ handler (wrsqhdl)
 // hp_aw -> (wrsq_aw, wrsq_w, wrbuf_aw)
 // null -> wrsq_ar
@@ -342,7 +348,7 @@ always_comb begin
   wrbuf_bready = wrsqdbhdl_ready & (wrsqdbhdl_valid | ~wrbuf_bvalid);
 
   // wrsqdb_aw datapath
-  wrsqdb_awaddr = 1008; // SQ1TDBL
+  wrsqdb_awaddr = SQ1TDBL;
   wrsqdb_awlen = 0; // single beat
   wrsqdb_awsize = 2; // 4B transfer
   wrsqdb_awburst = 1; // INCR
@@ -469,7 +475,7 @@ always_comb begin
 
   // wrcqdb_aw
   wrcqdb_awvalid = 0;
-  wrcqdb_awaddr = 1012; // CQ1HDBL
+  wrcqdb_awaddr = CQ1HDBL;
   wrcqdb_awlen = 0; // single beat
   wrcqdb_awsize = 2; // 4B transfer
   wrcqdb_awburst = 1; // INCR
@@ -643,6 +649,68 @@ always_comb begin
 
   // rdsq_r -> null
   rdsq_rready = 0;
+end
+
+// Read SQ doorbell handler (rdsqdbhdl)
+// rdsq_b -> (rdsqdb_aw, rdsqdb_w)
+// null -> rdsqdb_ar
+// rdsqdb_r -> null
+// state: sqtail
+logic [$clog2(OUTSTANDING)-1:0] rdsqdbhdl_sqtail;
+logic rdsqdbhdl_valid;
+logic rdsqdbhdl_ready;
+logic rdsqdbhdl_block0;
+logic rdsqdbhdl_block1;
+
+always_ff @(posedge clk, negedge rstn) begin
+  if (~rstn) begin
+    rdsqdbhdl_sqtail <= 0;
+    rdsqdbhdl_block0 <= 0;
+    rdsqdbhdl_block1 <= 0;
+  end else begin
+    if (rdsqdbhdl_valid & rdsqdbhdl_ready) begin
+      rdsqdbhdl_sqtail <= rdsqdbhdl_sqtail + 1;
+    end
+    rdsqdbhdl_block0 <= rdsqdbhdl_valid & ~rdsqdbhdl_ready & (rdsqdb_awready | rdsqdbhdl_block0);
+    rdsqdbhdl_block1 <= rdsqdbhdl_valid & ~rdsqdbhdl_ready & (rdsqdb_wready | rdsqdbhdl_block1);
+  end
+end
+
+always_comb begin
+  // rdsq_b -> (rdsqdb_aw, rdsqdb_w)
+  rdsqdbhdl_valid = rdsq_bvalid;
+  rdsqdb_awvalid = rdsqdbhdl_valid & ~rdsqdbhdl_block0;
+  rdsqdb_wvalid = rdsqdbhdl_valid & ~rdsqdbhdl_block1;
+  rdsqdbhdl_ready = (~rdsqdb_awvalid | rdsqdb_awready)
+                 & (~rdsqdb_wvalid | rdsqdb_wready);
+  rdsq_bready = rdsqdbhdl_ready;
+
+  // rdsqdb_aw datapath
+  rdsqdb_awaddr = SQ2TDBL;
+  rdsqdb_awlen = 0; // single beat
+  rdsqdb_awsize = 2; // 4B transfer
+  rdsqdb_awburst = 1; // INCR
+
+  // rdsqdb_w datapath
+  // align at 0B since the bus is 16B
+  rdsqdb_wdata = {
+    32'0,
+    32'0,
+    32'0,
+    32'((rdsqdbhdl_sqtail + 1) % OUTSTANDING)
+  };
+  rdsqdb_wstrb = '1;
+  rdsqdb_wlast = 1;
+
+  // null -> rdsqdb_ar
+  rdsqdb_arvalid = 0;
+  rdsqdb_araddr = 0;
+  rdsqdb_arlen = 0;
+  rdsqdb_arsize = 0;
+  rdsqdb_arburst = 0;
+
+  // rdsqdb_r -> null
+  rdsqdb_rready = 0;
 end
 
 endmodule
