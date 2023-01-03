@@ -202,7 +202,6 @@ logic wrsqhdl_ready;
 logic wrsqhdl_block0;
 logic wrsqhdl_block1;
 logic wrsqhdl_block2;
-logic [$clog2(OUTSTANDING)-1:0] wrsqhdl_cid_idx;
 logic wrsqhdl_cid_phase;
 
 always_ff @(posedge clk, negedge rstn) begin
@@ -211,13 +210,11 @@ always_ff @(posedge clk, negedge rstn) begin
     wrsqhdl_block0 <= 0;
     wrsqhdl_block1 <= 0;
     wrsqhdl_block2 <= 0;
-    wrsqhdl_cid_idx <= 0;
     wrsqhdl_cid_phase <= 0;
   end else begin
     if (hp_awvalid & hp_awready) begin
       wrsqhdl_sqtail <= wrsqhdl_sqtail + 1;
-      wrsqhdl_cid_idx <= wrsqhdl_cid_idx + 1;
-      if (wrsqhdl_cid_idx == OUTSTANDING - 1) begin
+      if (wrsqhdl_sqtail == OUTSTANDING - 1) begin
         wrsqhdl_cid_phase <= ~wrsqhdl_cid_phase;
       end
     end
@@ -231,7 +228,7 @@ always_comb begin
   // hp_aw -> (wrsq_aw, wrsq_w, wrbuf_aw)
   wrsqhdl_valid = hp_awvalid
                 & ((wrsqhdl_sqtail + 1) % OUTSTANDING != wrcqhdl_sqhead)
-                & wrcqhdl_cid_state[wrsqhdl_cid_idx] == wrsqhdl_cid_phase;
+                & wrcqhdl_cid_state[wrsqhdl_sqtail] == wrsqhdl_cid_phase;
   wrsq_awvalid = wrsqhdl_valid & ~wrsqhdl_block0;
   wrsq_wvalid = wrsqhdl_valid & ~wrsqhdl_block1;
   wrbuf_awvalid = wrsqhdl_valid & ~wrsqhdl_block2;
@@ -249,7 +246,7 @@ always_comb begin
   // wrsq_w datapath
   // synthesize write command
   wrsq_wdata[0 +: 32] = {
-    16'(wrsqhdl_cid_idx), // cid
+    16'(wrsqhdl_sqtail), // cid
     2'b00, // use prp
     4'b0000, // reserved
     2'b00, // not fused
@@ -576,7 +573,6 @@ logic rdsqhdl_valid;
 logic rdsqhdl_ready;
 logic rdsqhdl_block0;
 logic rdsqhdl_block1;
-logic [$clog2(OUTSTANDING)-1:0] rdsqhdl_cid_idx;
 logic rdsqhdl_cid_phase;
 
 always_ff @(posedge clk, negedge rstn) begin
@@ -584,13 +580,11 @@ always_ff @(posedge clk, negedge rstn) begin
     rdsqhdl_sqtail <= 0;
     rdsqhdl_block0 <= 0;
     rdsqhdl_block1 <= 0;
-    rdsqhdl_cid_idx <= 0;
     rdsqhdl_cid_phase <= 0;
   end else begin
     if (hp_arvalid & hp_arready) begin
       rdsqhdl_sqtail <= rdsqhdl_sqtail + 1;
-      rdsqhdl_cid_idx <= rdsqhdl_cid_idx + 1;
-      if (rdsqhdl_cid_idx == OUTSTANDING - 1) begin
+      if (rdsqhdl_sqtail == OUTSTANDING - 1) begin
         rdsqhdl_cid_phase <= ~rdsqhdl_cid_phase;
       end
     end
@@ -603,7 +597,7 @@ always_comb begin
   // hp_ar -> (rdsq_aw, rdsq_w)
   rdsqhdl_valid = hp_arvalid
                 & ((rdsqhdl_sqtail + 1) % OUTSTANDING != rdcqhdl_sqhead)
-                & rdcqhdl_cid_state[rdsqhdl_cid_idx] == rdsqhdl_cid_phase;
+                & rdcqhdl_cid_state[rdsqhdl_sqtail] == rdsqhdl_cid_phase;
   rdsq_awvalid = rdsqhdl_valid & ~rdsqhdl_block0;
   rdsq_wvalid = rdsqhdl_valid & ~rdsqhdl_block1;
   rdsqhdl_ready = (~rdsq_awvalid | rdsq_awready)
@@ -619,7 +613,7 @@ always_comb begin
   // rdsq_w datapath
   // synthesize read command
   rdsq_wdata[0 +: 32] = {
-    16'(rdsqhdl_cid_idx), // cid
+    16'(rdsqhdl_sqtail), // cid
     2'b00, // use prp
     4'b0000, // reserved
     2'b00, // not fused
@@ -878,6 +872,34 @@ always_comb begin
 
   // rdcqdb_r -> null
   rdcqdb_rready = 0;
+end
+
+// Read response handler (rdreshdl)
+// Check cid, Generate rdbuf_ar
+logic [$clog2(OUTSTANDING)-1:0] rdreshdl_cid_idx;
+logic rdreshdl_cid_phase;
+
+always_ff @(posedge clk, negedge rstn) begin
+  if (~rstn) begin
+    rdreshdl_cid_idx <= 0;
+    rdreshdl_cid_phase <= 0;
+  end else begin
+    if (rdbuf_arvalid & rdbuf_arready) begin
+      rdreshdl_cid_idx <= rdreshdl_cid_idx + 1;
+      if (rdreshdl_cid_idx == OUTSTANDING - 1) begin
+        rdreshdl_cid_phase <= ~rdreshdl_cid_phase;
+      end
+    end
+  end
+end
+
+always_comb begin
+  // Generate rdbuf_ar
+  rdbuf_arvalid = rdcqhdl_cid_state[rdreshdl_cid_idx] != rdreshdl_cid_phase;
+  rdbuf_araddr = rdreshdl_cid_idx * 4096;
+  rdbuf_arlen = 255; // 128b * 256 = 4KB
+  rdbuf_arsize = 4; // 128b = 16B = 2^4B
+  rdbuf_arburst = 1; // INCR
 end
 
 endmodule
