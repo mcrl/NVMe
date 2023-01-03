@@ -227,7 +227,6 @@ end
 always_comb begin
   // hp_aw -> (wrsq_aw, wrsq_w, wrbuf_aw)
   wrsqhdl_valid = hp_awvalid
-                & ((wrsqhdl_sqtail + 1) % OUTSTANDING != wrcqhdl_sqhead)
                 & wrcqhdl_cid_state[wrsqhdl_sqtail] == wrsqhdl_cid_phase;
   wrsq_awvalid = wrsqhdl_valid & ~wrsqhdl_block0;
   wrsq_wvalid = wrsqhdl_valid & ~wrsqhdl_block1;
@@ -400,7 +399,6 @@ logic wrcqhdl_block0;
 logic wrcqhdl_block1;
 logic [$clog2(OUTSTANDING)-1:0] wrcqhdl_cqhead;
 logic wrcqhdl_phase;
-logic [$clog2(OUTSTANDING)-1:0] wrcqhdl_sqhead;
 logic wrcqhdl_cid_state[OUTSTANDING];
 
 always_ff @(posedge clk, negedge rstn) begin
@@ -410,7 +408,6 @@ always_ff @(posedge clk, negedge rstn) begin
     wrcqhdl_block1 <= 0;
     wrcqhdl_cqhead <= 0;
     wrcqhdl_phase <= 0;
-    wrcqhdl_sqhead <= 0;
     for (int i = 0; i < OUTSTANDING; ++i) begin
       wrcqhdl_cid_state[i] <= 0;
     end
@@ -440,7 +437,6 @@ always_ff @(posedge clk, negedge rstn) begin
           if (wrcqhdl_cqhead == OUTSTANDING - 1) begin
             wrcqhdl_phase <= ~wrcqhdl_phase;
           end
-          wrcqhdl_sqhead <= wrcq_rdata[64 +: 16];
           // flip cid state
           wrcqhdl_cid_state[wrcq_rdata[96 +: $clog2(OUTSTANDING)]] <= ~wrcqhdl_cid_state[wrcq_rdata[96 +: $clog2(OUTSTANDING)]];
         end
@@ -596,7 +592,6 @@ end
 always_comb begin
   // hp_ar -> (rdsq_aw, rdsq_w)
   rdsqhdl_valid = hp_arvalid
-                & ((rdsqhdl_sqtail + 1) % OUTSTANDING != rdcqhdl_sqhead)
                 & rdcqhdl_cid_state[rdsqhdl_sqtail] == rdsqhdl_cid_phase;
   rdsq_awvalid = rdsqhdl_valid & ~rdsqhdl_block0;
   rdsq_wvalid = rdsqhdl_valid & ~rdsqhdl_block1;
@@ -736,7 +731,6 @@ logic rdcqhdl_block0;
 logic rdcqhdl_block1;
 logic [$clog2(OUTSTANDING)-1:0] rdcqhdl_cqhead;
 logic rdcqhdl_phase;
-logic [$clog2(OUTSTANDING)-1:0] rdcqhdl_sqhead;
 logic rdcqhdl_cid_state[OUTSTANDING];
 
 always_ff @(posedge clk, negedge rstn) begin
@@ -746,7 +740,6 @@ always_ff @(posedge clk, negedge rstn) begin
     rdcqhdl_block1 <= 0;
     rdcqhdl_cqhead <= 0;
     rdcqhdl_phase <= 0;
-    rdcqhdl_sqhead <= 0;
     for (int i = 0; i < OUTSTANDING; ++i) begin
       rdcqhdl_cid_state[i] <= 0;
     end
@@ -776,7 +769,6 @@ always_ff @(posedge clk, negedge rstn) begin
           if (rdcqhdl_cqhead == OUTSTANDING - 1) begin
             rdcqhdl_phase <= ~rdcqhdl_phase;
           end
-          rdcqhdl_sqhead <= rdcq_rdata[64 +: 16];
           // flip cid state
           rdcqhdl_cid_state[rdcq_rdata[96 +: $clog2(OUTSTANDING)]] <= ~rdcqhdl_cid_state[rdcq_rdata[96 +: $clog2(OUTSTANDING)]];
         end
