@@ -894,4 +894,34 @@ always_comb begin
   rdbuf_arburst = 1; // INCR
 end
 
+// Read buffer handler (rdbufhdl)
+// rdbuf_r -> hp_r
+// Nullify rdbuf_aw/w/b
+always_comb begin
+  // rdbuf_r -> hp_r
+  hp_rvalid = rdbuf_rvalid;
+  rdbuf_rready = hp_rready;
+
+  // hp_r datapath
+  hp_rdata = rdbuf_rdata;
+  hp_rresp = rdbuf_rresp;
+  hp_rlast = rdbuf_rlast;
+
+  // rdbuf_aw
+  rdbuf_awvalid = 0;
+  rdbuf_awaddr = 0;
+  rdbuf_awlen = 0;
+  rdbuf_awsize = 0;
+  rdbuf_awburst = 0;
+
+  // rdbuf_w
+  rdbuf_wvalid = 0;
+  rdbuf_wdata = 0;
+  rdbuf_wstrb = 0;
+  rdbuf_wlast = 0;
+
+  // rdbuf_b
+  rdbuf_bready = 0;
+end
+
 endmodule
