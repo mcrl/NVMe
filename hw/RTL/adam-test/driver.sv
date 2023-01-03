@@ -354,7 +354,7 @@ always_comb begin
   wrsqdb_awburst = 1; // INCR
 
   // wrsqdb_w datapath
-  // align at 8B since the bus is 16B
+  // align at 8B since the bus is 16B and SQ1TDBL % 16 == 8
   wrsqdb_wdata = {
     32'0,
     32'((wrsqdbhdl_sqtail + 1) % OUTSTANDING),
@@ -481,6 +481,7 @@ always_comb begin
   wrcqdb_awburst = 1; // INCR
 
   // wrcqdb_w
+  // align at 12B since the bus is 16B and CQ1HDBL % 16 == 12
   wrcqdb_wvalid = 0;
   wrcqdb_wdata = {
     32'(wrcqhdl_cqhead),
@@ -692,7 +693,7 @@ always_comb begin
   rdsqdb_awburst = 1; // INCR
 
   // rdsqdb_w datapath
-  // align at 0B since the bus is 16B
+  // align at 0B since the bus is 16B and SQ2TDBL % 16 == 0
   rdsqdb_wdata = {
     32'0,
     32'0,
@@ -711,6 +712,172 @@ always_comb begin
 
   // rdsqdb_r -> null
   rdsqdb_rready = 0;
+end
+
+// Read CQ polling handler (rdcqhdl)
+// State machine:
+// [IDLE]
+// Goto BUSY_AR after consuming rdsqdb_b
+// [BUSY_AR]
+// Goto BUSY_R after generating rdcq_ar
+// [BUSY_R]
+// Goto BUSY_AR if phase does not match, Goto BUSY_DB if phase matches
+// Consume rdcq_r
+// [BUSY_DB]
+// Generate (rdcqdb_aw, rdcqdb_w)
+// [ALWAYS]
+// Consume rdcqdb_b
+// Nullify rdcq_aw/w/b, rdcqdb_ar/r
+typedef enum logic [1:0] {
+  RDCQHDL_STATE_IDLE,
+  RDCQHDL_STATE_BUSY_AR,
+  RDCQHDL_STATE_BUSY_R,
+  RDCQHDL_STATE_BUSY_DB
+} rdcqhdl_state_t;
+
+rdcqhdl_state_t rdcqhdl_state;
+logic rdcqhdl_valid;
+logic rdcqhdl_ready;
+logic rdcqhdl_block0;
+logic rdcqhdl_block1;
+logic [$clog2(OUTSTANDING)-1:0] rdcqhdl_cqhead;
+logic rdcqhdl_phase;
+logic [$clog2(OUTSTANDING)-1:0] rdcqhdl_sqhead;
+logic rdcqhdl_cid_state[OUTSTANDING];
+
+always_ff @(posedge clk, negedge rstn) begin
+  if (~rstn) begin
+    rdcqhdl_state <= RDCQHDL_STATE_IDLE;
+    rdcqhdl_block0 <= 0;
+    rdcqhdl_block1 <= 0;
+    rdcqhdl_cqhead <= 0;
+    rdcqhdl_phase <= 0;
+    rdcqhdl_sqhead <= 0;
+    for (int i = 0; i < OUTSTANDING; ++i) begin
+      rdcqhdl_cid_state[i] <= 0;
+    end
+  end else begin
+    if (rdcqhdl_state == RDCQHDL_STATE_IDLE) begin
+      if (rdsqdb_bvalid & rdsqdb_bready) begin
+        rdcqhdl_state <= RDCQHDL_STATE_BUSY_AR;
+      end
+    end else if (rdcqhdl_state == RDCQHDL_STATE_BUSY_AR) begin
+      if (rdcq_arvalid & rdcq_arready) begin
+        rdcqhdl_state <= RDCQHDL_STATE_BUSY_R;
+      end
+    end else if (rdcqhdl_state == RDCQHDL_STATE_BUSY_R) begin
+      if (rdcq_rvalid & rdcq_rready) begin
+        // rdcq_rdata[0 +: 32] Command Specific DW0
+        // rdcq_rdata[32 +: 32] Command Specific DW1
+        // rdcq_rdata[64 +: 16] SQ Head Pointer
+        // rdcq_rdata[80 +: 16] SQ Identifier
+        // rdcq_rdata[96 +: 16] Command Identifier
+        // rdcq_rdata[112] Phase Tag
+        // rdcq_rdata[113 +: 15] Status
+        if (rdcq_rdata[112] == rdcqhdl_phase) begin
+          rdcqhdl_state <= RDCQHDL_STATE_BUSY_AR;
+        end else begin
+          rdcqhdl_state <= RDCQHDL_STATE_BUSY_DB;
+          rdcqhdl_cqhead <= rdcqhdl_cqhead + 1;
+          if (rdcqhdl_cqhead == OUTSTANDING - 1) begin
+            rdcqhdl_phase <= ~rdcqhdl_phase;
+          end
+          rdcqhdl_sqhead <= rdcq_rdata[64 +: 16];
+          // flip cid state
+          rdcqhdl_cid_state[rdcq_rdata[96 +: $clog2(OUTSTANDING)]] <= ~rdcqhdl_cid_state[rdcq_rdata[96 +: $clog2(OUTSTANDING)]];
+        end
+      end
+    end else if (rdcqhdl_state == RDCQHDL_STATE_BUSY_DB) begin
+      rdcqhdl_block0 <= rdcqhdl_valid & ~rdcqhdl_ready & (rdcqdb_awready | rdcqhdl_block0);
+      rdcqhdl_block1 <= rdcqhdl_valid & ~rdcqhdl_ready & (rdcqdb_wready | rdcqhdl_block1);
+      if (rdcqhdl_valid & rdcqhdl_ready) begin
+        rdcqhdl_state <= RDCQHDL_STATE_IDLE;
+      end
+    end
+  end
+end
+
+always_comb begin
+  // Drive defaults
+  // rdsqdb_b
+  rdsqdb_bready = 0;
+  
+  // rdcq_ar
+  rdcq_arvalid = 0;
+  rdcq_araddr = rdcqhdl_cqhead * 16;
+  rdcq_arlen = 0;
+  rdcq_arsize = 4; // 16B = 2^4B
+  rdcq_arburst = 1; // INCR
+
+  // rdcq_r
+  rdcq_rready = 0;
+
+  // rdcqdb_aw
+  rdcqdb_awvalid = 0;
+  rdcqdb_awaddr = CQ2HDBL;
+  rdcqdb_awlen = 0; // single beat
+  rdcqdb_awsize = 2; // 4B transfer
+  rdcqdb_awburst = 1; // INCR
+
+  // rdcqdb_w
+  // align at 4B since the bus is 16B and CQ2HDBL % 16 == 4
+  rdcqdb_wvalid = 0;
+  rdcqdb_wdata = {
+    32'0,
+    32'0,
+    32'(rdcqhdl_cqhead),
+    32'0
+  };
+  rdcqdb_wstrb = '1;
+  rdcqdb_wlast = 1;
+
+  // rdcqhdl_valid/ready
+  rdcqhdl_valid = 0;
+  rdcqhdl_ready = 0;
+  
+  if (rdcqhdl_state == RDCQHDL_STATE_IDLE) begin
+    rdsqdb_bready = 1;
+  end else if (rdcqhdl_state == RDCQHDL_STATE_BUSY_AR) begin
+    rdcq_arvalid = 1;
+  end else if (rdcqhdl_state == RDCQHDL_STATE_BUSY_R) begin
+    rdcq_rready = 1;
+  end else begin
+    // Generate (rdcqdb_aw, rdcqdb_w)
+    rdcqhdl_valid = 1;
+    rdcqdb_awvalid = rdcqhdl_valid & ~rdcqhdl_block0;
+    rdcqdb_wvalid = rdcqhdl_valid & ~rdcqhdl_block1;
+    rdcqhdl_ready = (~rdcqdb_awvalid | rdcqdb_awready)
+                  & (~rdcqdb_wvalid | rdcqdb_wready);
+  end
+
+  // Consume rdcqdb_b
+  rdcqdb_bready = 1;
+
+  // null -> rdcq_aw
+  rdcq_awvalid = 0;
+  rdcq_awaddr = 0;
+  rdcq_awlen = 0;
+  rdcq_awsize = 0;
+  rdcq_awburst = 0;
+
+  // null -> rdcq_w
+  rdcq_wvalid = 0;
+  rdcq_wdata = 0;
+  rdcq_wstrb = 0;
+  rdcq_wlast = 0;
+
+  // rdcq_b -> null
+  rdcq_bready = 0;
+
+  // null -> rdcqdb_ar
+  rdcqdb_arvalid = 0;
+  rdcqdb_araddr = 0;
+  rdcqdb_arlen = 0;
+  rdcqdb_arsize = 0;
+  rdcqdb_arburst = 0;
+
+  // rdcqdb_r -> null
+  rdcqdb_rready = 0;
 end
 
 endmodule
