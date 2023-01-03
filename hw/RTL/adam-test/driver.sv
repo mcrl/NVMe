@@ -559,4 +559,90 @@ always_comb begin
   hp_bresp = 0;
 end
 
+// Read SQ handler (rdsqhdl)
+// hp_ar -> (rdsq_aw, rdsq_w)
+// Nullify rdsq_ar, rdsq_r
+// State: sqtail, cid
+// Logic: Check SQ is not full
+logic [$clog2(OUTSTANDING)-1:0] rdsqhdl_sqtail;
+logic rdsqhdl_valid;
+logic rdsqhdl_ready;
+logic rdsqhdl_block0;
+logic rdsqhdl_block1;
+logic [$clog2(OUTSTANDING)-1:0] rdsqhdl_cid_idx;
+logic rdsqhdl_cid_phase;
+
+always_ff @(posedge clk, negedge rstn) begin
+  if (~rstn) begin
+    rdsqhdl_sqtail <= 0;
+    rdsqhdl_block0 <= 0;
+    rdsqhdl_block1 <= 0;
+    rdsqhdl_cid_idx <= 0;
+    rdsqhdl_cid_phase <= 0;
+  end else begin
+    if (hp_arvalid & hp_arready) begin
+      rdsqhdl_sqtail <= rdsqhdl_sqtail + 1;
+      rdsqhdl_cid_idx <= rdsqhdl_cid_idx + 1;
+      if (rdsqhdl_cid_idx == OUTSTANDING - 1) begin
+        rdsqhdl_cid_phase <= ~rdsqhdl_cid_phase;
+      end
+    end
+    rdsqhdl_block0 <= hp_arvalid & ~hp_arready & (rdsq_awready | rdsqhdl_block0);
+    rdsqhdl_block1 <= hp_arvalid & ~hp_arready & (rdsq_wready | rdsqhdl_block1);
+  end
+end
+
+always_comb begin
+  // hp_ar -> (rdsq_aw, rdsq_w)
+  rdsqhdl_valid = hp_arvalid
+                & ((rdsqhdl_sqtail + 1) % OUTSTANDING != rdcqhdl_sqhead)
+                & rdcqhdl_cid_state[rdsqhdl_cid_idx] == rdsqhdl_cid_phase;
+  rdsq_awvalid = rdsqhdl_valid & ~rdsqhdl_block0;
+  rdsq_wvalid = rdsqhdl_valid & ~rdsqhdl_block1;
+  rdsqhdl_ready = (~rdsq_awvalid | rdsq_awready)
+             & (~rdsq_wvalid | rdsq_wready);
+  hp_arready = rdsqhdl_ready & (rdsqhdl_valid | ~hp_arvalid);
+
+  // rdsq_aw datapath
+  rdsq_awaddr = rdsqhdl_sqtail * 64;
+  rdsq_awlen = 0; // no burst (single beat)
+  rdsq_awsize = 6; // 512b = 64B = 2^6B
+  rdsq_awburst = 1; // INCR
+
+  // rdsq_w datapath
+  // synthesize read command
+  rdsq_wdata[0 +: 32] = {
+    16'(rdsqhdl_cid_idx), // cid
+    2'b00, // use prp
+    4'b0000, // reserved
+    2'b00, // not fused
+    8'h02 // opcode READ
+  };
+  rdsq_wdata[32 +: 32] = 1; // nsid == 1
+  rdsq_wdata[64 +: 64] = 0; // CDW2-3 (not used; no end-to-end protection)
+  rdsq_wdata[128 +: 64] = 0; // MPTR (not used)
+  rdsq_wdata[192 +: 128] = READ_BUF_BASE + rdsqhdl_sqtail * 4096; // DPTR
+  // Starting LBA is address divided by 4KB
+  rdsq_wdata[320 +: 64] = hp_araddr >> 12; // CDW10-11
+  // Specify number of logical blocks as 0 (which means 1)
+  // Other options are not used
+  rdsq_wdata[384 +: 32] = 0; // CDW12
+  // No hint for compression, sequential, latency, and frequency
+  rdsq_wdata[416 +: 32] = 0; // CDW13
+  rdsq_wdata[448 +: 32] = 0; // CDW14 (not used; no end-to-end protection)
+  rdsq_wdata[480 +: 32] = 0; // CDW15 (not used; no end-to-end protection)
+  rdsq_wstrb = '1;
+  rdsq_wlast = 1;
+
+  // null -> rdsq_ar
+  rdsq_arvalid = 0;
+  rdsq_araddr = 0;
+  rdsq_arlen = 0;
+  rdsq_arsize = 0;
+  rdsq_arburst = 0;
+
+  // rdsq_r -> null
+  rdsq_rready = 0;
+end
+
 endmodule
