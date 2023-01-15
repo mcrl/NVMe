@@ -1,17 +1,26 @@
 module driver #(
-  parameter HP_ADDR_WIDTH = 48,
+  parameter HP_ADDR_WIDTH = 48, // 256TB
   parameter HP_DATA_WIDTH = 128,
-  parameter LP_ADDR_WIDTH = 32,
-  parameter LP_DATA_WIDTH = 32,
-  parameter NL_ADDR_WIDTH = 32,
-  parameter NL_DATA_WIDTH = 32,
-  parameter NM_ADDR_WIDTH = 32,
-  parameter NM_DATA_WIDTH = 128,
-  parameter NS_ID_WIDTH = 4,
-  parameter NS_ADDR_WIDTH = 32,
-  parameter NS_DATA_WIDTH = 128,
-  parameter SQ_ADDR_WIDTH = 10, // 16 * 64B = 1KB = 2^10B
-  parameter SQ_DATA_WIDTH = 512 // 64B = 512b
+  parameter WRSQ_ADDR_WIDTH = 34, // 2MB
+  parameter WRSQ_DATA_WIDTH = 512, // 64B = 512b
+  parameter WRBUF_ADDR_WIDTH = 34, // 2MB
+  parameter WRBUF_DATA_WIDTH = 128, // 128b
+  parameter WRSQDB_ADDR_WIDTH = 34, // 4GB
+  parameter WRSQDB_DATA_WIDTH = 128, // 128b
+  parameter WRCQ_ADDR_WIDTH = 34, // 2MB
+  parameter WRCQ_DATA_WIDTH = 128, // 16B = 128b
+  parameter WRCQDB_ADDR_WIDTH = 34, // 4GB
+  parameter WRCQDB_DATA_WIDTH = 128, // 16B = 128b
+  parameter RDSQ_ADDR_WIDTH = 34, // 2MB
+  parameter RDSQ_DATA_WIDTH = 512, // 64B = 512b
+  parameter RDBUF_ADDR_WIDTH = 34, // 2MB
+  parameter RDBUF_DATA_WIDTH = 128, // 128b
+  parameter RDSQDB_ADDR_WIDTH = 34, // 4GB
+  parameter RDSQDB_DATA_WIDTH = 128, // 128b
+  parameter RDCQ_ADDR_WIDTH = 34, // 2MB
+  parameter RDCQ_DATA_WIDTH = 128, // 16B = 128b
+  parameter RDCQDB_ADDR_WIDTH = 34, // 4GB
+  parameter RDCQDB_DATA_WIDTH = 128 // 16B = 128b
 ) (
   input logic clk,
   input logic rstn,
@@ -309,25 +318,23 @@ module driver #(
 // This driver supports 16 outstanding read txns and 16 outstanding write txns.
 localparam OUTSTANDING = 16;
 
-// Inside a single driver, the address mapping is the following:
-// Offset / Size   / Note
-// 0      / 512MiB / PCIe Config
-// 512MiB / 2MiB   / PCIe Memory
-// 514MiB / 2MiB   / wrsq
-// 516MiB / 2MiB   / wrbuf
-// 518MiB / 2MiB   / wrcq
-// 520MiB / 2MiB   / rdsq
-// 522MiB / 2MiB   / rdbuf
-// 524MiB / 2MiB   / rdcq
-// We need the addresses of wrbuf and rdbuf to synthesize the commands.
-localparam WRITE_BUF_BASE = 516 * 1024 * 1024;
-localparam READ_BUF_BASE = 522 * 1024 * 1024;
+// Base addresses
+localparam WRSQ_ADDR_BASE  = 'h000000000;
+localparam WRBUF_ADDR_BASE = 'h000200000;
+localparam WRCQ_ADDR_BASE  = 'h000400000;
+localparam RDSQ_ADDR_BASE  = 'h000600000;
+localparam RDBUF_ADDR_BASE = 'h000800000;
+localparam RDCQ_ADDR_BASE  = 'h000a00000;
+localparam ADBUF_ADDR_BASE = 'h000c00000;
+localparam NL_ADDR_BASE    = 'h200000000;
+localparam NM_ADDR_BASE    = 'h300000000;
 
 // NVMe Locations
-localparam SQ1TDBL = 'h1008;
-localparam CQ1HDBL = 'h100c;
-localparam SQ2TDBL = 'h1010;
-localparam CQ2HDBL = 'h1014;
+localparam NVME_BAR0 = NM_ADDR_BASE + 'h80000000;
+localparam SQ1TDBL = NVME_BAR0 + 'h1008;
+localparam CQ1HDBL = NVME_BAR0 + 'h100c;
+localparam SQ2TDBL = NVME_BAR0 + 'h1010;
+localparam CQ2HDBL = NVME_BAR0 + 'h1014;
 
 // Write SQ handler (wrsqhdl)
 // hp_aw -> (wrsq_aw, wrsq_w, wrbuf_aw)
@@ -376,7 +383,7 @@ always_comb begin
   hp_awready = wrsqhdl_ready & (wrsqhdl_valid | ~hp_awvalid);
 
   // wrsq_aw datapath
-  wrsq_awaddr = wrsqhdl_sqtail * 64;
+  wrsq_awaddr = WRSQ_ADDR_BASE + wrsqhdl_sqtail * 64;
   wrsq_awlen = 0; // no burst (single beat)
   wrsq_awsize = 6; // 512b = 64B = 2^6B
   wrsq_awburst = 1; // INCR
@@ -393,7 +400,7 @@ always_comb begin
   wrsq_wdata[32 +: 32] = 1; // nsid == 1
   wrsq_wdata[64 +: 64] = 0; // CDW2-3 (not used; no end-to-end protection)
   wrsq_wdata[128 +: 64] = 0; // MPTR (not used)
-  wrsq_wdata[192 +: 128] = WRITE_BUF_BASE + wrsqhdl_sqtail * 4096; // DPTR
+  wrsq_wdata[192 +: 128] = WRBUF_ADDR_BASE + wrsqhdl_sqtail * 4096; // DPTR
   // Starting LBA is address divided by 4KB
   wrsq_wdata[320 +: 64] = hp_awaddr >> 12; // CDW10-11
   // Specify number of logical blocks as 0 (which means 1)
@@ -407,7 +414,7 @@ always_comb begin
   wrsq_wlast = 1;
 
   // wrbuf_aw datapath
-  wrbuf_awaddr = wrsqhdl_sqtail * 4096;
+  wrbuf_awaddr = WRBUF_ADDR_BASE + wrsqhdl_sqtail * 4096;
   wrbuf_awlen = hp_awlen;
   wrbuf_awsize = hp_awsize;
   wrbuf_awburst = hp_awburst;
@@ -491,10 +498,10 @@ always_comb begin
   // wrsqdb_w datapath
   // align at 8B since the bus is 16B and SQ1TDBL % 16 == 8
   wrsqdb_wdata = {
-    32'0,
+    32'b0,
     32'((wrsqdbhdl_sqtail + 1) % OUTSTANDING),
-    32'0,
-    32'0
+    32'b0,
+    32'b0
   };
   wrsqdb_wstrb = '1;
   wrsqdb_wlast = 1;
@@ -597,7 +604,7 @@ always_comb begin
   
   // wrcq_ar
   wrcq_arvalid = 0;
-  wrcq_araddr = wrcqhdl_cqhead * 16;
+  wrcq_araddr = WRCQ_ADDR_BASE + wrcqhdl_cqhead * 16;
   wrcq_arlen = 0;
   wrcq_arsize = 4; // 16B = 2^4B
   wrcq_arburst = 1; // INCR
@@ -617,9 +624,9 @@ always_comb begin
   wrcqdb_wvalid = 0;
   wrcqdb_wdata = {
     32'(wrcqhdl_cqhead),
-    32'0,
-    32'0,
-    32'0
+    32'b0,
+    32'b0,
+    32'b0
   };
   wrcqdb_wstrb = '1;
   wrcqdb_wlast = 1;
@@ -739,7 +746,7 @@ always_comb begin
   hp_arready = rdsqhdl_ready & (rdsqhdl_valid | ~hp_arvalid);
 
   // rdsq_aw datapath
-  rdsq_awaddr = rdsqhdl_sqtail * 64;
+  rdsq_awaddr = RDSQ_ADDR_BASE + rdsqhdl_sqtail * 64;
   rdsq_awlen = 0; // no burst (single beat)
   rdsq_awsize = 6; // 512b = 64B = 2^6B
   rdsq_awburst = 1; // INCR
@@ -756,7 +763,7 @@ always_comb begin
   rdsq_wdata[32 +: 32] = 1; // nsid == 1
   rdsq_wdata[64 +: 64] = 0; // CDW2-3 (not used; no end-to-end protection)
   rdsq_wdata[128 +: 64] = 0; // MPTR (not used)
-  rdsq_wdata[192 +: 128] = READ_BUF_BASE + rdsqhdl_sqtail * 4096; // DPTR
+  rdsq_wdata[192 +: 128] = RDBUF_ADDR_BASE + rdsqhdl_sqtail * 4096; // DPTR
   // Starting LBA is address divided by 4KB
   rdsq_wdata[320 +: 64] = hp_araddr >> 12; // CDW10-11
   // Specify number of logical blocks as 0 (which means 1)
@@ -823,9 +830,9 @@ always_comb begin
   // rdsqdb_w datapath
   // align at 0B since the bus is 16B and SQ2TDBL % 16 == 0
   rdsqdb_wdata = {
-    32'0,
-    32'0,
-    32'0,
+    32'b0,
+    32'b0,
+    32'b0,
     32'((rdsqdbhdl_sqtail + 1) % OUTSTANDING)
   };
   rdsqdb_wstrb = '1;
@@ -929,7 +936,7 @@ always_comb begin
   
   // rdcq_ar
   rdcq_arvalid = 0;
-  rdcq_araddr = rdcqhdl_cqhead * 16;
+  rdcq_araddr = RDCQ_ADDR_BASE + rdcqhdl_cqhead * 16;
   rdcq_arlen = 0;
   rdcq_arsize = 4; // 16B = 2^4B
   rdcq_arburst = 1; // INCR
@@ -948,10 +955,10 @@ always_comb begin
   // align at 4B since the bus is 16B and CQ2HDBL % 16 == 4
   rdcqdb_wvalid = 0;
   rdcqdb_wdata = {
-    32'0,
-    32'0,
+    32'b0,
+    32'b0,
     32'(rdcqhdl_cqhead),
-    32'0
+    32'b0
   };
   rdcqdb_wstrb = '1;
   rdcqdb_wlast = 1;
@@ -1027,7 +1034,7 @@ end
 always_comb begin
   // Generate rdbuf_ar
   rdbuf_arvalid = rdcqhdl_cid_state[rdreshdl_cid_idx] != rdreshdl_cid_phase;
-  rdbuf_araddr = rdreshdl_cid_idx * 4096;
+  rdbuf_araddr = RDBUF_ADDR_BASE + rdreshdl_cid_idx * 4096;
   rdbuf_arlen = 255; // 128b * 256 = 4KB
   rdbuf_arsize = 4; // 128b = 16B = 2^4B
   rdbuf_arburst = 1; // INCR
