@@ -182,14 +182,56 @@ always_comb begin
 end
 
 // BRAM interface example
-  (* X_INTERFACE_MODE = "master" *)
-  (* X_INTERFACE_INFO = "xilinx.com:interface:bram_rtl:1.0 sq ADDR" *)
-  output wire [SQ_ADDR_WIDTH-1:0] sq_addr,
-  (* X_INTERFACE_INFO = "xilinx.com:interface:bram_rtl:1.0 sq CLK" *)
-  output wire sq_clk,
-  (* X_INTERFACE_INFO = "xilinx.com:interface:bram_rtl:1.0 sq DIN" *)
-  output wire [SQ_DATA_WIDTH-1:0] sq_din,
-  (* X_INTERFACE_INFO = "xilinx.com:interface:bram_rtl:1.0 sq EN" *)
-  output wire sq_en,
-  (* X_INTERFACE_INFO = "xilinx.com:interface:bram_rtl:1.0 sq WE" *)
-  output wire sq_we,
+(* X_INTERFACE_MODE = "master" *)
+(* X_INTERFACE_INFO = "xilinx.com:interface:bram_rtl:1.0 sq ADDR" *)
+output wire [SQ_ADDR_WIDTH-1:0] sq_addr,
+(* X_INTERFACE_INFO = "xilinx.com:interface:bram_rtl:1.0 sq CLK" *)
+output wire sq_clk,
+(* X_INTERFACE_INFO = "xilinx.com:interface:bram_rtl:1.0 sq DIN" *)
+output wire [SQ_DATA_WIDTH-1:0] sq_din,
+(* X_INTERFACE_INFO = "xilinx.com:interface:bram_rtl:1.0 sq EN" *)
+output wire sq_en,
+(* X_INTERFACE_INFO = "xilinx.com:interface:bram_rtl:1.0 sq WE" *)
+output wire sq_we,
+
+// 1-to-n glue logic
+// in -> (out0, out1, out2)
+logic block0;
+logic block1;
+logic block2;
+always_ff @(posedge clk, negedge rstn) begin
+  if (~rstn) begin
+    block0 <= 0;
+    block1 <= 0;
+    block2 <= 0;
+  end else begin
+    block0 <= in_valid & ~in_ready & (out0_ready | block0);
+    block1 <= in_valid & ~in_ready & (out1_ready | block1);
+    block2 <= in_valid & ~in_ready & (out2_ready | block2);
+  end
+end
+always_comb begin
+  out0_valid = in_valid & ~block0;
+  out1_valid = in_valid & ~block1;
+  out2_valid = in_valid & ~block2;
+  in_ready = (~out0_valid | out0_ready)
+           & (~out1_valid | out1_ready)
+           & (~out2_valid | out2_ready);
+end
+
+// n-to-1 glue logic
+// (in0, in1, in2) -> out
+always_comb begin
+  out_valid = in0_valid & in1_valid & in2_valid;
+  in0_ready = out_ready & (out_valid | ~in0_valid);
+  in1_ready = out_ready & (out_valid | ~in1_valid);
+  in2_ready = out_ready & (out_valid | ~in2_valid);
+end
+
+// hold until true pattern
+// in --(pred)--> out
+// == (in, pred) -> out
+always_comb begin
+  out_valid = in_valid & pred;
+  in_ready = out_ready & (out_valid | ~in_valid);
+end
