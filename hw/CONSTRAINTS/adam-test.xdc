@@ -19,6 +19,4 @@ set_property IOSTANDARD LVCMOS33 [get_ports oc0a_perstn]
 set_false_path -to [get_ports oc0a_perstn]
 
 # false_path on reset signals
-# TODO kernel/driver_rstn
-#set_false_path -from [get_cells design_1_inst/kernel_inst/ocu_rstn_reg]
-#set_false_path -from [get_cells bd0_inst/xdma_0/inst/pcie4_ip_i/inst/user_reset_reg]
+set_false_path -from [get_cells -hier -filter {NAME =~ */kernel_inst/driver_rstn_reg}]
