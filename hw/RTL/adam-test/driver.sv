@@ -1,4 +1,6 @@
 module driver #(
+  parameter HOST_ADDR_WIDTH = 21,
+  parameter HOST_DATA_WIDTH = 32,
   parameter HP_ADDR_WIDTH = 48, // 256TB
   parameter HP_DATA_WIDTH = 128,
   parameter WRSQ_ADDR_WIDTH = 34, // 2MB
@@ -24,6 +26,25 @@ module driver #(
 ) (
   input logic clk,
   input logic rstn,
+
+  // AXIL slave
+  input  logic [HOST_ADDR_WIDTH-1:0]   host_awaddr,
+  input  logic [HOST_DATA_WIDTH-1:0]   host_wdata,
+  input  logic [HOST_DATA_WIDTH/8-1:0] host_wstrb,
+  input  logic [HOST_ADDR_WIDTH-1:0]   host_araddr,
+  output logic [HOST_DATA_WIDTH-1:0]   host_rdata,
+  input  logic       host_awvalid,
+  output logic       host_awready,
+  input  logic       host_wvalid,
+  output logic       host_wready,
+  output logic [1:0] host_bresp,
+  output logic       host_bvalid,
+  input  logic       host_bready,
+  input  logic       host_arvalid,
+  output logic       host_arready,
+  output logic [1:0] host_rresp,
+  output logic       host_rvalid,
+  input  logic       host_rready,
 
   // 1 AXIB slave : hp
   // 10 AXIB master : wrsq, wrbuf, wrsqdb, wrcq, wrcqdb, rdsq, rdbuf, rdsqdb, rdcq, rdcqdb
@@ -315,6 +336,70 @@ module driver #(
   output logic       rdcqdb_rready
 );
 
+// host handler
+
+// Register map
+// 0x00 RW log2_lba ($clog2(LBA_SIZE)), 9 or 12
+// 0x04 RW burst_len (LBA_SIZE / 16 - 1)
+// 0x08 RW nlb (number of logical blocks, 0-base)
+logic [3:0] log2_lba;
+logic [7:0] burst_len;
+logic [15:0] nlb;
+
+// glue logic
+logic hostwrhdl_valid;
+logic hostwrhdl_ready;
+logic hostrdhdl_valid;
+logic hostrdhdl_ready;
+
+always_ff @(posedge clk, negedge rstn) begin
+  if (~rstn) begin
+    host_bvalid <= 0;
+    host_rvalid <= 0;
+  end else begin
+    if (hostwrhdl_valid & hostwrhdl_ready) begin
+      host_bvalid <= 1;
+      if          (host_awaddr == 'h00) begin
+        log2_lba <= host_wdata;
+      end else if (host_awaddr == 'h04) begin
+        burst_len <= host_wdata;
+      end else if (host_awaddr == 'h08) begin
+        nlb <= host_wdata;
+      end
+    end
+    if (host_bvalid & host_bready) begin
+      host_bvalid <= 0;
+    end
+    if (hostrdhdl_valid & hostrdhdl_ready) begin
+      host_rvalid <= 1;
+      if          (host_araddr == 'h00) begin
+        host_rdata <= log2_lba;
+      end else if (host_araddr == 'h04) begin
+        host_rdata <= burst_len;
+      end else if (host_araddr == 'h08) begin
+        host_rdata <= nlb;
+      end
+    end
+    if (host_rvalid & host_rready) begin
+      host_rvalid <= 0;
+    end
+  end
+end
+
+always_comb begin
+  // sync AW, W, bvalid (only accept when bvalid == 0)
+  hostwrhdl_valid = host_awvalid & host_wvalid & (host_bvalid == 0);
+  hostwrhdl_ready = 1;
+  host_awready = hostwrhdl_ready & (hostwrhdl_valid | ~host_awvalid);
+  host_wready = hostwrhdl_ready & (hostwrhdl_valid | ~host_wvalid);
+  host_bresp = 0;
+  // sync AR, rvalid (only accept when rvalid == 0)
+  hostrdhdl_valid = host_arvalid & (host_rvalid == 0);
+  hostrdhdl_ready = 1;
+  host_arready = hostrdhdl_ready & (hostrdhdl_valid | ~host_arvalid);
+  host_rresp = 0;
+end
+
 // This driver supports 16 outstanding read txns and 16 outstanding write txns.
 localparam OUTSTANDING = 16;
 
@@ -335,6 +420,10 @@ localparam SQ1TDBL = NVME_BAR0 + 'h1008;
 localparam CQ1HDBL = NVME_BAR0 + 'h100c;
 localparam SQ2TDBL = NVME_BAR0 + 'h1010;
 localparam CQ2HDBL = NVME_BAR0 + 'h1014;
+
+// Inter-module states
+logic [OUTSTANDING-1:0] wrcqhdl_cid_state;
+logic [OUTSTANDING-1:0] rdcqhdl_cid_state;
 
 // Write SQ handler (wrsqhdl)
 // hp_aw -> (wrsq_aw, wrsq_w, wrbuf_aw)
@@ -358,15 +447,15 @@ always_ff @(posedge clk, negedge rstn) begin
     wrsqhdl_block2 <= 0;
     wrsqhdl_cid_phase <= 0;
   end else begin
-    if (hp_awvalid & hp_awready) begin
+    if (wrsqhdl_valid & wrsqhdl_ready) begin
       wrsqhdl_sqtail <= wrsqhdl_sqtail + 1;
       if (wrsqhdl_sqtail == OUTSTANDING - 1) begin
         wrsqhdl_cid_phase <= ~wrsqhdl_cid_phase;
       end
     end
-    wrsqhdl_block0 <= hp_awvalid & ~hp_awready & (wrsq_awready | wrsqhdl_block0);
-    wrsqhdl_block1 <= hp_awvalid & ~hp_awready & (wrsq_wready | wrsqhdl_block1);
-    wrsqhdl_block2 <= hp_awvalid & ~hp_awready & (wrbuf_awready | wrsqhdl_block2);
+    wrsqhdl_block0 <= wrsqhdl_valid & ~wrsqhdl_ready & (wrsq_awready | wrsqhdl_block0);
+    wrsqhdl_block1 <= wrsqhdl_valid & ~wrsqhdl_ready & (wrsq_wready | wrsqhdl_block1);
+    wrsqhdl_block2 <= wrsqhdl_valid & ~wrsqhdl_ready & (wrbuf_awready | wrsqhdl_block2);
   end
 end
 
@@ -400,12 +489,12 @@ always_comb begin
   wrsq_wdata[32 +: 32] = 1; // nsid == 1
   wrsq_wdata[64 +: 64] = 0; // CDW2-3 (not used; no end-to-end protection)
   wrsq_wdata[128 +: 64] = 0; // MPTR (not used)
-  wrsq_wdata[192 +: 128] = WRBUF_ADDR_BASE + wrsqhdl_sqtail * 4096; // DPTR
+  wrsq_wdata[192 +: 128] = WRBUF_ADDR_BASE + (wrsqhdl_sqtail << log2_lba); // DPTR
   // Starting LBA is address divided by 4KB
-  wrsq_wdata[320 +: 64] = hp_awaddr >> 12; // CDW10-11
+  wrsq_wdata[320 +: 64] = hp_awaddr >> log2_lba; // CDW10-11
   // Specify number of logical blocks as 0 (which means 1)
   // Other options are not used
-  wrsq_wdata[384 +: 32] = 0; // CDW12
+  wrsq_wdata[384 +: 32] = nlb; // CDW12
   // No hint for compression, sequential, latency, and frequency
   wrsq_wdata[416 +: 32] = 0; // CDW13
   wrsq_wdata[448 +: 32] = 0; // CDW14 (not used; no end-to-end protection)
@@ -414,7 +503,7 @@ always_comb begin
   wrsq_wlast = 1;
 
   // wrbuf_aw datapath
-  wrbuf_awaddr = WRBUF_ADDR_BASE + wrsqhdl_sqtail * 4096;
+  wrbuf_awaddr = WRBUF_ADDR_BASE + (wrsqhdl_sqtail << log2_lba);
   wrbuf_awlen = hp_awlen;
   wrbuf_awsize = hp_awsize;
   wrbuf_awburst = hp_awburst;
@@ -545,7 +634,6 @@ logic wrcqhdl_block0;
 logic wrcqhdl_block1;
 logic [$clog2(OUTSTANDING)-1:0] wrcqhdl_cqhead;
 logic wrcqhdl_phase;
-logic wrcqhdl_cid_state[OUTSTANDING];
 
 always_ff @(posedge clk, negedge rstn) begin
   if (~rstn) begin
@@ -724,14 +812,14 @@ always_ff @(posedge clk, negedge rstn) begin
     rdsqhdl_block1 <= 0;
     rdsqhdl_cid_phase <= 0;
   end else begin
-    if (hp_arvalid & hp_arready) begin
+    if (rdsqhdl_valid & rdsqhdl_ready) begin
       rdsqhdl_sqtail <= rdsqhdl_sqtail + 1;
       if (rdsqhdl_sqtail == OUTSTANDING - 1) begin
         rdsqhdl_cid_phase <= ~rdsqhdl_cid_phase;
       end
     end
-    rdsqhdl_block0 <= hp_arvalid & ~hp_arready & (rdsq_awready | rdsqhdl_block0);
-    rdsqhdl_block1 <= hp_arvalid & ~hp_arready & (rdsq_wready | rdsqhdl_block1);
+    rdsqhdl_block0 <= rdsqhdl_valid & ~rdsqhdl_ready & (rdsq_awready | rdsqhdl_block0);
+    rdsqhdl_block1 <= rdsqhdl_valid & ~rdsqhdl_ready & (rdsq_wready | rdsqhdl_block1);
   end
 end
 
@@ -763,12 +851,12 @@ always_comb begin
   rdsq_wdata[32 +: 32] = 1; // nsid == 1
   rdsq_wdata[64 +: 64] = 0; // CDW2-3 (not used; no end-to-end protection)
   rdsq_wdata[128 +: 64] = 0; // MPTR (not used)
-  rdsq_wdata[192 +: 128] = RDBUF_ADDR_BASE + rdsqhdl_sqtail * 4096; // DPTR
+  rdsq_wdata[192 +: 128] = RDBUF_ADDR_BASE + (rdsqhdl_sqtail << log2_lba); // DPTR
   // Starting LBA is address divided by 4KB
-  rdsq_wdata[320 +: 64] = hp_araddr >> 12; // CDW10-11
+  rdsq_wdata[320 +: 64] = hp_araddr >> log2_lba; // CDW10-11
   // Specify number of logical blocks as 0 (which means 1)
   // Other options are not used
-  rdsq_wdata[384 +: 32] = 0; // CDW12
+  rdsq_wdata[384 +: 32] = nlb; // CDW12
   // No hint for compression, sequential, latency, and frequency
   rdsq_wdata[416 +: 32] = 0; // CDW13
   rdsq_wdata[448 +: 32] = 0; // CDW14 (not used; no end-to-end protection)
@@ -877,7 +965,6 @@ logic rdcqhdl_block0;
 logic rdcqhdl_block1;
 logic [$clog2(OUTSTANDING)-1:0] rdcqhdl_cqhead;
 logic rdcqhdl_phase;
-logic rdcqhdl_cid_state[OUTSTANDING];
 
 always_ff @(posedge clk, negedge rstn) begin
   if (~rstn) begin
@@ -1034,8 +1121,8 @@ end
 always_comb begin
   // Generate rdbuf_ar
   rdbuf_arvalid = rdcqhdl_cid_state[rdreshdl_cid_idx] != rdreshdl_cid_phase;
-  rdbuf_araddr = RDBUF_ADDR_BASE + rdreshdl_cid_idx * 4096;
-  rdbuf_arlen = 255; // 128b * 256 = 4KB
+  rdbuf_araddr = RDBUF_ADDR_BASE + (rdreshdl_cid_idx << log2_lba);
+  rdbuf_arlen = burst_len; // 128b * 256 = 4KB
   rdbuf_arsize = 4; // 128b = 16B = 2^4B
   rdbuf_arburst = 1; // INCR
 end
@@ -1069,5 +1156,47 @@ always_comb begin
   // rdbuf_b
   rdbuf_bready = 0;
 end
+
+/*
+probe0
+wrsqhdl_sqtail 4
+wrsqhdl_cid_phase 1
+wrsqdbhdl_sqtail 4
+wrcqhdl_state 2
+wrcqhdl_cqhead 4
+wrcqhdl_phase 1
+wrcqhdl_cid_state 16
+wrreshdl_cid_idx 4
+wrreshdl_cid_phase 1
+4+1+4+2+4+1+16+4+1=37b
+
+probe1
+rdsqhdl_sqtail 4
+rdsqhdl_cid_phase 1
+rdsqdbhdl_sqtail 4
+rdcqhdl_state 2
+rdcqhdl_cqhead 4
+rdcqhdl_phase 1
+rdcqhdl_cid_state 16
+rdreshdl_cid_idx 4
+rdreshdl_cid_phase 1
+4+1+4+2+4+1+16+4+1=37b
+
+probe2
+wrsqhdl_block0, wrsqhdl_block1, wrsqhdl_block2
+wrsqdbhdl_block0, wrsqdbhdl_block1
+wrcqhdl_block0, wrcqhdl_block1
+rdsqhdl_block0, rdsqhdl_block1
+rdsqdbhdl_block0, rdsqdbhdl_block1
+rdcqhdl_block0, rdcqhdl_block1
+13b
+*/
+
+ila_driver ila_driver_inst (
+  .clk(clk),
+  .probe0({wrsqhdl_sqtail, wrsqhdl_cid_phase, wrsqdbhdl_sqtail, wrcqhdl_state, wrcqhdl_cqhead, wrcqhdl_phase, wrcqhdl_cid_state, wrreshdl_cid_idx, wrreshdl_cid_phase}),
+  .probe1({rdsqhdl_sqtail, rdsqhdl_cid_phase, rdsqdbhdl_sqtail, rdcqhdl_state, rdcqhdl_cqhead, rdcqhdl_phase, rdcqhdl_cid_state, rdreshdl_cid_idx, rdreshdl_cid_phase}),
+  .probe2({wrsqhdl_block0, wrsqhdl_block1, wrsqhdl_block2, wrsqdbhdl_block0, wrsqdbhdl_block1, wrcqhdl_block0, wrcqhdl_block1, rdsqhdl_block0, rdsqhdl_block1, rdsqdbhdl_block0, rdsqdbhdl_block1, rdcqhdl_block0, rdcqhdl_block1})
+);
 
 endmodule
