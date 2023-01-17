@@ -2,7 +2,7 @@
 // HP(High Performance) is 128b AXI4 to the NVMe driver
 // * 48b address to cover 256TiB
 module kernel_wrapper #(
-  parameter HOST_ADDR_WIDTH = 32,
+  parameter HOST_ADDR_WIDTH = 21,
   parameter HOST_DATA_WIDTH = 32,
   parameter HP_ADDR_WIDTH = 48,
   parameter HP_DATA_WIDTH = 128
@@ -62,9 +62,7 @@ kernel #(
   .HOST_ADDR_WIDTH(HOST_ADDR_WIDTH),
   .HOST_DATA_WIDTH(HOST_DATA_WIDTH),
   .HP_ADDR_WIDTH(HP_ADDR_WIDTH),
-  .HP_DATA_WIDTH(HP_DATA_WIDTH),
-  .LP_ADDR_WIDTH(LP_ADDR_WIDTH),
-  .LP_DATA_WIDTH(LP_DATA_WIDTH)
+  .HP_DATA_WIDTH(HP_DATA_WIDTH)
 ) kernel_inst (
   .clk(clk),
   .rstn(rstn),
@@ -86,14 +84,10 @@ kernel #(
   .host_rresp   (host_rresp),
   .host_rvalid  (host_rvalid),
   .host_rready  (host_rready),
-  .hp_awid    (hp_awid),
   .hp_awaddr  (hp_awaddr),
   .hp_wdata   (hp_wdata),
   .hp_wstrb   (hp_wstrb),
-  .hp_bid     (hp_bid),
-  .hp_arid    (hp_arid),
   .hp_araddr  (hp_araddr),
-  .hp_rid     (hp_rid),
   .hp_rdata   (hp_rdata),
   .hp_awlen   (hp_awlen),
   .hp_awsize  (hp_awsize),
