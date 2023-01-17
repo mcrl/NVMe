@@ -1,1 +1,1 @@
-add_executable(xdma-test main.cpp)
+#add_executable(xdma-test main.cpp)
