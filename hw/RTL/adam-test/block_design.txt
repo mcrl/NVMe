@@ -1,0 +1,88 @@
+[Driver board design]
+
+* IP setup
+Match latency between controller and memory generator!
+wrsq: Standalone, SDP, BRAM, width 128, depth 64, lat 2
+wrbuf: Standalone, SDP, URAM, width 128, depth 4096, lat 1
+wrcq: Standalone, SDP, BRAM, width 128, depth 16, lat 2
+rdsq: Standalone, SDP, BRAM, width 128, depth 64, lat 2
+rdbuf: Standalone, SDP, URAM, width 128, depth 4096, lat 1
+rdcq: Standalone, SDP, BRAM, width 128, depth 16, lat 2
+adbuf: Standalone, SDP, URAM, width 128, depth 4096, lat 1
+Enable "Generate address interface with 32bits". This changes word addressing to byte addressing.
+
+* Address mapping
+wrsq,            0x0_0000_0000, 2M
+wrbuf,           0x0_0020_0000, 2M
+wrcq,            0x0_0040_0000, 2M
+rdsq,            0x0_0060_0000, 2M
+rdbuf,           0x0_0080_0000, 2M
+rdcq,            0x0_00a0_0000, 2M
+adbuf,           0x0_00c0_0000, 2M (actual 64KB)
+PCIe Config, nl, 0x2_0000_0000, 4G
+PCIe Memory, nm, 0x3_0000_0000, 4G
+- BAR0 at 2GB (0x8000_0000) inside 4G (should not overlap with wrsq~adbuf)
+Total: 16GB
+We put (Number of driver) * 16GB on PCIe to DMA Bypass interface in the top design.
+For now, (number of driver) == 4
+
+hp, 0x00000000, 256T
+
+* External interfaces
+ns: 32b address, 128b data (access wrsq~adbuf)
+lp: 34b address, 128b data (access all including nl and nm)
+hp: 48b address, 128b data
+nl: 32b address, 32b data
+nm: 32b address, 128b data
+
+set_property -dict [list CONFIG.ADVANCED_PROPERTIES { __view__ { functional { SW0 { DATA_WIDTH 128 } } }}] [get_bd_cells lp_arbiter]
+set_property -dict [list CONFIG.ADVANCED_PROPERTIES { __view__ { functional { SW0 { DATA_WIDTH 128 } } }}] [get_bd_cells ns_arbiter]
+set_property -dict [list CONFIG.ADVANCED_PROPERTIES { __view__ { functional { SW0 { DATA_WIDTH 128 } } }}] [get_bd_cells nm_arbiter]
+set_property -dict [list CONFIG.ADVANCED_PROPERTIES { __view__ { functional { SW0 { DATA_WIDTH 128 } } }}] [get_bd_cells wrsq_arbiter]
+set_property -dict [list CONFIG.ADVANCED_PROPERTIES { __view__ { functional { SW0 { DATA_WIDTH 128 } } }}] [get_bd_cells wrbuf_arbiter]
+set_property -dict [list CONFIG.ADVANCED_PROPERTIES { __view__ { functional { SW0 { DATA_WIDTH 128 } } }}] [get_bd_cells wrcq_arbiter]
+set_property -dict [list CONFIG.ADVANCED_PROPERTIES { __view__ { functional { SW0 { DATA_WIDTH 128 } } }}] [get_bd_cells rdsq_arbiter]
+set_property -dict [list CONFIG.ADVANCED_PROPERTIES { __view__ { functional { SW0 { DATA_WIDTH 128 } } }}] [get_bd_cells rdbuf_arbiter]
+set_property -dict [list CONFIG.ADVANCED_PROPERTIES { __view__ { functional { SW0 { DATA_WIDTH 128 } } }}] [get_bd_cells rdcq_arbiter]
+set_property -dict [list CONFIG.ADVANCED_PROPERTIES { __view__ { functional { SW0 { DATA_WIDTH 128 } } }}] [get_bd_cells adbuf_arbiter]
+
+get_property CONFIG.ADVANCED_PROPERTIES [get_bd_cells driver/smartconnect_0]
+
+set_property -dict [list CONFIG.ADVANCED_PROPERTIES { __view__ { functional { S00_Entry { SUPPORTS_WRAP 0 } } }}] [get_bd_cells main_arbiter]
+set_property -dict [list CONFIG.ADVANCED_PROPERTIES { __view__ { functional { S01_Entry { SUPPORTS_WRAP 0 } } }}] [get_bd_cells main_arbiter]
+set_property -dict [list CONFIG.ADVANCED_PROPERTIES { __view__ { functional { S02_Entry { SUPPORTS_WRAP 0 } } }}] [get_bd_cells main_arbiter]
+set_property -dict [list CONFIG.ADVANCED_PROPERTIES { __view__ { functional { S03_Entry { SUPPORTS_WRAP 0 } } }}] [get_bd_cells main_arbiter]
+set_property -dict [list CONFIG.ADVANCED_PROPERTIES { __view__ { functional { S04_Entry { SUPPORTS_WRAP 0 } } }}] [get_bd_cells main_arbiter]
+set_property -dict [list CONFIG.ADVANCED_PROPERTIES { __view__ { functional { S05_Entry { SUPPORTS_WRAP 0 } } }}] [get_bd_cells main_arbiter]
+set_property -dict [list CONFIG.ADVANCED_PROPERTIES { __view__ { functional { S06_Entry { SUPPORTS_WRAP 0 } } }}] [get_bd_cells main_arbiter]
+set_property -dict [list CONFIG.ADVANCED_PROPERTIES { __view__ { functional { S07_Entry { SUPPORTS_WRAP 0 } } }}] [get_bd_cells main_arbiter]
+set_property -dict [list CONFIG.ADVANCED_PROPERTIES { __view__ { functional { S08_Entry { SUPPORTS_WRAP 0 } } }}] [get_bd_cells main_arbiter]
+set_property -dict [list CONFIG.ADVANCED_PROPERTIES { __view__ { functional { S09_Entry { SUPPORTS_WRAP 0 } } }}] [get_bd_cells main_arbiter]
+set_property -dict [list CONFIG.ADVANCED_PROPERTIES { __view__ { functional { S10_Entry { SUPPORTS_WRAP 0 } } }}] [get_bd_cells main_arbiter]
+set_property -dict [list CONFIG.ADVANCED_PROPERTIES { __view__ { functional { S11_Entry { SUPPORTS_WRAP 0 } } }}] [get_bd_cells main_arbiter]
+
+set_property -dict [list CONFIG.ADVANCED_PROPERTIES { __view__ { functional {
+  S00_Entry { SUPPORTS_DECERR 0 SUPPORTS_WRAP 0 }
+  S01_Entry { SUPPORTS_DECERR 0 SUPPORTS_WRAP 0 }
+} }}] [get_bd_cells main_arbiter]
+
+set_property -dict [list CONFIG.ADVANCED_PROPERTIES { __view__ { functional {
+  S00_Entry { SUPPORTS_DECERR 0 }
+  S00_Entry { SUPPORTS_WRAP 0 }
+  S01_Entry { SUPPORTS_DECERR 0 }
+  S01_Entry { SUPPORTS_WRAP 0 }
+} }}] [get_bd_cells main_arbiter]
+
+set_property -dict [list CONFIG.ADVANCED_PROPERTIES { __view__ { functional { S01_Entry { SUPPORTS_DECERR 0 } } }}] [get_bd_cells main_arbiter]
+set_property -dict [list CONFIG.ADVANCED_PROPERTIES { __view__ { functional { S02_Entry { SUPPORTS_DECERR 0 } } }}] [get_bd_cells main_arbiter]
+set_property -dict [list CONFIG.ADVANCED_PROPERTIES { __view__ { functional { S03_Entry { SUPPORTS_DECERR 0 } } }}] [get_bd_cells main_arbiter]
+set_property -dict [list CONFIG.ADVANCED_PROPERTIES { __view__ { functional { S04_Entry { SUPPORTS_DECERR 0 } } }}] [get_bd_cells main_arbiter]
+set_property -dict [list CONFIG.ADVANCED_PROPERTIES { __view__ { functional { S05_Entry { SUPPORTS_DECERR 0 } } }}] [get_bd_cells main_arbiter]
+set_property -dict [list CONFIG.ADVANCED_PROPERTIES { __view__ { functional { S06_Entry { SUPPORTS_DECERR 0 } } }}] [get_bd_cells main_arbiter]
+set_property -dict [list CONFIG.ADVANCED_PROPERTIES { __view__ { functional { S07_Entry { SUPPORTS_DECERR 0 } } }}] [get_bd_cells main_arbiter]
+set_property -dict [list CONFIG.ADVANCED_PROPERTIES { __view__ { functional { S08_Entry { SUPPORTS_DECERR 0 } } }}] [get_bd_cells main_arbiter]
+set_property -dict [list CONFIG.ADVANCED_PROPERTIES { __view__ { functional { S09_Entry { SUPPORTS_DECERR 0 } } }}] [get_bd_cells main_arbiter]
+set_property -dict [list CONFIG.ADVANCED_PROPERTIES { __view__ { functional { S10_Entry { SUPPORTS_DECERR 0 } } }}] [get_bd_cells main_arbiter]
+set_property -dict [list CONFIG.ADVANCED_PROPERTIES { __view__ { functional { S11_Entry { SUPPORTS_DECERR 0 } } }}] [get_bd_cells main_arbiter]
+
+get_property CONFIG.ADVANCED_PROPERTIES [get_bd_cells main_arbiter]
