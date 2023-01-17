@@ -6,12 +6,12 @@ module top (
   input logic host_perstn,
   input logic host_refclk_clk_n,
   input logic host_refclk_clk_p,
-  input logic [3:0] oc0a_data_rxn,
-  input logic [3:0] oc0a_data_rxp,
-  output logic [3:0] oc0a_data_txn,
-  output logic [3:0] oc0a_data_txp,
-  input logic ocu0_refclk_clk_n,
-  input logic ocu0_refclk_clk_p,
+  input logic [3:0] oc0a_mgt_rxn,
+  input logic [3:0] oc0a_mgt_rxp,
+  output logic [3:0] oc0a_mgt_txn,
+  output logic [3:0] oc0a_mgt_txp,
+  input logic oc0a_refclk_clk_n,
+  input logic oc0a_refclk_clk_p,
   output logic oc0a_perstn
 );
 
