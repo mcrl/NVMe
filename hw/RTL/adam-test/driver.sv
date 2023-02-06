@@ -338,13 +338,18 @@ module driver #(
 
 // host handler
 
+// hp_word_size is a size of burst from hp. (e.g., 128-bit 256-beat burst = 4096)
+// nvme_word_size is lba size format of NVMe. (512 or 4096)
+
 // Register map
-// 0x00 RW log2_lba ($clog2(LBA_SIZE)), 9 or 12
-// 0x04 RW burst_len (LBA_SIZE / 16 - 1)
-// 0x08 RW nlb (number of logical blocks, 0-base)
-logic [3:0] log2_lba;
-logic [7:0] burst_len;
-logic [15:0] nlb;
+// 0x00 RW hp_word_size_log2 (== log2(hp_word_size))
+// 0x04 RW hp_burst_len (== hp_word_size / 16 - 1)
+// 0x08 RW nvme_nlb (== hp_word_size / nvme_word_size, number of logical blocks, 0-base)
+// 0x0c RW nvme_word_size_log2 (== log2(nvme_word_size))
+logic [3:0] hp_word_size_log2;
+logic [7:0] hp_burst_len;
+logic [15:0] nvme_nlb;
+logic [3:0] nvme_word_size_log2;
 
 // glue logic
 logic hostwrhdl_valid;
@@ -360,11 +365,13 @@ always_ff @(posedge clk, negedge rstn) begin
     if (hostwrhdl_valid & hostwrhdl_ready) begin
       host_bvalid <= 1;
       if          (host_awaddr == 'h00) begin
-        log2_lba <= host_wdata;
+        hp_word_size_log2 <= host_wdata;
       end else if (host_awaddr == 'h04) begin
-        burst_len <= host_wdata;
+        hp_burst_len <= host_wdata;
       end else if (host_awaddr == 'h08) begin
-        nlb <= host_wdata;
+        nvme_nlb <= host_wdata;
+      end else if (host_awaddr == 'h0c) begin
+        nvme_word_size_log2 <= host_wdata;
       end
     end
     if (host_bvalid & host_bready) begin
@@ -373,11 +380,13 @@ always_ff @(posedge clk, negedge rstn) begin
     if (hostrdhdl_valid & hostrdhdl_ready) begin
       host_rvalid <= 1;
       if          (host_araddr == 'h00) begin
-        host_rdata <= log2_lba;
+        host_rdata <= hp_word_size_log2;
       end else if (host_araddr == 'h04) begin
-        host_rdata <= burst_len;
+        host_rdata <= hp_burst_len;
       end else if (host_araddr == 'h08) begin
-        host_rdata <= nlb;
+        host_rdata <= nvme_nlb;
+      end else if (host_araddr == 'h0c) begin
+        host_rdata <= nvme_word_size_log2;
       end
     end
     if (host_rvalid & host_rready) begin
@@ -423,7 +432,9 @@ localparam CQ2HDBL = NVME_BAR0 + 'h1014;
 
 // Inter-module states
 logic [OUTSTANDING-1:0] wrcqhdl_cid_state;
+logic [$clog2(OUTSTANDING)-1:0] wrcqhdl_sqhead;
 logic [OUTSTANDING-1:0] rdcqhdl_cid_state;
+logic [$clog2(OUTSTANDING)-1:0] rdcqhdl_sqhead;
 
 // Write SQ handler (wrsqhdl)
 // hp_aw -> (wrsq_aw, wrsq_w, wrbuf_aw)
@@ -448,7 +459,7 @@ always_ff @(posedge clk, negedge rstn) begin
     wrsqhdl_cid_phase <= 0;
   end else begin
     if (wrsqhdl_valid & wrsqhdl_ready) begin
-      wrsqhdl_sqtail <= wrsqhdl_sqtail + 1;
+      wrsqhdl_sqtail <= (wrsqhdl_sqtail + 1) % OUTSTANDING;
       if (wrsqhdl_sqtail == OUTSTANDING - 1) begin
         wrsqhdl_cid_phase <= ~wrsqhdl_cid_phase;
       end
@@ -489,12 +500,12 @@ always_comb begin
   wrsq_wdata[32 +: 32] = 1; // nsid == 1
   wrsq_wdata[64 +: 64] = 0; // CDW2-3 (not used; no end-to-end protection)
   wrsq_wdata[128 +: 64] = 0; // MPTR (not used)
-  wrsq_wdata[192 +: 128] = WRBUF_ADDR_BASE + (wrsqhdl_sqtail << log2_lba); // DPTR
+  wrsq_wdata[192 +: 128] = WRBUF_ADDR_BASE + (wrsqhdl_sqtail << hp_word_size_log2); // DPTR
   // Starting LBA is address divided by 4KB
-  wrsq_wdata[320 +: 64] = hp_awaddr >> log2_lba; // CDW10-11
+  wrsq_wdata[320 +: 64] = hp_awaddr >> nvme_word_size_log2; // CDW10-11
   // Specify number of logical blocks as 0 (which means 1)
   // Other options are not used
-  wrsq_wdata[384 +: 32] = nlb; // CDW12
+  wrsq_wdata[384 +: 32] = nvme_nlb; // CDW12
   // No hint for compression, sequential, latency, and frequency
   wrsq_wdata[416 +: 32] = 0; // CDW13
   wrsq_wdata[448 +: 32] = 0; // CDW14 (not used; no end-to-end protection)
@@ -503,7 +514,7 @@ always_comb begin
   wrsq_wlast = 1;
 
   // wrbuf_aw datapath
-  wrbuf_awaddr = WRBUF_ADDR_BASE + (wrsqhdl_sqtail << log2_lba);
+  wrbuf_awaddr = WRBUF_ADDR_BASE + (wrsqhdl_sqtail << hp_word_size_log2);
   wrbuf_awlen = hp_awlen;
   wrbuf_awsize = hp_awsize;
   wrbuf_awburst = hp_awburst;
@@ -561,7 +572,7 @@ always_ff @(posedge clk, negedge rstn) begin
     wrsqdbhdl_block1 <= 0;
   end else begin
     if (wrsqdbhdl_valid & wrsqdbhdl_ready) begin
-      wrsqdbhdl_sqtail <= wrsqdbhdl_sqtail + 1;
+      wrsqdbhdl_sqtail <= (wrsqdbhdl_sqtail + 1) % OUTSTANDING;
     end
     wrsqdbhdl_block0 <= wrsqdbhdl_valid & ~wrsqdbhdl_ready & (wrsqdb_awready | wrsqdbhdl_block0);
     wrsqdbhdl_block1 <= wrsqdbhdl_valid & ~wrsqdbhdl_ready & (wrsqdb_wready | wrsqdbhdl_block1);
@@ -570,7 +581,7 @@ end
 
 always_comb begin
   // (wrsq_b, wrbuf_b) -> (wrsqdb_aw, wrsqdb_w)
-  wrsqdbhdl_valid = wrsq_bvalid & wrbuf_bvalid;
+  wrsqdbhdl_valid = wrsq_bvalid & wrbuf_bvalid & ((wrsqdbhdl_sqtail + 1) % OUTSTANDING != wrcqhdl_sqhead);
   wrsqdb_awvalid = wrsqdbhdl_valid & ~wrsqdbhdl_block0;
   wrsqdb_wvalid = wrsqdbhdl_valid & ~wrsqdbhdl_block1;
   wrsqdbhdl_ready = (~wrsqdb_awvalid | wrsqdb_awready)
@@ -642,6 +653,7 @@ always_ff @(posedge clk, negedge rstn) begin
     wrcqhdl_block1 <= 0;
     wrcqhdl_cqhead <= 0;
     wrcqhdl_phase <= 0;
+    wrcqhdl_sqhead <= 0;
     for (int i = 0; i < OUTSTANDING; ++i) begin
       wrcqhdl_cid_state[i] <= 0;
     end
@@ -667,12 +679,13 @@ always_ff @(posedge clk, negedge rstn) begin
           wrcqhdl_state <= WRCQHDL_STATE_BUSY_AR;
         end else begin
           wrcqhdl_state <= WRCQHDL_STATE_BUSY_DB;
-          wrcqhdl_cqhead <= wrcqhdl_cqhead + 1;
+          wrcqhdl_cqhead <= (wrcqhdl_cqhead + 1) % OUTSTANDING;
           if (wrcqhdl_cqhead == OUTSTANDING - 1) begin
             wrcqhdl_phase <= ~wrcqhdl_phase;
           end
           // flip cid state
           wrcqhdl_cid_state[wrcq_rdata[96 +: $clog2(OUTSTANDING)]] <= ~wrcqhdl_cid_state[wrcq_rdata[96 +: $clog2(OUTSTANDING)]];
+          wrcqhdl_sqhead <= wrcq_rdata[64 +: 16];
         end
       end
     end else if (wrcqhdl_state == WRCQHDL_STATE_BUSY_DB) begin
@@ -779,7 +792,7 @@ always_ff @(posedge clk, negedge rstn) begin
     wrreshdl_cid_phase <= 0;
   end else begin
     if (hp_bvalid & hp_bready) begin
-      wrreshdl_cid_idx <= wrreshdl_cid_idx + 1;
+      wrreshdl_cid_idx <= (wrreshdl_cid_idx + 1) % OUTSTANDING;
       if (wrreshdl_cid_idx == OUTSTANDING - 1) begin
         wrreshdl_cid_phase <= ~wrreshdl_cid_phase;
       end
@@ -813,7 +826,7 @@ always_ff @(posedge clk, negedge rstn) begin
     rdsqhdl_cid_phase <= 0;
   end else begin
     if (rdsqhdl_valid & rdsqhdl_ready) begin
-      rdsqhdl_sqtail <= rdsqhdl_sqtail + 1;
+      rdsqhdl_sqtail <= (rdsqhdl_sqtail + 1) % OUTSTANDING;
       if (rdsqhdl_sqtail == OUTSTANDING - 1) begin
         rdsqhdl_cid_phase <= ~rdsqhdl_cid_phase;
       end
@@ -851,12 +864,12 @@ always_comb begin
   rdsq_wdata[32 +: 32] = 1; // nsid == 1
   rdsq_wdata[64 +: 64] = 0; // CDW2-3 (not used; no end-to-end protection)
   rdsq_wdata[128 +: 64] = 0; // MPTR (not used)
-  rdsq_wdata[192 +: 128] = RDBUF_ADDR_BASE + (rdsqhdl_sqtail << log2_lba); // DPTR
+  rdsq_wdata[192 +: 128] = RDBUF_ADDR_BASE + (rdsqhdl_sqtail << hp_word_size_log2); // DPTR
   // Starting LBA is address divided by 4KB
-  rdsq_wdata[320 +: 64] = hp_araddr >> log2_lba; // CDW10-11
+  rdsq_wdata[320 +: 64] = hp_araddr >> nvme_word_size_log2; // CDW10-11
   // Specify number of logical blocks as 0 (which means 1)
   // Other options are not used
-  rdsq_wdata[384 +: 32] = nlb; // CDW12
+  rdsq_wdata[384 +: 32] = nvme_nlb; // CDW12
   // No hint for compression, sequential, latency, and frequency
   rdsq_wdata[416 +: 32] = 0; // CDW13
   rdsq_wdata[448 +: 32] = 0; // CDW14 (not used; no end-to-end protection)
@@ -893,7 +906,7 @@ always_ff @(posedge clk, negedge rstn) begin
     rdsqdbhdl_block1 <= 0;
   end else begin
     if (rdsqdbhdl_valid & rdsqdbhdl_ready) begin
-      rdsqdbhdl_sqtail <= rdsqdbhdl_sqtail + 1;
+      rdsqdbhdl_sqtail <= (rdsqdbhdl_sqtail + 1) % OUTSTANDING;
     end
     rdsqdbhdl_block0 <= rdsqdbhdl_valid & ~rdsqdbhdl_ready & (rdsqdb_awready | rdsqdbhdl_block0);
     rdsqdbhdl_block1 <= rdsqdbhdl_valid & ~rdsqdbhdl_ready & (rdsqdb_wready | rdsqdbhdl_block1);
@@ -902,7 +915,7 @@ end
 
 always_comb begin
   // rdsq_b -> (rdsqdb_aw, rdsqdb_w)
-  rdsqdbhdl_valid = rdsq_bvalid;
+  rdsqdbhdl_valid = rdsq_bvalid & ((rdsqdbhdl_sqtail + 1) % OUTSTANDING != rdcqhdl_sqhead);
   rdsqdb_awvalid = rdsqdbhdl_valid & ~rdsqdbhdl_block0;
   rdsqdb_wvalid = rdsqdbhdl_valid & ~rdsqdbhdl_block1;
   rdsqdbhdl_ready = (~rdsqdb_awvalid | rdsqdb_awready)
@@ -976,6 +989,7 @@ always_ff @(posedge clk, negedge rstn) begin
     for (int i = 0; i < OUTSTANDING; ++i) begin
       rdcqhdl_cid_state[i] <= 0;
     end
+    rdcqhdl_sqhead <= 0;
   end else begin
     if (rdcqhdl_state == RDCQHDL_STATE_IDLE) begin
       if (rdsqdb_bvalid & rdsqdb_bready) begin
@@ -998,12 +1012,13 @@ always_ff @(posedge clk, negedge rstn) begin
           rdcqhdl_state <= RDCQHDL_STATE_BUSY_AR;
         end else begin
           rdcqhdl_state <= RDCQHDL_STATE_BUSY_DB;
-          rdcqhdl_cqhead <= rdcqhdl_cqhead + 1;
+          rdcqhdl_cqhead <= (rdcqhdl_cqhead + 1) % OUTSTANDING;
           if (rdcqhdl_cqhead == OUTSTANDING - 1) begin
             rdcqhdl_phase <= ~rdcqhdl_phase;
           end
           // flip cid state
           rdcqhdl_cid_state[rdcq_rdata[96 +: $clog2(OUTSTANDING)]] <= ~rdcqhdl_cid_state[rdcq_rdata[96 +: $clog2(OUTSTANDING)]];
+          rdcqhdl_sqhead <= rdcq_rdata[64 +: 16];
         end
       end
     end else if (rdcqhdl_state == RDCQHDL_STATE_BUSY_DB) begin
@@ -1110,7 +1125,7 @@ always_ff @(posedge clk, negedge rstn) begin
     rdreshdl_cid_phase <= 0;
   end else begin
     if (rdbuf_arvalid & rdbuf_arready) begin
-      rdreshdl_cid_idx <= rdreshdl_cid_idx + 1;
+      rdreshdl_cid_idx <= (rdreshdl_cid_idx + 1) % OUTSTANDING;
       if (rdreshdl_cid_idx == OUTSTANDING - 1) begin
         rdreshdl_cid_phase <= ~rdreshdl_cid_phase;
       end
@@ -1121,8 +1136,8 @@ end
 always_comb begin
   // Generate rdbuf_ar
   rdbuf_arvalid = rdcqhdl_cid_state[rdreshdl_cid_idx] != rdreshdl_cid_phase;
-  rdbuf_araddr = RDBUF_ADDR_BASE + (rdreshdl_cid_idx << log2_lba);
-  rdbuf_arlen = burst_len; // 128b * 256 = 4KB
+  rdbuf_araddr = RDBUF_ADDR_BASE + (rdreshdl_cid_idx << hp_word_size_log2);
+  rdbuf_arlen = hp_burst_len; // 128b * 256 = 4KB
   rdbuf_arsize = 4; // 128b = 16B = 2^4B
   rdbuf_arburst = 1; // INCR
 end

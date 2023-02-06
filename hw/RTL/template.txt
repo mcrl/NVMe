@@ -235,3 +235,33 @@ always_comb begin
   out_valid = in_valid & pred;
   in_ready = out_ready & (out_valid | ~in_valid);
 end
+
+// AXIS master for cmac
+output wire [M_DATA_WIDTH-1:0]   m_tdata,
+output wire [M_DATA_WIDTH/8-1:0] m_tkeep,
+output wire m_tvalid,
+input  wire m_tready,
+output wire m_tlast,
+output wire m_tuser,
+
+// instantiation
+.m_tdata(m_tdata),
+.m_tkeep(m_tkeep),
+.m_tvalid(m_tvalid),
+.m_tready(m_tready),
+.m_tlast(m_tlast),
+.m_tuser(m_tuser),
+
+// AXIS slave for cmac
+input wire [M_DATA_WIDTH-1:0]   s_tdata,
+input wire [M_DATA_WIDTH/8-1:0] s_tkeep,
+input wire s_tvalid,
+input wire s_tlast,
+input wire s_tuser,
+
+// instantiation
+.s_tdata(s_tdata),
+.s_tkeep(s_tkeep),
+.s_tvalid(s_tvalid),
+.s_tlast(s_tlast),
+.s_tuser(s_tuser),
