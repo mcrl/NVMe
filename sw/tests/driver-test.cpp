@@ -6,6 +6,9 @@
 #include <vector>
 #include "nvme_spec.h"
 
+#define LOW32(x) ((x) & 0xFFFFFFFF)
+#define HIGH32(x) ((x) >> 32)
+
 const size_t NVME_BAR0 = 0x80000000;
 
 const size_t ADBUF_ADDR = 0x00c00000;
@@ -32,8 +35,12 @@ const size_t WRSQ_ADDR = 0x00000000;
 const size_t WRBUF_ADDR = 0x00200000;
 const size_t WRCQ_ADDR = 0x00400000;
 const size_t RDSQ_ADDR = 0x00600000;
+const size_t RDBUF_ADDR = 0x00800000;
 const size_t RDCQ_ADDR = 0x00a00000;
 const size_t OUTSTANDING = 16;
+
+const size_t SQ3T_ADDR = 0x1018;
+const size_t CQ3H_ADDR = 0x101c;
 
 
 class SnuFPGA {
@@ -61,6 +68,7 @@ public:
   void BuildAdminCommandCreateSQ(NVMeSQEntry &sqe, size_t addr, int qid, int qsize, int cqid);
   void BuildAdminCommandGetLogPage(NVMeSQEntry &sqe);
   void BuildIOCommandWrite(NVMeSQEntry &sqe, size_t addr, size_t slba, uint16_t nlb);
+  void BuildIOCommandRead(NVMeSQEntry &sqe, size_t addr, size_t slba, uint16_t nlb);
   void EnqueueAdminSQ(NVMeSQEntry &sqe);
   void DequeueAdminCQ(NVMeCQEntry &cqe);
   void EnqueueIOSQ(NVMeSQEntry &sqe);
@@ -88,9 +96,9 @@ private:
   int cq0phase;
 
   // IO
-  int sq1t;
-  int cq1h;
-  int cq1phase;
+  int sq3t;
+  int cq3h;
+  int cq3phase;
 };
 
 SnuFPGA::SnuFPGA(int devnum, int bus) : devnum_(devnum), bus_(bus) {
@@ -119,7 +127,7 @@ SnuFPGA::SnuFPGA(int devnum, int bus) : devnum_(devnum), bus_(bus) {
 	}
 	spdlog::info("character device {} opened. fd={}", devname, fd_user_);
 
-  mmio_sz_user_ = 2UL * 1024 * 1024; // 2MB
+  mmio_sz_user_ = 4UL * 1024 * 1024; // 4MB
 	vaddr_user_ = mmap(NULL, mmio_sz_user_, PROT_READ | PROT_WRITE, MAP_SHARED, fd_user_, 0);
 	if (vaddr_user_ == (void *)-1) {
     spdlog::info("mmap failed: {}", strerror(errno));
@@ -311,8 +319,24 @@ void SnuFPGA::BuildIOCommandWrite(NVMeSQEntry &sqe, size_t addr, size_t slba, ui
   sqe.mptr = 0;
   sqe.dptr.prp.prp1 = addr;
   sqe.dptr.prp.prp2 = 0;
-  sqe.cdw10 = slba; // starting lba
-  sqe.cdw11 = slba >> 32;
+  sqe.cdw10 = LOW32(slba); // starting lba
+  sqe.cdw11 = HIGH32(slba);
+  sqe.cdw12 = nlb - 1; // 0-base
+  sqe.cdw13 = 0;
+  sqe.cdw14 = 0;
+  sqe.cdw15 = 0;
+}
+
+void SnuFPGA::BuildIOCommandRead(NVMeSQEntry &sqe, size_t addr, size_t slba, uint16_t nlb) {
+  sqe.opc = 0x02;
+  sqe.fuse = 0;
+  sqe.psdt = 0;
+  sqe.nsid = 1;
+  sqe.mptr = 0;
+  sqe.dptr.prp.prp1 = addr;
+  sqe.dptr.prp.prp2 = 0;
+  sqe.cdw10 = LOW32(slba); // starting lba
+  sqe.cdw11 = HIGH32(slba);
   sqe.cdw12 = nlb - 1; // 0-base
   sqe.cdw13 = 0;
   sqe.cdw14 = 0;
@@ -345,34 +369,34 @@ void SnuFPGA::DequeueAdminCQ(NVMeCQEntry &cqe) {
 }
 
 void SnuFPGA::EnqueueIOSQ(NVMeSQEntry &sqe) {
-  sqe.cid = sq1t; // queue slot number as cid
-  MemcpyH2D(IO_SQ_ADDR + sq1t * 64, &sqe, 64);
-  sq1t = (sq1t + 1) % IO_SQ_DEPTH;
+  sqe.cid = sq3t; // queue slot number as cid
+  MemcpyH2D(IO_SQ_ADDR + sq3t * 64, &sqe, 64);
+  sq3t = (sq3t + 1) % IO_SQ_DEPTH;
 }
 
 void SnuFPGA::DoorbellIOSQ() {
-  WriteNVMe(0x1008, sq1t);
+  WriteNVMe(SQ3T_ADDR, sq3t);
 }
 
 void SnuFPGA::DequeueIOCQ(NVMeCQEntry &cqe) {
   while (true) {
-    MemcpyD2H(&cqe, IO_CQ_ADDR + cq1h * 16, 16);
-    if (cqe.status.p != cq1phase) break;
+    MemcpyD2H(&cqe, IO_CQ_ADDR + cq3h * 16, 16);
+    if (cqe.status.p != cq3phase) break;
     std::this_thread::sleep_for(std::chrono::milliseconds(1));
   }
   // 32-bit access from host and 128-bit access from NVMe might have interleaved
   // So copy full 128-bit again
-  MemcpyD2H(&cqe, IO_CQ_ADDR + cq1h * 16, 16);
+  MemcpyD2H(&cqe, IO_CQ_ADDR + cq3h * 16, 16);
 
   spdlog::info("sqhd={:X} sqid={:X} cid={} phase={} sc={} sct={} crd={} m={} dnr={}",
     cqe.sqhd, cqe.sqid, cqe.cid, (int)cqe.status.p, (int)cqe.status.sc, (int)cqe.status.sct,
     (int)cqe.status.crd, (int)cqe.status.m, (int)cqe.status.dnr);
-  cq1h = (cq1h + 1) % IO_CQ_DEPTH;
-  if (cq1h == 0) cq1phase ^= 1;
+  cq3h = (cq3h + 1) % IO_CQ_DEPTH;
+  if (cq3h == 0) cq3phase ^= 1;
 }
 
 void SnuFPGA::DoorbellIOCQ() {
-  WriteNVMe(0x100c, cq1h);
+  WriteNVMe(CQ3H_ADDR, cq3h);
 }
 
 void SnuFPGA::CheckError() {
@@ -397,6 +421,9 @@ void SnuFPGA::InitNVMe() {
   // Set secondary bus number to 1 (at 0x18 on config space of PCIe IP)
   // TODO limit write to secondary bus number (not 4byte)
   WritePCIeConfig(0, 0, 0, 0x18, 0x00000100);
+
+  PrintPCIeConfigSpaceHeader(0, 0, 0);
+  PrintPCIeConfigSpaceHeader(1, 0, 0);
 
   // Poll until the NVMe device is detected on bus 1.
   // If the device is found, we will read device ID and vendor ID.
@@ -435,8 +462,8 @@ void SnuFPGA::InitNVMe() {
   spdlog::info("Detected bar_size = {}", nvme_bar0_size);
 
   // 4. Assign NVMe's BAR0 (64-bit) at given address
-  WritePCIeConfig(1, 0, 0, 0x10, NVME_BAR0);
-  WritePCIeConfig(1, 0, 0, 0x14, NVME_BAR0 >> 32);
+  WritePCIeConfig(1, 0, 0, 0x10, LOW32(NVME_BAR0));
+  WritePCIeConfig(1, 0, 0, 0x14, HIGH32(NVME_BAR0));
 
   // Bridge Enable after enumeration is done.
   // This is described in Xilinx PG194.
@@ -475,10 +502,10 @@ void SnuFPGA::InitNVMe() {
    */
   // We put ASQ right after NVMe BAR0, and ACQ right after ASQ.
   WriteNVMe(0x24, (ADMIN_CQ_DEPTH << 16) | ADMIN_SQ_DEPTH); // AQA set (CQ size, SQ size)
-  WriteNVMe(0x28, ADMIN_SQ_ADDR); // ASQ low adddr
-  WriteNVMe(0x2c, ADMIN_SQ_ADDR >> 32); // ASQ high addr
-  WriteNVMe(0x30, ADMIN_CQ_ADDR); // ACQ low adddr
-  WriteNVMe(0x34, ADMIN_CQ_ADDR >> 32); // ASQ high addr
+  WriteNVMe(0x28, LOW32(ADMIN_SQ_ADDR)); // ASQ low adddr
+  WriteNVMe(0x2c, HIGH32(ADMIN_SQ_ADDR)); // ASQ high addr
+  WriteNVMe(0x30, LOW32(ADMIN_CQ_ADDR)); // ACQ low adddr
+  WriteNVMe(0x34, HIGH32(ADMIN_CQ_ADDR)); // ASQ high addr
   // Clean ACQ to check phase
   Memset(ADMIN_CQ_ADDR, 0, ADMIN_CQ_DEPTH * 16);
 
@@ -654,15 +681,15 @@ the Identify Controller data structure (i.e., CNS 01h);
     NVMeSQEntry sqe;
     NVMeCQEntry cqe;
     // Build IOCQ
-    BuildAdminCommandCreateCQ(sqe, IO_CQ_ADDR, 1, IO_CQ_DEPTH);
+    BuildAdminCommandCreateCQ(sqe, IO_CQ_ADDR, 3, IO_CQ_DEPTH);
     EnqueueAdminSQ(sqe);
     DequeueAdminCQ(cqe);
     // Build WRCQ
-    BuildAdminCommandCreateCQ(sqe, WRCQ_ADDR, 2, OUTSTANDING);
+    BuildAdminCommandCreateCQ(sqe, WRCQ_ADDR, 1, OUTSTANDING);
     EnqueueAdminSQ(sqe);
     DequeueAdminCQ(cqe);
     // Build RDCQ
-    BuildAdminCommandCreateCQ(sqe, RDCQ_ADDR, 3, OUTSTANDING);
+    BuildAdminCommandCreateCQ(sqe, RDCQ_ADDR, 2, OUTSTANDING);
     EnqueueAdminSQ(sqe);
     DequeueAdminCQ(cqe);
   }
@@ -677,15 +704,15 @@ the Identify Controller data structure (i.e., CNS 01h);
     NVMeSQEntry sqe;
     NVMeCQEntry cqe;
     // Build IOSQ
-    BuildAdminCommandCreateSQ(sqe, IO_SQ_ADDR, 1, IO_SQ_DEPTH, 1);
+    BuildAdminCommandCreateSQ(sqe, IO_SQ_ADDR, 3, IO_SQ_DEPTH, 3);
     EnqueueAdminSQ(sqe);
     DequeueAdminCQ(cqe);
     // Build WRSQ
-    BuildAdminCommandCreateSQ(sqe, WRSQ_ADDR, 2, OUTSTANDING, 2);
+    BuildAdminCommandCreateSQ(sqe, WRSQ_ADDR, 1, OUTSTANDING, 1);
     EnqueueAdminSQ(sqe);
     DequeueAdminCQ(cqe);
     // Build RDSQ
-    BuildAdminCommandCreateSQ(sqe, RDSQ_ADDR, 3, OUTSTANDING, 3);
+    BuildAdminCommandCreateSQ(sqe, RDSQ_ADDR, 2, OUTSTANDING, 2);
     EnqueueAdminSQ(sqe);
     DequeueAdminCQ(cqe);
   }
@@ -711,20 +738,19 @@ void SnuFPGA::SetKernelArgument(size_t start_addr, size_t end_addr, uint32_t ben
   uint32_t start_val[4] = {0, 0, 0, 0};
   uint32_t stride[4] = {1, 1, 1, 1};
 
-  const uint32_t kernel_lba_size = 512;
-  const uint32_t kernel_burst_len = kernel_lba_size / 16 - 1;
-  const uint32_t driver_lba_size = 512;
-  const uint32_t driver_log2_lba = __builtin_ctz(kernel_lba_size);
-  const uint32_t driver_burst_len = kernel_burst_len;
-  const uint32_t driver_nlb = kernel_lba_size / driver_lba_size;
-  static_assert((1 << driver_log2_lba) == kernel_lba_size, "Incorrect size");
-  static_assert(kernel_lba_size == driver_nlb * driver_lba_size, "Incorrect size");
+  const uint32_t hp_word_size = 4096;
+  const uint32_t nvme_word_size = 512;
+
+  const uint32_t hp_word_size_log2 = __builtin_ctz(hp_word_size);
+  const uint32_t hp_burst_len = hp_word_size / 16 - 1;
+  const uint32_t nvme_nlb = hp_word_size / nvme_word_size - 1;
+  const uint32_t nvme_word_size_log2 = __builtin_ctz(nvme_word_size);
 
   // Kernel write
-  WriteUser(0x10, start_addr);
-  WriteUser(0x14, start_addr >> 32);
-  WriteUser(0x18, end_addr);
-  WriteUser(0x1c, end_addr >> 32);
+  WriteUser(0x10, LOW32(start_addr));
+  WriteUser(0x14, HIGH32(start_addr));
+  WriteUser(0x18, LOW32(end_addr));
+  WriteUser(0x1c, HIGH32(end_addr));
   WriteUser(0x20, start_val[0]);
   WriteUser(0x24, start_val[1]);
   WriteUser(0x28, start_val[2]);
@@ -734,12 +760,13 @@ void SnuFPGA::SetKernelArgument(size_t start_addr, size_t end_addr, uint32_t ben
   WriteUser(0x38, stride[2]);
   WriteUser(0x3c, stride[3]);
   WriteUser(0x40, benchmode);
-  WriteUser(0x48, kernel_burst_len);
-  WriteUser(0x4c, kernel_lba_size);
+  WriteUser(0x48, hp_burst_len);
+  WriteUser(0x4c, hp_word_size);
   // Driver write
-  WriteUser(0x00200000, driver_log2_lba);
-  WriteUser(0x00200004, driver_burst_len);
-  WriteUser(0x00200008, driver_nlb);
+  WriteUser(0x00200000, hp_word_size_log2);
+  WriteUser(0x00200004, hp_burst_len);
+  WriteUser(0x00200008, nvme_nlb);
+  WriteUser(0x0020000c, nvme_word_size_log2);
 
   size_t check_start_addr;
   size_t check_end_addr;
@@ -757,19 +784,20 @@ void SnuFPGA::SetKernelArgument(size_t start_addr, size_t end_addr, uint32_t ben
   check_stride[2] = ReadUser(0x38);
   check_stride[3] = ReadUser(0x3c);
   check_benchmode = ReadUser(0x40);
-  uint32_t check_kernel_burst_len = ReadUser(0x48);
-  uint32_t check_kernel_lba_size = ReadUser(0x4c);
-  uint32_t check_driver_log2_lba = ReadUser(0x00200000);
-  uint32_t check_driver_burst_len = ReadUser(0x00200004);
-  uint32_t check_driver_nlb = ReadUser(0x00200008);
+  uint32_t check_kernel_hp_burst_len = ReadUser(0x48);
+  uint32_t check_hp_word_size = ReadUser(0x4c);
+  uint32_t check_hp_word_size_log2 = ReadUser(0x00200000);
+  uint32_t check_driver_hp_burst_len = ReadUser(0x00200004);
+  uint32_t check_nvme_nlb = ReadUser(0x00200008);
+  uint32_t check_nvme_word_size_log2 = ReadUser(0x0020000c);
 
   spdlog::info("Kernel argument validation: saddr={} eaddr={} "
     "start_val={},{},{},{} stride={},{},{},{} benchmode={} burst_len={} lba_size={}",
     check_start_addr, check_end_addr, check_start_val[0], check_start_val[1],
     check_start_val[2], check_start_val[3], check_stride[0], check_stride[1],
-    check_stride[2], check_stride[3], check_benchmode, check_kernel_burst_len, check_kernel_lba_size);
-  spdlog::info("Driver argument validation: log2_lba={} burst_len={} nlb={}",
-    check_driver_log2_lba, check_driver_burst_len, check_driver_nlb);
+    check_stride[2], check_stride[3], check_benchmode, check_kernel_hp_burst_len, check_hp_word_size);
+  spdlog::info("Driver argument validation: hp_word_size_log2={} hp_burst_len={} nvme_nlb={} nvme_word_size_log2={}",
+    check_hp_word_size_log2, check_driver_hp_burst_len, check_nvme_nlb, check_nvme_word_size_log2);
 
   // Expected checksum
   uint32_t val[4] = {start_val[0], start_val[1], start_val[2], start_val[3]};
@@ -827,20 +855,44 @@ void SnuFPGA::LaunchKernel() {
 }
 
 void SnuFPGA::TestWrite() {
+  // Seq Write Test
+  //{
+  //  NVMeSQEntry sqe;
+  //  NVMeCQEntry cqe;
+  //  const int iter = 4;
+  //  const int lba_per_iter = 8;
+  //  for (int i = 0; i < iter; ++i) {
+  //    BuildIOCommandWrite(sqe, WRBUF_ADDR + i * 512 * lba_per_iter, i * lba_per_iter, lba_per_iter);
+  //    EnqueueIOSQ(sqe);
+  //  }
+  //  DoorbellIOSQ();
+  //  for (int i = 0; i < iter; ++i) {
+  //    DequeueIOCQ(cqe);
+  //  }
+  //  DoorbellIOCQ();
+  //}
+
+  // Simul Write/Read Test
   {
     NVMeSQEntry sqe;
     NVMeCQEntry cqe;
-    const int iter = 4;
     const int lba_per_iter = 8;
-    for (int i = 0; i < iter; ++i) {
-      BuildIOCommandWrite(sqe, WRBUF_ADDR + i * 512 * lba_per_iter, i * lba_per_iter, lba_per_iter);
+    const int n = 31;
+    for (int i = 0; i < n; ++i) {
+      BuildIOCommandRead(sqe, RDBUF_ADDR + i * 512 * lba_per_iter, i * lba_per_iter, lba_per_iter);
+      EnqueueIOSQ(sqe);
+    }
+    for (int i = 0; i < n; ++i) {
+      BuildIOCommandWrite(sqe, WRBUF_ADDR + i * 512 * lba_per_iter, (i + n) * lba_per_iter, lba_per_iter);
       EnqueueIOSQ(sqe);
     }
     DoorbellIOSQ();
-    for (int i = 0; i < iter; ++i) {
+    for (int i = 0; i < n * 2; ++i) {
       DequeueIOCQ(cqe);
     }
     DoorbellIOCQ();
+
+    //WriteNVMe(SQ3T_ADDR, 0);
   }
 }
 
@@ -858,30 +910,30 @@ int main(int argc, char **argv) {
   std::chrono::steady_clock cpu_clock;
 
   // Write bench
-  //{
-  //  spdlog::info("4KB Seq write test");
-  //  size_t n = atoi(argv[1]) * 512;
-  //  fpga->SetKernelArgument(0, n, 0);
-  //  auto st = cpu_clock.now();
-  //  fpga->LaunchKernel();
-  //  auto et = cpu_clock.now();
-  //  double elapsed = std::chrono::duration_cast<std::chrono::nanoseconds>(et - st).count() / 1e9;
-  //  double mbps = n / elapsed / 1e6;
-  //  spdlog::info("{} bytes, {} sec, {} MB/s", n, elapsed, mbps);
-  //}
+  {
+    spdlog::info("4KB Seq write test");
+    size_t n = atol(argv[1]) * 4096;
+    fpga->SetKernelArgument(0, n, 0);
+    auto st = cpu_clock.now();
+    fpga->LaunchKernel();
+    auto et = cpu_clock.now();
+    double elapsed = std::chrono::duration_cast<std::chrono::nanoseconds>(et - st).count() / 1e9;
+    double mbps = n / elapsed / 1e6;
+    spdlog::info("{} bytes, {} sec, {} MB/s", n, elapsed, mbps);
+  }
 
   // Read bench
-  //{
-  //  spdlog::info("4KB Seq read test");
-  //  size_t n = atoi(argv[1]) * 512;
-  //  fpga->SetKernelArgument(0, n, 1);
-  //  auto st = cpu_clock.now();
-  //  fpga->LaunchKernel();
-  //  auto et = cpu_clock.now();
-  //  double elapsed = std::chrono::duration_cast<std::chrono::nanoseconds>(et - st).count() / 1e9;
-  //  double mbps = n / elapsed / 1e6;
-  //  spdlog::info("{} bytes, {} sec, {} MB/s", n, elapsed, mbps);
-  //}
+  {
+    spdlog::info("4KB Seq read test");
+    size_t n = atol(argv[1]) * 4096;
+    fpga->SetKernelArgument(0, n, 1);
+    auto st = cpu_clock.now();
+    fpga->LaunchKernel();
+    auto et = cpu_clock.now();
+    double elapsed = std::chrono::duration_cast<std::chrono::nanoseconds>(et - st).count() / 1e9;
+    double mbps = n / elapsed / 1e6;
+    spdlog::info("{} bytes, {} sec, {} MB/s", n, elapsed, mbps);
+  }
 
   delete fpga;
   return 0;

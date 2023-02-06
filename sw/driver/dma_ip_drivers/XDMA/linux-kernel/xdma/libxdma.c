@@ -1615,7 +1615,7 @@ static int is_config_bar(struct xdma_dev *xdev, int idx)
 	return flag;
 }
 
-#ifndef XDMA_CONFIG_BAR_NUM
+//#ifndef XDMA_CONFIG_BAR_NUM
 static int identify_bars(struct xdma_dev *xdev, int *bar_id_list, int num_bars,
 			 int config_bar_pos)
 {
@@ -1685,7 +1685,7 @@ static int identify_bars(struct xdma_dev *xdev, int *bar_id_list, int num_bars,
 		config_bar_pos, xdev->user_bar_idx, xdev->bypass_bar_idx);
 	return 0;
 }
-#endif
+//#endif
 
 /* map_bars() -- map device regions into kernel virtual address space
  *
@@ -1696,23 +1696,23 @@ static int map_bars(struct xdma_dev *xdev, struct pci_dev *dev)
 {
 	int rv;
 
-#ifdef XDMA_CONFIG_BAR_NUM
-	rv = map_single_bar(xdev, dev, XDMA_CONFIG_BAR_NUM);
-	if (rv <= 0) {
-		pr_info("%s, map config bar %d failed, %d.\n",
-			dev_name(&dev->dev), XDMA_CONFIG_BAR_NUM, rv);
-		return -EINVAL;
-	}
-
-	if (is_config_bar(xdev, XDMA_CONFIG_BAR_NUM) == 0) {
-		pr_info("%s, unable to identify config bar %d.\n",
-			dev_name(&dev->dev), XDMA_CONFIG_BAR_NUM);
-		return -EINVAL;
-	}
-	xdev->config_bar_idx = XDMA_CONFIG_BAR_NUM;
-
-	return 0;
-#else
+//#ifdef XDMA_CONFIG_BAR_NUM
+//	rv = map_single_bar(xdev, dev, XDMA_CONFIG_BAR_NUM);
+//	if (rv <= 0) {
+//		pr_info("%s, map config bar %d failed, %d.\n",
+//			dev_name(&dev->dev), XDMA_CONFIG_BAR_NUM, rv);
+//		return -EINVAL;
+//	}
+//
+//	if (is_config_bar(xdev, XDMA_CONFIG_BAR_NUM) == 0) {
+//		pr_info("%s, unable to identify config bar %d.\n",
+//			dev_name(&dev->dev), XDMA_CONFIG_BAR_NUM);
+//		return -EINVAL;
+//	}
+//	xdev->config_bar_idx = XDMA_CONFIG_BAR_NUM;
+//
+//	return 0;
+//#else
 	int i;
 	int bar_id_list[XDMA_BAR_NUM];
 	int bar_id_idx = 0;
@@ -1732,7 +1732,8 @@ static int map_bars(struct xdma_dev *xdev, struct pci_dev *dev)
 
 		/* Try to identify BAR as XDMA control BAR */
 		if ((bar_len >= XDMA_BAR_SIZE) && (xdev->config_bar_idx < 0)) {
-			if (is_config_bar(xdev, i)) {
+			//if (is_config_bar(xdev, i)) {
+			if (i == XDMA_CONFIG_BAR_NUM) {
 				xdev->config_bar_idx = i;
 				config_bar_pos = bar_id_idx;
 				pr_info("config bar %d, pos %d.\n",
@@ -1764,7 +1765,7 @@ fail:
 	/* unwind; unmap any BARs that we did map */
 	unmap_bars(xdev, dev);
 	return rv;
-#endif
+//#endif
 }
 
 /*
