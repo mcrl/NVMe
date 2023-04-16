@@ -13,3 +13,4 @@ modification, are permitted provided that the following conditions are met:
    documentation and/or other materials provided with the distribution.
 
 3.  Neither the name of the copyright holder nor the names of its
+   contributors may be used to endorse or promote products derived from
