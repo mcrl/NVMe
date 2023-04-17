@@ -14,3 +14,4 @@ modification, are permitted provided that the following conditions are met:
 
 3.  Neither the name of the copyright holder nor the names of its
    contributors may be used to endorse or promote products derived from
+   this software without specific prior written permission.
