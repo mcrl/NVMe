@@ -33,3 +33,4 @@ ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 `timescale 1 ns / 1 ps
 // Top level of the kernel. Do not modify module name, parameters or ports.
 module placeholder #(
+  parameter integer AXIL_CTRL_ADDR_WIDTH  =  13,
