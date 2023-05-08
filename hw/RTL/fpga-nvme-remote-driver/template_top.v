@@ -34,3 +34,4 @@ ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 // Top level of the kernel. Do not modify module name, parameters or ports.
 module placeholder #(
   parameter integer AXIL_CTRL_ADDR_WIDTH  =  13,
+  parameter integer AXIL_CTRL_DATA_WIDTH  =  32,
