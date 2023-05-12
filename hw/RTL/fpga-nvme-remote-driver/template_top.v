@@ -38,3 +38,4 @@ module placeholder #(
   parameter integer AXIS_TDATA_WIDTH      = 512
 )
 (
+  // System clocks and resets
