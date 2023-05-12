@@ -39,3 +39,4 @@ module placeholder #(
 )
 (
   // System clocks and resets
+  (* X_INTERFACE_INFO = "xilinx.com:signal:clock:1.0 ap_clk CLK" *)
