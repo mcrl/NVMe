@@ -41,3 +41,4 @@ module placeholder #(
   // System clocks and resets
   (* X_INTERFACE_INFO = "xilinx.com:signal:clock:1.0 ap_clk CLK" *)
   (* X_INTERFACE_PARAMETER = "ASSOCIATED_BUSIF S_AXIS:M_AXIS:S_AXILITE, ASSOCIATED_RESET ap_rst_n" *)
+  input  wire                                 ap_clk,
