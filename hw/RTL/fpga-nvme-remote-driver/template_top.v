@@ -44,3 +44,4 @@ module placeholder #(
   input  wire                                 ap_clk,
   (* X_INTERFACE_INFO = "xilinx.com:signal:reset:1.0 ap_rst_n RST" *)
   (* X_INTERFACE_PARAMETER = "POLARITY ACTIVE_LOW" *)
+  input  wire                                 ap_rst_n,
