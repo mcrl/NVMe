@@ -46,3 +46,4 @@ module placeholder #(
   (* X_INTERFACE_PARAMETER = "POLARITY ACTIVE_LOW" *)
   input  wire                                 ap_rst_n,
 
+  (* X_INTERFACE_INFO = "xilinx.com:signal:clock:1.0 clk_gt_freerun CLK" *)
