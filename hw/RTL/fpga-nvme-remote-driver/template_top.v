@@ -47,3 +47,4 @@ module placeholder #(
   input  wire                                 ap_rst_n,
 
   (* X_INTERFACE_INFO = "xilinx.com:signal:clock:1.0 clk_gt_freerun CLK" *)
+  input wire                                  clk_gt_freerun,
