@@ -50,3 +50,4 @@ module placeholder #(
   input wire                                  clk_gt_freerun,
 
   input  wire                                 S_AXIS_tvalid,
+  output wire                                 S_AXIS_tready,
