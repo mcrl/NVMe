@@ -52,3 +52,4 @@ module placeholder #(
   input  wire                                 S_AXIS_tvalid,
   output wire                                 S_AXIS_tready,
   input  wire       [AXIS_TDATA_WIDTH-1:0]    S_AXIS_tdata,
+  input  wire     [AXIS_TDATA_WIDTH/8-1:0]    S_AXIS_tkeep,
