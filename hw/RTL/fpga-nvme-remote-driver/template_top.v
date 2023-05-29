@@ -56,3 +56,4 @@ module placeholder #(
   input  wire                                 S_AXIS_tlast,
 
   output wire                                 M_AXIS_tvalid,
+  input  wire                                 M_AXIS_tready,
