@@ -62,3 +62,4 @@ module placeholder #(
   output wire                                 M_AXIS_tlast,
 
   input  wire                                 S_AXILITE_awvalid,
+  output wire                                 S_AXILITE_awready,
