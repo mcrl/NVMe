@@ -61,3 +61,4 @@ module placeholder #(
   output wire     [AXIS_TDATA_WIDTH/8-1:0]    M_AXIS_tkeep,
   output wire                                 M_AXIS_tlast,
 
+  input  wire                                 S_AXILITE_awvalid,
