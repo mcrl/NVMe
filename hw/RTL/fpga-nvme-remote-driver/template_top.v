@@ -67,3 +67,4 @@ module placeholder #(
   input  wire                                 S_AXILITE_wvalid,
   output wire                                 S_AXILITE_wready,
   input  wire   [AXIL_CTRL_DATA_WIDTH-1:0]    S_AXILITE_wdata,
+  input  wire [AXIL_CTRL_DATA_WIDTH/8-1:0]    S_AXILITE_wstrb,
