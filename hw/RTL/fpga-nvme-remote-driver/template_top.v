@@ -74,3 +74,4 @@ module placeholder #(
   output wire                                 S_AXILITE_rvalid,
   input  wire                                 S_AXILITE_rready,
   output wire   [AXIL_CTRL_DATA_WIDTH-1:0]    S_AXILITE_rdata,
+  output wire                        [1:0]    S_AXILITE_rresp,
