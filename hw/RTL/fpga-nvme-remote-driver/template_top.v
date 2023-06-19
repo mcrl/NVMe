@@ -77,3 +77,4 @@ module placeholder #(
   output wire                        [1:0]    S_AXILITE_rresp,
   output wire                                 S_AXILITE_bvalid,
   input  wire                                 S_AXILITE_bready,
+  output wire                        [1:0]    S_AXILITE_bresp,
