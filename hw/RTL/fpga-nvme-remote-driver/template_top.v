@@ -79,3 +79,4 @@ module placeholder #(
   input  wire                                 S_AXILITE_bready,
   output wire                        [1:0]    S_AXILITE_bresp,
 
+  // GT interfaces
