@@ -80,3 +80,4 @@ module placeholder #(
   output wire                        [1:0]    S_AXILITE_bresp,
 
   // GT interfaces
+  input  wire                        [3:0]    gt_rxp_in,
