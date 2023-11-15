@@ -1,5 +1,0 @@
-add_executable(GenSudaGetErrorString GenSudaGetErrorString.cpp)
-target_link_libraries(GenSudaGetErrorString cudart)
-
-add_executable(GenSuGetErrorString GenSuGetErrorString.cpp)
-target_link_libraries(GenSuGetErrorString cuda)

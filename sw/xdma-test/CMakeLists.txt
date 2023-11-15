@@ -1,1 +1,0 @@
-add_executable(xdma-test main.cpp)
