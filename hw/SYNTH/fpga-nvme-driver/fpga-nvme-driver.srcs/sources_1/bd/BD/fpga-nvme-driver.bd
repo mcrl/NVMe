@@ -1,0 +1,1011 @@
+{
+  "design": {
+    "design_info": {
+      "boundary_crc": "0x296D70929F9A7501",
+      "device": "xczu19eg-ffvd1760-2-e",
+      "gen_directory": "../../../../fpga-nvme-driver.gen/sources_1/bd/BD",
+      "name": "oculink_bd",
+      "rev_ctrl_bd_flag": "RevCtrlBdOff",
+      "synth_flow_mode": "Hierarchical",
+      "tool_version": "2021.2"
+    },
+    "design_tree": {
+      "xdma_host": "",
+      "util_ds_host_buf": "",
+      "xdma_oculink_0a": "",
+      "util_ds_buf": "",
+      "system_ila_0": "",
+      "system_ila_1": "",
+      "axi_bram_ctrl_0": "",
+      "system_ila_3": "",
+      "smartconnect_0": ""
+    },
+    "interface_ports": {
+      "host_mgt": {
+        "mode": "Master",
+        "vlnv_bus_definition": "xilinx.com:interface:pcie_7x_mgt:1.0",
+        "vlnv": "xilinx.com:interface:pcie_7x_mgt_rtl:1.0"
+      },
+      "host_ref": {
+        "mode": "Slave",
+        "vlnv_bus_definition": "xilinx.com:interface:diff_clock:1.0",
+        "vlnv": "xilinx.com:interface:diff_clock_rtl:1.0",
+        "parameters": {
+          "FREQ_HZ": {
+            "value": "100000000"
+          }
+        }
+      },
+      "oculink_0a_mgt": {
+        "mode": "Master",
+        "vlnv_bus_definition": "xilinx.com:interface:pcie_7x_mgt:1.0",
+        "vlnv": "xilinx.com:interface:pcie_7x_mgt_rtl:1.0"
+      },
+      "oculink_0a_ref": {
+        "mode": "Slave",
+        "vlnv_bus_definition": "xilinx.com:interface:diff_clock:1.0",
+        "vlnv": "xilinx.com:interface:diff_clock_rtl:1.0",
+        "parameters": {
+          "FREQ_HZ": {
+            "value": "100000000"
+          }
+        }
+      },
+      "oculink_0a_m_axi": {
+        "mode": "Master",
+        "vlnv_bus_definition": "xilinx.com:interface:aximm:1.0",
+        "vlnv": "xilinx.com:interface:aximm_rtl:1.0",
+        "parameters": {
+          "ADDR_WIDTH": {
+            "value": "32"
+          },
+          "DATA_WIDTH": {
+            "value": "256"
+          },
+          "FREQ_HZ": {
+            "value": "125000000"
+          },
+          "HAS_BURST": {
+            "value": "0"
+          },
+          "HAS_QOS": {
+            "value": "0"
+          },
+          "HAS_REGION": {
+            "value": "0"
+          },
+          "NUM_READ_OUTSTANDING": {
+            "value": "8"
+          },
+          "NUM_WRITE_OUTSTANDING": {
+            "value": "16"
+          },
+          "PROTOCOL": {
+            "value": "AXI4"
+          }
+        },
+        "memory_map_ref": "oculink_0a_m_axi"
+      },
+      "oculink_0a_s_axi": {
+        "mode": "Slave",
+        "vlnv_bus_definition": "xilinx.com:interface:aximm:1.0",
+        "vlnv": "xilinx.com:interface:aximm_rtl:1.0",
+        "parameters": {
+          "ADDR_WIDTH": {
+            "value": "32"
+          },
+          "ARUSER_WIDTH": {
+            "value": "0"
+          },
+          "AWUSER_WIDTH": {
+            "value": "0"
+          },
+          "BUSER_WIDTH": {
+            "value": "0"
+          },
+          "DATA_WIDTH": {
+            "value": "256"
+          },
+          "FREQ_HZ": {
+            "value": "125000000"
+          },
+          "HAS_BRESP": {
+            "value": "1"
+          },
+          "HAS_BURST": {
+            "value": "1"
+          },
+          "HAS_CACHE": {
+            "value": "0"
+          },
+          "HAS_LOCK": {
+            "value": "0"
+          },
+          "HAS_PROT": {
+            "value": "0"
+          },
+          "HAS_QOS": {
+            "value": "0"
+          },
+          "HAS_REGION": {
+            "value": "1"
+          },
+          "HAS_RRESP": {
+            "value": "1"
+          },
+          "HAS_WSTRB": {
+            "value": "1"
+          },
+          "ID_WIDTH": {
+            "value": "4"
+          },
+          "MAX_BURST_LENGTH": {
+            "value": "256"
+          },
+          "NUM_READ_OUTSTANDING": {
+            "value": "8"
+          },
+          "NUM_READ_THREADS": {
+            "value": "1"
+          },
+          "NUM_WRITE_OUTSTANDING": {
+            "value": "8"
+          },
+          "NUM_WRITE_THREADS": {
+            "value": "1"
+          },
+          "PROTOCOL": {
+            "value": "AXI4"
+          },
+          "READ_WRITE_MODE": {
+            "value": "READ_WRITE"
+          },
+          "RUSER_BITS_PER_BYTE": {
+            "value": "0"
+          },
+          "RUSER_WIDTH": {
+            "value": "0"
+          },
+          "SUPPORTS_NARROW_BURST": {
+            "value": "1"
+          },
+          "WUSER_BITS_PER_BYTE": {
+            "value": "0"
+          },
+          "WUSER_WIDTH": {
+            "value": "0"
+          },
+          "master_id": {
+            "value": "1"
+          }
+        },
+        "address_space_ref": "oculink_0a_s_axi",
+        "base_address": {
+          "minimum": "0x00000000",
+          "maximum": "0xFFFFFFFF",
+          "width": "32"
+        }
+      },
+      "host_bram": {
+        "mode": "Master",
+        "vlnv_bus_definition": "xilinx.com:interface:bram:1.0",
+        "vlnv": "xilinx.com:interface:bram_rtl:1.0",
+        "parameters": {
+          "MASTER_TYPE": {
+            "value": "BRAM_CTRL"
+          },
+          "READ_WRITE_MODE": {
+            "value": "READ_WRITE"
+          }
+        }
+      },
+      "host_m_axi": {
+        "mode": "Master",
+        "vlnv_bus_definition": "xilinx.com:interface:aximm:1.0",
+        "vlnv": "xilinx.com:interface:aximm_rtl:1.0",
+        "parameters": {
+          "ADDR_WIDTH": {
+            "value": "64"
+          },
+          "DATA_WIDTH": {
+            "value": "512"
+          },
+          "FREQ_HZ": {
+            "value": "250000000"
+          },
+          "HAS_BURST": {
+            "value": "0"
+          },
+          "HAS_QOS": {
+            "value": "0"
+          },
+          "HAS_REGION": {
+            "value": "0"
+          },
+          "NUM_READ_OUTSTANDING": {
+            "value": "32"
+          },
+          "NUM_WRITE_OUTSTANDING": {
+            "value": "16"
+          },
+          "PROTOCOL": {
+            "value": "AXI4"
+          }
+        },
+        "memory_map_ref": "host_m_axi"
+      }
+    },
+    "ports": {
+      "host_rstn": {
+        "type": "rst",
+        "direction": "I",
+        "parameters": {
+          "POLARITY": {
+            "value": "ACTIVE_LOW"
+          }
+        }
+      },
+      "oculink_0a_axi_aclk": {
+        "type": "clk",
+        "direction": "O",
+        "parameters": {
+          "ASSOCIATED_BUSIF": {
+            "value": "oculink_0a_m_axi:oculink_0a_s_axi"
+          },
+          "FREQ_HZ": {
+            "value": "125000000"
+          }
+        }
+      },
+      "oculink_0a_rstn": {
+        "type": "rst",
+        "direction": "O"
+      }
+    },
+    "components": {
+      "xdma_host": {
+        "vlnv": "xilinx.com:ip:xdma:4.1",
+        "xci_name": "oculink_bd_xdma_host_0",
+        "xci_path": "ip\\oculink_bd_xdma_host_0\\oculink_bd_xdma_host_0.xci",
+        "inst_hier_path": "xdma_host",
+        "parameters": {
+          "PF0_DEVICE_ID_mqdma": {
+            "value": "903F"
+          },
+          "PF0_SRIOV_VF_DEVICE_ID": {
+            "value": "A03F"
+          },
+          "PF2_DEVICE_ID_mqdma": {
+            "value": "923F"
+          },
+          "PF3_DEVICE_ID_mqdma": {
+            "value": "933F"
+          },
+          "axi_data_width": {
+            "value": "512_bit"
+          },
+          "axil_master_64bit_en": {
+            "value": "true"
+          },
+          "axilite_master_en": {
+            "value": "true"
+          },
+          "axilite_master_scale": {
+            "value": "Kilobytes"
+          },
+          "axilite_master_size": {
+            "value": "64"
+          },
+          "axisten_freq": {
+            "value": "250"
+          },
+          "en_gt_selection": {
+            "value": "false"
+          },
+          "mode_selection": {
+            "value": "Advanced"
+          },
+          "pf0_device_id": {
+            "value": "903F"
+          },
+          "pl_link_cap_max_link_speed": {
+            "value": "8.0_GT/s"
+          },
+          "pl_link_cap_max_link_width": {
+            "value": "X16"
+          },
+          "plltype": {
+            "value": "QPLL1"
+          },
+          "xdma_axi_intf_mm": {
+            "value": "AXI_Memory_Mapped"
+          },
+          "xdma_pcie_64bit_en": {
+            "value": "true"
+          },
+          "xdma_rnum_chnl": {
+            "value": "4"
+          },
+          "xdma_wnum_chnl": {
+            "value": "4"
+          }
+        },
+        "interface_ports": {
+          "M_AXI": {
+            "vlnv": "xilinx.com:interface:aximm_rtl:1.0",
+            "mode": "Master",
+            "address_space_ref": "M_AXI",
+            "base_address": {
+              "minimum": "0x00000000",
+              "maximum": "0xFFFFFFFFFFFFFFFF",
+              "width": "64"
+            }
+          },
+          "M_AXI_LITE": {
+            "vlnv": "xilinx.com:interface:aximm_rtl:1.0",
+            "mode": "Master",
+            "address_space_ref": "M_AXI_LITE",
+            "base_address": {
+              "minimum": "0x00000000",
+              "maximum": "0xFFFFFFFF",
+              "width": "32"
+            }
+          }
+        },
+        "addressing": {
+          "address_spaces": {
+            "M_AXI": {
+              "range": "16E",
+              "width": "64"
+            },
+            "M_AXI_LITE": {
+              "range": "4G",
+              "width": "32"
+            }
+          }
+        }
+      },
+      "util_ds_host_buf": {
+        "vlnv": "xilinx.com:ip:util_ds_buf:2.2",
+        "xci_name": "oculink_bd_util_ds_host_buf_0",
+        "xci_path": "ip\\oculink_bd_util_ds_host_buf_0\\oculink_bd_util_ds_host_buf_0.xci",
+        "inst_hier_path": "util_ds_host_buf",
+        "parameters": {
+          "C_BUF_TYPE": {
+            "value": "IBUFDSGTE"
+          }
+        }
+      },
+      "xdma_oculink_0a": {
+        "vlnv": "xilinx.com:ip:xdma:4.1",
+        "xci_name": "oculink_bd_xdma_oculink_0a_0",
+        "xci_path": "ip\\oculink_bd_xdma_oculink_0a_0\\oculink_bd_xdma_oculink_0a_0.xci",
+        "inst_hier_path": "xdma_oculink_0a",
+        "parameters": {
+          "BASEADDR": {
+            "value": "0x00000000"
+          },
+          "HIGHADDR": {
+            "value": "0x001FFFFF"
+          },
+          "PF0_DEVICE_ID_mqdma": {
+            "value": "9034"
+          },
+          "PF0_SRIOV_VF_DEVICE_ID": {
+            "value": "A034"
+          },
+          "PF2_DEVICE_ID_mqdma": {
+            "value": "9234"
+          },
+          "PF3_DEVICE_ID_mqdma": {
+            "value": "9334"
+          },
+          "axi_addr_width": {
+            "value": "32"
+          },
+          "axi_data_width": {
+            "value": "256_bit"
+          },
+          "axisten_freq": {
+            "value": "125"
+          },
+          "bridge_burst": {
+            "value": "true"
+          },
+          "c_m_axi_num_write": {
+            "value": "8"
+          },
+          "c_s_axi_supports_narrow_burst": {
+            "value": "false"
+          },
+          "device_port_type": {
+            "value": "Root_Port_of_PCI_Express_Root_Complex"
+          },
+          "dma_reset_source_sel": {
+            "value": "Phy_Ready"
+          },
+          "en_gt_selection": {
+            "value": "true"
+          },
+          "functional_mode": {
+            "value": "AXI_Bridge"
+          },
+          "mode_selection": {
+            "value": "Advanced"
+          },
+          "pcie_blk_locn": {
+            "value": "X0Y3"
+          },
+          "pf0_bar0_enabled": {
+            "value": "false"
+          },
+          "pf0_bar0_type_mqdma": {
+            "value": "Memory"
+          },
+          "pf0_base_class_menu": {
+            "value": "Bridge_device"
+          },
+          "pf0_base_class_menu_mqdma": {
+            "value": "Bridge_device"
+          },
+          "pf0_class_code_base_mqdma": {
+            "value": "06"
+          },
+          "pf0_class_code_interface": {
+            "value": "00"
+          },
+          "pf0_class_code_sub": {
+            "value": "07"
+          },
+          "pf0_device_id": {
+            "value": "9134"
+          },
+          "pf0_sriov_bar0_type": {
+            "value": "Memory"
+          },
+          "pf0_sub_class_interface_menu": {
+            "value": "CardBus_bridge"
+          },
+          "pf1_bar0_type_mqdma": {
+            "value": "Memory"
+          },
+          "pf1_base_class_menu": {
+            "value": "Bridge_device"
+          },
+          "pf1_base_class_menu_mqdma": {
+            "value": "Bridge_device"
+          },
+          "pf1_class_code_base_mqdma": {
+            "value": "06"
+          },
+          "pf1_class_code_interface": {
+            "value": "00"
+          },
+          "pf1_class_code_sub": {
+            "value": "07"
+          },
+          "pf1_sub_class_interface_menu": {
+            "value": "CardBus_bridge"
+          },
+          "pf2_bar0_type_mqdma": {
+            "value": "Memory"
+          },
+          "pf2_base_class_menu_mqdma": {
+            "value": "Bridge_device"
+          },
+          "pf2_class_code_base_mqdma": {
+            "value": "06"
+          },
+          "pf3_bar0_type_mqdma": {
+            "value": "Memory"
+          },
+          "pf3_base_class_menu_mqdma": {
+            "value": "Bridge_device"
+          },
+          "pf3_class_code_base_mqdma": {
+            "value": "06"
+          },
+          "pl_link_cap_max_link_speed": {
+            "value": "8.0_GT/s"
+          },
+          "pl_link_cap_max_link_width": {
+            "value": "X4"
+          },
+          "plltype": {
+            "value": "QPLL1"
+          },
+          "select_quad": {
+            "value": "GTY_Quad_131"
+          },
+          "type1_membase_memlimit_enable": {
+            "value": "Enabled"
+          },
+          "type1_prefetchable_membase_memlimit": {
+            "value": "64bit_Enabled"
+          },
+          "xdma_axi_intf_mm": {
+            "value": "AXI_Memory_Mapped"
+          }
+        },
+        "interface_ports": {
+          "S_AXI_B": {
+            "vlnv": "xilinx.com:interface:aximm_rtl:1.0",
+            "mode": "Slave",
+            "memory_map_ref": "S_AXI_B"
+          },
+          "M_AXI_B": {
+            "vlnv": "xilinx.com:interface:aximm_rtl:1.0",
+            "mode": "Master",
+            "address_space_ref": "M_AXI_B",
+            "base_address": {
+              "minimum": "0x00000000",
+              "maximum": "0xFFFFFFFF",
+              "width": "32"
+            }
+          },
+          "S_AXI_LITE": {
+            "vlnv": "xilinx.com:interface:aximm_rtl:1.0",
+            "mode": "Slave",
+            "memory_map_ref": "S_AXI_LITE"
+          }
+        },
+        "addressing": {
+          "memory_maps": {
+            "S_AXI_B": {
+              "address_blocks": {
+                "BAR0": {
+                  "base_address": "0",
+                  "range": "1M",
+                  "width": "20",
+                  "usage": "memory",
+                  "offset_base_param": "axibar_0",
+                  "offset_high_param": "axibar_highaddr_0"
+                }
+              }
+            },
+            "S_AXI_LITE": {
+              "address_blocks": {
+                "CTL0": {
+                  "base_address": "0",
+                  "range": "512M",
+                  "width": "29",
+                  "usage": "memory",
+                  "offset_base_param": "baseaddr",
+                  "offset_high_param": "highaddr"
+                }
+              }
+            }
+          },
+          "address_spaces": {
+            "M_AXI_B": {
+              "range": "4G",
+              "width": "32"
+            }
+          }
+        }
+      },
+      "util_ds_buf": {
+        "vlnv": "xilinx.com:ip:util_ds_buf:2.2",
+        "xci_name": "oculink_bd_util_ds_buf_0",
+        "xci_path": "ip\\oculink_bd_util_ds_buf_0\\oculink_bd_util_ds_buf_0.xci",
+        "inst_hier_path": "util_ds_buf",
+        "parameters": {
+          "C_BUF_TYPE": {
+            "value": "IBUFDSGTE"
+          }
+        }
+      },
+      "system_ila_0": {
+        "vlnv": "xilinx.com:ip:system_ila:1.1",
+        "xci_name": "oculink_bd_system_ila_0_0",
+        "xci_path": "ip\\oculink_bd_system_ila_0_0\\oculink_bd_system_ila_0_0.xci",
+        "inst_hier_path": "system_ila_0",
+        "parameters": {
+          "C_MON_TYPE": {
+            "value": "NATIVE"
+          },
+          "C_NUM_OF_PROBES": {
+            "value": "3"
+          }
+        }
+      },
+      "system_ila_1": {
+        "vlnv": "xilinx.com:ip:system_ila:1.1",
+        "xci_name": "oculink_bd_system_ila_1_0",
+        "xci_path": "ip\\oculink_bd_system_ila_1_0\\oculink_bd_system_ila_1_0.xci",
+        "inst_hier_path": "system_ila_1",
+        "parameters": {
+          "C_MON_TYPE": {
+            "value": "NATIVE"
+          },
+          "C_NUM_OF_PROBES": {
+            "value": "2"
+          }
+        }
+      },
+      "axi_bram_ctrl_0": {
+        "vlnv": "xilinx.com:ip:axi_bram_ctrl:4.1",
+        "xci_name": "oculink_bd_axi_bram_ctrl_0_0",
+        "xci_path": "ip\\oculink_bd_axi_bram_ctrl_0_0\\oculink_bd_axi_bram_ctrl_0_0.xci",
+        "inst_hier_path": "axi_bram_ctrl_0",
+        "parameters": {
+          "PROTOCOL": {
+            "value": "AXI4LITE"
+          },
+          "SINGLE_PORT_BRAM": {
+            "value": "1"
+          }
+        }
+      },
+      "system_ila_3": {
+        "vlnv": "xilinx.com:ip:system_ila:1.1",
+        "xci_name": "oculink_bd_system_ila_3_0",
+        "xci_path": "ip\\oculink_bd_system_ila_3_0\\oculink_bd_system_ila_3_0.xci",
+        "inst_hier_path": "system_ila_3",
+        "parameters": {
+          "C_NUM_MONITOR_SLOTS": {
+            "value": "4"
+          },
+          "C_SLOT": {
+            "value": "2"
+          }
+        },
+        "interface_ports": {
+          "SLOT_0_AXI": {
+            "mode": "Monitor",
+            "vlnv_bus_definition": "xilinx.com:interface:aximm:1.0",
+            "vlnv": "xilinx.com:interface:aximm_rtl:1.0"
+          },
+          "SLOT_1_AXI": {
+            "mode": "Monitor",
+            "vlnv_bus_definition": "xilinx.com:interface:aximm:1.0",
+            "vlnv": "xilinx.com:interface:aximm_rtl:1.0"
+          },
+          "SLOT_2_AXI": {
+            "mode": "Monitor",
+            "vlnv_bus_definition": "xilinx.com:interface:aximm:1.0",
+            "vlnv": "xilinx.com:interface:aximm_rtl:1.0"
+          },
+          "SLOT_3_AXI": {
+            "mode": "Monitor",
+            "vlnv_bus_definition": "xilinx.com:interface:aximm:1.0",
+            "vlnv": "xilinx.com:interface:aximm_rtl:1.0"
+          }
+        }
+      },
+      "smartconnect_0": {
+        "vlnv": "xilinx.com:ip:smartconnect:1.0",
+        "xci_name": "oculink_bd_smartconnect_0_0",
+        "xci_path": "ip\\oculink_bd_smartconnect_0_0\\oculink_bd_smartconnect_0_0.xci",
+        "inst_hier_path": "smartconnect_0",
+        "parameters": {
+          "NUM_MI": {
+            "value": "2"
+          },
+          "NUM_SI": {
+            "value": "1"
+          }
+        },
+        "interface_ports": {
+          "S00_AXI": {
+            "mode": "Slave",
+            "vlnv_bus_definition": "xilinx.com:interface:aximm:1.0",
+            "vlnv": "xilinx.com:interface:aximm_rtl:1.0",
+            "parameters": {
+              "NUM_READ_OUTSTANDING": {
+                "value": "8"
+              },
+              "NUM_WRITE_OUTSTANDING": {
+                "value": "8"
+              }
+            },
+            "bridges": [
+              "M00_AXI",
+              "M01_AXI"
+            ]
+          },
+          "M00_AXI": {
+            "mode": "Master",
+            "vlnv_bus_definition": "xilinx.com:interface:aximm:1.0",
+            "vlnv": "xilinx.com:interface:aximm_rtl:1.0",
+            "parameters": {
+              "MAX_BURST_LENGTH": {
+                "value": "256"
+              },
+              "NUM_READ_OUTSTANDING": {
+                "value": "8"
+              },
+              "NUM_READ_THREADS": {
+                "value": "1"
+              },
+              "NUM_WRITE_OUTSTANDING": {
+                "value": "8"
+              },
+              "NUM_WRITE_THREADS": {
+                "value": "1"
+              },
+              "RUSER_BITS_PER_BYTE": {
+                "value": "0"
+              },
+              "SUPPORTS_NARROW_BURST": {
+                "value": "0"
+              },
+              "WUSER_BITS_PER_BYTE": {
+                "value": "0"
+              }
+            }
+          },
+          "M01_AXI": {
+            "mode": "Master",
+            "vlnv_bus_definition": "xilinx.com:interface:aximm:1.0",
+            "vlnv": "xilinx.com:interface:aximm_rtl:1.0",
+            "parameters": {
+              "MAX_BURST_LENGTH": {
+                "value": "1"
+              },
+              "NUM_READ_OUTSTANDING": {
+                "value": "8"
+              },
+              "NUM_READ_THREADS": {
+                "value": "1"
+              },
+              "NUM_WRITE_OUTSTANDING": {
+                "value": "8"
+              },
+              "NUM_WRITE_THREADS": {
+                "value": "1"
+              },
+              "RUSER_BITS_PER_BYTE": {
+                "value": "0"
+              },
+              "SUPPORTS_NARROW_BURST": {
+                "value": "0"
+              },
+              "WUSER_BITS_PER_BYTE": {
+                "value": "0"
+              }
+            }
+          }
+        }
+      }
+    },
+    "interface_nets": {
+      "axi_bram_ctrl_0_BRAM_PORTA": {
+        "interface_ports": [
+          "host_bram",
+          "axi_bram_ctrl_0/BRAM_PORTA"
+        ]
+      },
+      "diff_clock_rtl_0_1": {
+        "interface_ports": [
+          "host_ref",
+          "util_ds_host_buf/CLK_IN_D"
+        ]
+      },
+      "diff_clock_rtl_0_2": {
+        "interface_ports": [
+          "oculink_0a_ref",
+          "util_ds_buf/CLK_IN_D"
+        ]
+      },
+      "oculink_0a_s_axi_1": {
+        "interface_ports": [
+          "oculink_0a_s_axi",
+          "smartconnect_0/S00_AXI",
+          "system_ila_3/SLOT_3_AXI"
+        ]
+      },
+      "smartconnect_0_M00_AXI": {
+        "interface_ports": [
+          "xdma_oculink_0a/S_AXI_B",
+          "smartconnect_0/M00_AXI",
+          "system_ila_3/SLOT_1_AXI"
+        ]
+      },
+      "smartconnect_0_M01_AXI": {
+        "interface_ports": [
+          "xdma_oculink_0a/S_AXI_LITE",
+          "smartconnect_0/M01_AXI",
+          "system_ila_3/SLOT_2_AXI"
+        ]
+      },
+      "xdma_host_M_AXI": {
+        "interface_ports": [
+          "host_m_axi",
+          "xdma_host/M_AXI"
+        ]
+      },
+      "xdma_host_M_AXI_LITE": {
+        "interface_ports": [
+          "xdma_host/M_AXI_LITE",
+          "axi_bram_ctrl_0/S_AXI"
+        ]
+      },
+      "xdma_host_pcie_mgt": {
+        "interface_ports": [
+          "host_mgt",
+          "xdma_host/pcie_mgt"
+        ]
+      },
+      "xdma_oculink_M_AXI_B": {
+        "interface_ports": [
+          "oculink_0a_m_axi",
+          "xdma_oculink_0a/M_AXI_B",
+          "system_ila_3/SLOT_0_AXI"
+        ]
+      },
+      "xdma_oculink_pcie_mgt": {
+        "interface_ports": [
+          "oculink_0a_mgt",
+          "xdma_oculink_0a/pcie_mgt"
+        ]
+      }
+    },
+    "nets": {
+      "reset_rtl_0_1": {
+        "ports": [
+          "host_rstn",
+          "xdma_host/sys_rst_n"
+        ]
+      },
+      "util_ds_buf_IBUF_DS_ODIV2": {
+        "ports": [
+          "util_ds_host_buf/IBUF_DS_ODIV2",
+          "xdma_host/sys_clk"
+        ]
+      },
+      "util_ds_buf_IBUF_DS_ODIV3": {
+        "ports": [
+          "util_ds_buf/IBUF_DS_ODIV2",
+          "xdma_oculink_0a/sys_clk"
+        ]
+      },
+      "util_ds_buf_IBUF_OUT": {
+        "ports": [
+          "util_ds_host_buf/IBUF_OUT",
+          "xdma_host/sys_clk_gt"
+        ]
+      },
+      "util_ds_buf_IBUF_OUT1": {
+        "ports": [
+          "util_ds_buf/IBUF_OUT",
+          "xdma_oculink_0a/sys_clk_gt"
+        ]
+      },
+      "xdma_host_axi_aclk": {
+        "ports": [
+          "xdma_host/axi_aclk",
+          "system_ila_1/clk",
+          "axi_bram_ctrl_0/s_axi_aclk"
+        ]
+      },
+      "xdma_host_axi_aresetn": {
+        "ports": [
+          "xdma_host/axi_aresetn",
+          "xdma_oculink_0a/sys_rst_n",
+          "system_ila_1/probe1",
+          "oculink_0a_rstn",
+          "axi_bram_ctrl_0/s_axi_aresetn"
+        ]
+      },
+      "xdma_host_user_lnk_up": {
+        "ports": [
+          "xdma_host/user_lnk_up",
+          "system_ila_1/probe0"
+        ]
+      },
+      "xdma_oculink_0a_axi_aclk": {
+        "ports": [
+          "xdma_oculink_0a/axi_aclk",
+          "oculink_0a_axi_aclk",
+          "system_ila_0/clk",
+          "system_ila_3/clk",
+          "smartconnect_0/aclk"
+        ]
+      },
+      "xdma_oculink_0a_axi_aresetn": {
+        "ports": [
+          "xdma_oculink_0a/axi_aresetn",
+          "system_ila_0/probe2",
+          "system_ila_3/resetn",
+          "smartconnect_0/aresetn"
+        ]
+      },
+      "xdma_oculink_0a_cfg_ltssm_state": {
+        "ports": [
+          "xdma_oculink_0a/cfg_ltssm_state",
+          "system_ila_0/probe1"
+        ]
+      },
+      "xdma_oculink_0a_user_lnk_up": {
+        "ports": [
+          "xdma_oculink_0a/user_lnk_up",
+          "system_ila_0/probe0"
+        ]
+      }
+    },
+    "addressing": {
+      "/": {
+        "address_spaces": {
+          "oculink_0a_s_axi": {
+            "range": "4G",
+            "width": "32",
+            "segments": {
+              "SEG_xdma_oculink_0a_BAR0": {
+                "address_block": "/xdma_oculink_0a/S_AXI_B/BAR0",
+                "offset": "0x80000000",
+                "range": "2G",
+                "offset_base_param": "axibar_0",
+                "offset_high_param": "axibar_highaddr_0"
+              },
+              "SEG_xdma_oculink_0a_CTL0": {
+                "address_block": "/xdma_oculink_0a/S_AXI_LITE/CTL0",
+                "offset": "0x00000000",
+                "range": "2G",
+                "offset_base_param": "baseaddr",
+                "offset_high_param": "highaddr"
+              }
+            }
+          }
+        },
+        "memory_maps": {
+          "oculink_0a_m_axi": {
+            "address_blocks": {
+              "Reg": {
+                "base_address": "0",
+                "range": "64K",
+                "width": "16",
+                "usage": "register"
+              }
+            }
+          },
+          "host_m_axi": {
+            "address_blocks": {
+              "Reg": {
+                "base_address": "0",
+                "range": "64K",
+                "width": "16",
+                "usage": "register"
+              }
+            }
+          }
+        }
+      },
+      "/xdma_host": {
+        "address_spaces": {
+          "M_AXI": {
+            "segments": {
+              "SEG_host_m_axi_Reg": {
+                "address_block": "/host_m_axi/Reg",
+                "offset": "0x0000000000000000",
+                "range": "512M"
+              }
+            }
+          },
+          "M_AXI_LITE": {
+            "segments": {
+              "SEG_axi_bram_ctrl_0_Mem0": {
+                "address_block": "/axi_bram_ctrl_0/S_AXI/Mem0",
+                "offset": "0x00000000",
+                "range": "64K"
+              }
+            }
+          }
+        }
+      },
+      "/xdma_oculink_0a": {
+        "address_spaces": {
+          "M_AXI_B": {
+            "segments": {
+              "SEG_oculink_0a_m_axi_Reg": {
+                "address_block": "/oculink_0a_m_axi/Reg",
+                "offset": "0x00000000",
+                "range": "4G"
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}

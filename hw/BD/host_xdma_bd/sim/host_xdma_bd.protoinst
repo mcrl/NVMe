@@ -1,0 +1,61 @@
+{
+	"version": "1.0",
+	"modules": {
+		"host_xdma_bd": {
+			"proto_instances": {
+				"/axi_bram_ctrl_0/S_AXI": {
+					"interface": "xilinx.com:interface:aximm:1.0",
+					"ports": {
+						"ACLK": { "actual": "s_axi_aclk"},
+						"ARADDR": { "actual": "s_axi_araddr"},
+						"ARESETN": { "actual": "s_axi_aresetn"},
+						"ARPROT": { "actual": "s_axi_arprot"},
+						"ARREADY": { "actual": "s_axi_arready"},
+						"ARVALID": { "actual": "s_axi_arvalid"},
+						"AWADDR": { "actual": "s_axi_awaddr"},
+						"AWPROT": { "actual": "s_axi_awprot"},
+						"AWREADY": { "actual": "s_axi_awready"},
+						"AWVALID": { "actual": "s_axi_awvalid"},
+						"BREADY": { "actual": "s_axi_bready"},
+						"BRESP": { "actual": "s_axi_bresp"},
+						"BVALID": { "actual": "s_axi_bvalid"},
+						"RDATA": { "actual": "s_axi_rdata"},
+						"RREADY": { "actual": "s_axi_rready"},
+						"RRESP": { "actual": "s_axi_rresp"},
+						"RVALID": { "actual": "s_axi_rvalid"},
+						"WDATA": { "actual": "s_axi_wdata"},
+						"WREADY": { "actual": "s_axi_wready"},
+						"WSTRB": { "actual": "s_axi_wstrb"},
+						"WVALID": { "actual": "s_axi_wvalid"}
+					}
+				},
+				"/xdam_host/M_AXI_LITE": {
+					"interface": "xilinx.com:interface:aximm:1.0",
+					"ports": {
+						"ACLK": { "actual": "axi_aclk"},
+						"ARADDR": { "actual": "m_axil_araddr"},
+						"ARESETN": { "actual": "axi_aresetn"},
+						"ARPROT": { "actual": "m_axil_arprot"},
+						"ARREADY": { "actual": "m_axil_arready"},
+						"ARVALID": { "actual": "m_axil_arvalid"},
+						"AWADDR": { "actual": "m_axil_awaddr"},
+						"AWPROT": { "actual": "m_axil_awprot"},
+						"AWREADY": { "actual": "m_axil_awready"},
+						"AWVALID": { "actual": "m_axil_awvalid"},
+						"BREADY": { "actual": "m_axil_bready"},
+						"BRESP": { "actual": "m_axil_bresp"},
+						"BVALID": { "actual": "m_axil_bvalid"},
+						"RDATA": { "actual": "m_axil_rdata"},
+						"RREADY": { "actual": "m_axil_rready"},
+						"RRESP": { "actual": "m_axil_rresp"},
+						"RVALID": { "actual": "m_axil_rvalid"},
+						"WDATA": { "actual": "m_axil_wdata"},
+						"WREADY": { "actual": "m_axil_wready"},
+						"WSTRB": { "actual": "m_axil_wstrb"},
+						"WVALID": { "actual": "m_axil_wvalid"}
+					}
+				}
+			}
+		}
+	}
+}
