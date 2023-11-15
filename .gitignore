@@ -21,6 +21,8 @@ hw/IP/adam-test/design_2/*
 hw/IP/adam-test/design_3/*
 !hw/IP/adam-test/**/*.bd
 
+*.nfs*
+
 # temporary files
 *.swp
 build
