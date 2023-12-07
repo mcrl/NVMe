@@ -1,8 +1,0 @@
-set_property PACKAGE_PIN AM16 [get_ports host_rstn]
-set_property IOSTANDARD LVCMOS18 [get_ports host_rstn]
-set_property PACKAGE_PIN P32 [get_ports {oculink_0a_ref_clk_p[0]}]
-set_property PACKAGE_PIN AH10 [get_ports {host_ref_clk_p[0]}]
-create_clock -period 10.000 -name {host_ref_clk_p[0]} -waveform {0.000 5.000} [get_ports {host_ref_clk_p[0]}]
-create_clock -period 10.000 -name {oculink_0a_ref_clk_p[0]} -waveform {0.000 5.000} [get_ports {oculink_0a_ref_clk_p[0]}]
-set_property PACKAGE_PIN A14 [get_ports oculink_0a_rstn]
-set_property IOSTANDARD LVCMOS33 [get_ports oculink_0a_rstn]

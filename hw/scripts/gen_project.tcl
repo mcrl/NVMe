@@ -1,1 +1,0 @@
-write_project_tcl -no_copy_sources -use_bd_files -internal [get_property DIRECTORY [current_project]]/../../scripts/[current_project].tcl
