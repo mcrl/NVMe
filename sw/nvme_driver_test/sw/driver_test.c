@@ -194,6 +194,8 @@ int main(int argc, char *argv[]){
   send_admin_command();    
   send_admin_command2();    
 
+  getchar();
+
   // Send IO commands : Read, Write
   send_write_command();
   send_read_command();
