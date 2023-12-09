@@ -5,10 +5,12 @@ NVIDIA GPUDirect Storage (GDS) test code using [Cufile API](https://docs.nvidia.
 ## Build and run
 
 ```bash
+# Build
 make
 ```
 ```bash
-make run # ./gds
+# Run
+./gds [device path] # e.g., ./gds /dev/nvme0n1
 ```
 
 ## Reference
