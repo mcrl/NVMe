@@ -6,7 +6,6 @@
 #include <sys/mman.h>
 #include <errno.h>
 #include <spdlog/spdlog.h>
-#include <spdlog/stopwatch.h>
 #include <stdlib.h>
 
 using namespace spdlog;
@@ -40,7 +39,7 @@ uint32_t write_csr(void *fpga_addr, uint32_t wrdata, uint32_t offset) {
 }
 
 uint32_t read_csr(void *fpga_addr, uint32_t offset) {
-  uint32_t rddata = *(uint32_t*)((size_t)fpga_addr + offset);
+  uint32_t rddata = *(volatile uint32_t*)((size_t)fpga_addr + offset);
   return rddata;
 }
 
@@ -150,8 +149,8 @@ void send_admin_command2(){
 }
 
 void send_write_command(){
-  write_csr(soc_addr, 0xC000, 0x50); // nvme addr
-  write_csr(soc_addr, 0xC000, 0x54); // fpga addr
+  write_csr(soc_addr, 0xC000, 0x50); // PRP / FPGA buffer addr
+  write_csr(soc_addr, 0xC000, 0x54); // SLBA (start LBA) -- CSR 0x54, was 'fpga addr'
   write_csr(soc_addr, 0x3, 0x58); // nlb
   write_csr(soc_addr, 0xA1111111, 0x100); // wrdata[0] 
   write_csr(soc_addr, 0xA2222222, 0x104); // wrdata[1] 
@@ -166,11 +165,15 @@ void send_write_command(){
 }
 
 void send_read_command(){
-  write_csr(soc_addr, 0xC000, 0x50); // nvme addr
-  write_csr(soc_addr, 0xC000, 0x54); // fpga addr
+  write_csr(soc_addr, 0xC000, 0x50); // PRP / FPGA buffer addr
+  write_csr(soc_addr, 0xC000, 0x54); // SLBA (start LBA)
   write_csr(soc_addr, 0x3, 0x58); // nlb
-  write_csr(soc_addr, 0x0, 0x48); // send write cmd
-  while(read_csr(soc_addr, 0x5C) == 0); // write until cpl done
+  write_csr(soc_addr, 0x0, 0x48); // send read cmd
+  while(read_csr(soc_addr, 0x5C) == 0); // wait until cpl done
+  // read-back data returned by FPGA (CSR 0x200..0x21C); status in CSR 0x60
+  info("read cpl status (CQE DW3): {:08X}", read_csr(soc_addr, 0x60));
+  for (int i = 0; i < 8; i++)
+    info("  rddata[{}] = {:08X}", i, read_csr(soc_addr, 0x200 + 4*i));
 }
 
 
@@ -179,8 +182,12 @@ int main(int argc, char *argv[]){
 	spdlog::set_pattern("%^[%l]%$  %v");
   int soc_fd;
 
+  // Device node: argv[1] if given (e.g. a sysfs PCI resource0 BAR), else the XDMA user node.
+  const char *dev = (argc > 1) ? argv[1] : BITTWARE_SOC_DEV;
+  info("using device: {}", dev);
+
   // Open Bittware 250 SOC + mmap 64KB
-  soc_fd = open_fpga(BITTWARE_SOC_DEV);
+  soc_fd = open_fpga(dev);
   soc_addr = Mmap(soc_fd);
  
   // Reset modules on FPGA

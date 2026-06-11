@@ -103,6 +103,9 @@ module kernel(
   logic [31:0]    oculink_0a_nlb;
   logic           oculink_0a_cpl_done;
   logic [31:0]    oculink_0a_wrdata [7:0];
+  logic [31:0]    oculink_0a_rddata [7:0];
+  logic [31:0]    oculink_0a_cpl_status;
+  logic [31:0]    oculink_0a_cpl_count;
 
   logic [31:0]    oculink_0a_s_axi_awaddr_cfg;
   logic [1:0]     oculink_0a_s_axi_awburst_cfg;
@@ -174,7 +177,10 @@ module kernel(
     .oculink_0a_fpga_addr             (oculink_0a_fpga_addr),
     .oculink_0a_nlb                   (oculink_0a_nlb),
     .oculink_0a_cpl_done              (oculink_0a_cpl_done),
-    .oculink_0a_wrdata                (oculink_0a_wrdata)
+    .oculink_0a_wrdata                (oculink_0a_wrdata),
+    .oculink_0a_rddata                (oculink_0a_rddata),
+    .oculink_0a_cpl_status            (oculink_0a_cpl_status),
+    .oculink_0a_cpl_count             (oculink_0a_cpl_count)
   );
 
   nvme_configurator nvme_0a_configurator_i(
@@ -239,7 +245,10 @@ module kernel(
     .nlb                    (oculink_0a_nlb),
     .cpl_done               (oculink_0a_cpl_done),
     .wrdata                 (oculink_0a_wrdata),
-    
+    .rddata                 (oculink_0a_rddata),
+    .cpl_status             (oculink_0a_cpl_status),
+    .cpl_count              (oculink_0a_cpl_count),
+
     .oculink_s_axi_awaddr   (oculink_0a_s_axi_awaddr_driver),
     .oculink_s_axi_awburst  (oculink_0a_s_axi_awburst_driver),
     .oculink_s_axi_awid     (oculink_0a_s_axi_awid_driver),

@@ -29,6 +29,9 @@ module nvme_driver #(
   input logic [31:0]    nlb,
   output logic          cpl_done,
   input logic [31:0]    wrdata [7:0],
+  output logic [31:0]   rddata [7:0],   // read-back data to host (last 32B of read payload)
+  output logic [31:0]   cpl_status,     // last completion CQE DW3 (status/phase/cid)
+  output logic [31:0]   cpl_count,      // monotonic completion counter (multi-outstanding)
 
 
   // AXI Slave : aw, w, b 
@@ -113,15 +116,61 @@ module nvme_driver #(
   logic [3:0]    oculink_m_axi_bid_rd;
   logic [1:0]    oculink_m_axi_bresp_rd;
   logic          oculink_m_axi_bvalid_rd;
-  
-  assign oculink_m_axi_rdata = is_sending_cmd ? oculink_m_axi_rdata_cmd : oculink_m_axi_rdata_wr;
-  assign oculink_m_axi_rid = is_sending_cmd ? oculink_m_axi_rid_cmd : oculink_m_axi_rid_wr;
-  assign oculink_m_axi_rlast = is_sending_cmd ? oculink_m_axi_rlast_cmd : oculink_m_axi_rlast_wr;   
-  assign oculink_m_axi_rresp = is_sending_cmd ? oculink_m_axi_rresp_cmd : oculink_m_axi_rresp_wr;
-  assign oculink_m_axi_rvalid = is_sending_cmd ? oculink_m_axi_rvalid_cmd : oculink_m_axi_rvalid_wr;   
-  assign oculink_m_axi_bid = is_receving_cpl ? oculink_m_axi_bid_cpl : oculink_m_axi_bid_rd;
-  assign oculink_m_axi_bresp = is_receving_cpl ? oculink_m_axi_bresp_cpl : oculink_m_axi_bresp_rd;
-  assign oculink_m_axi_bvalid = is_receving_cpl ? oculink_m_axi_bvalid_cpl : oculink_m_axi_bvalid_rd;
+
+  // ---------------- m_axi in-order demux tag FIFOs ----------------
+  // Root cause of the QD>1 hang: the R/B muxes selected on a PRODUCER-STATE flag (is_sending_cmd /
+  // is_receving_cpl), not on "which transaction the SSD is waiting on". Since oculink_m_axi_{ar,aw}ready
+  // are tied 1 and rid/bid are single-ID 0, AR-accept order IS the mandatory R-return order and AW-accept
+  // order IS the B order. So record the class of each accepted AR/AW in an in-order FWFT tag FIFO and serve
+  // the head (= oldest outstanding transaction). is_sending_cmd / is_receving_cpl are kept driven for the
+  // ILA probes but no longer select the mux.
+
+  // R-tag: {is_sqe, arlen[7:0]} per accepted AR; head selects the R source; pop on the served burst's rlast.
+  localparam RTAG_W = 9;
+  wire ar_is_sqe   = ((oculink_m_axi_araddr >= IOSQ_BAR) && (oculink_m_axi_araddr < IOSQ_BAR + IOSQ_SIZE)) ||
+                     ((oculink_m_axi_araddr >= ASQ_BAR)  && (oculink_m_axi_araddr < ASQ_BAR  + ASQ_SIZE));
+  wire ar_is_admin = (oculink_m_axi_araddr >= ASQ_BAR)  && (oculink_m_axi_araddr < ASQ_BAR + ASQ_SIZE);
+  logic [RTAG_W-1:0] rtag_head;
+  logic              rtag_empty, rtag_full;
+  wire               rtag_pop = oculink_m_axi_rvalid & oculink_m_axi_rready & oculink_m_axi_rlast;
+  tagfifo #(.WIDTH(RTAG_W), .DEPTH(256)) rtag_i (
+    .clk(oculink_axi_clk), .srst(!rstn),
+    .push(oculink_m_axi_arvalid), .din({ar_is_sqe, oculink_m_axi_arlen}),
+    .pop(rtag_pop), .head(rtag_head), .empty(rtag_empty), .full(rtag_full)
+  );
+  wire        rtag_head_is_sqe = rtag_head[8];
+  wire [7:0]  rtag_head_arlen  = rtag_head[7:0];
+  wire        rtag_sel_cmd     = (!rtag_empty) & rtag_head_is_sqe;  // R mux: 1=SQE(cmd), 0=write-data(wrdata)
+
+  // SQE-AR buffer: records each accepted SQE-class AR so the cmd FSM never misses an unbuffered arvalid.
+  logic sqear_head;
+  logic sqear_empty, sqear_full, sqear_pop;
+  tagfifo #(.WIDTH(1), .DEPTH(16)) sqear_i (
+    .clk(oculink_axi_clk), .srst(!rstn),
+    .push(oculink_m_axi_arvalid & ar_is_sqe), .din(ar_is_admin),
+    .pop(sqear_pop), .head(sqear_head), .empty(sqear_empty), .full(sqear_full)
+  );
+
+  // W-tag: is_cqe per accepted AW; head selects the B source; pop on the burst's B handshake.
+  wire aw_is_cqe = (oculink_m_axi_awaddr >= ACQ_BAR) && (oculink_m_axi_awaddr < IOSQ_BAR); // ACQ|IOCQ ranges
+  logic wtag_head;
+  logic wtag_empty, wtag_full;
+  wire  wtag_pop = oculink_m_axi_bvalid & oculink_m_axi_bready;
+  tagfifo #(.WIDTH(1), .DEPTH(256)) wtag_i (
+    .clk(oculink_axi_clk), .srst(!rstn),
+    .push(oculink_m_axi_awvalid), .din(aw_is_cqe),
+    .pop(wtag_pop), .head(wtag_head), .empty(wtag_empty), .full(wtag_full)
+  );
+  wire wtag_sel_cpl = (!wtag_empty) & wtag_head;   // B mux: 1=CQE(cpl), 0=read-data(rd)
+
+  assign oculink_m_axi_rdata  = rtag_sel_cmd ? oculink_m_axi_rdata_cmd  : oculink_m_axi_rdata_wr;
+  assign oculink_m_axi_rid    = rtag_sel_cmd ? oculink_m_axi_rid_cmd    : oculink_m_axi_rid_wr;
+  assign oculink_m_axi_rlast  = rtag_sel_cmd ? oculink_m_axi_rlast_cmd  : oculink_m_axi_rlast_wr;
+  assign oculink_m_axi_rresp  = rtag_sel_cmd ? oculink_m_axi_rresp_cmd  : oculink_m_axi_rresp_wr;
+  assign oculink_m_axi_rvalid = rtag_sel_cmd ? oculink_m_axi_rvalid_cmd : oculink_m_axi_rvalid_wr;
+  assign oculink_m_axi_bid    = wtag_sel_cpl ? oculink_m_axi_bid_cpl    : oculink_m_axi_bid_rd;
+  assign oculink_m_axi_bresp  = wtag_sel_cpl ? oculink_m_axi_bresp_cpl  : oculink_m_axi_bresp_rd;
+  assign oculink_m_axi_bvalid = wtag_sel_cpl ? oculink_m_axi_bvalid_cpl : oculink_m_axi_bvalid_rd;
 
 
   /* IO Submission Queue */
@@ -189,18 +238,47 @@ module nvme_driver #(
   localparam DB_SEND_ADATA  = 8'd4;
   localparam DB_WAIT_RESP   = 8'd5;
   localparam DB_DONE        = 8'd6;
-  
+  localparam DB_RING_IOCQH  = 8'd7;   // ring IO CQ head doorbell
+  localparam DB_RING_ACQH   = 8'd8;   // ring admin CQ head doorbell
+  localparam DB_SEND_IOCQH  = 8'd9;
+  localparam DB_SEND_ACQH   = 8'd10;
+  localparam DB_CQH_WAIT    = 8'd11;  // wait B for a CQ-head ring (no cmd_done handshake)
+
   logic [7:0]   db_state;
   logic         db_done;
-  logic [31:0]  iosqtdbl;
-  logic [31:0]  asqtdbl;
+  logic         cmd_done;   // declared early: used by db_state below, driven by cmd_state FSM
+  // SQ tail doorbells are now counter-driven (no FIFO-emptiness race with cmd FSM):
+  //   cmd FSM advances io_serve_cnt/a_serve_cnt when it pops/serves an SQE;
+  //   db FSM rings the SQ tail doorbell to that value (coalescing), like the CQ-head ring.
+  logic [31:0]  io_serve_cnt;   // IO  SQ tail value  (driven by cmd FSM)
+  logic [31:0]  a_serve_cnt;    // admin SQ tail value (driven by cmd FSM)
+  logic [31:0]  io_sq_rung;     // last IO  SQ tail rung (driven by db FSM)
+  logic [31:0]  a_sq_rung;      // last admin SQ tail rung (driven by db FSM)
+
+  // Queue depths (entries). Must match the QSIZE programmed in the IO queue-create commands.
+  localparam IOSQ_QDEPTH = 32'd64;   // IO SQ depth (IOSQ_SIZE 0x1000 / 64B = 64 max)
+  localparam ASQ_QDEPTH  = 32'd64;   // admin SQ depth (matches host AQA)
+  localparam IOCQ_QDEPTH = 32'd64;   // IO CQ depth
+  localparam ACQ_QDEPTH  = 32'd64;   // admin CQ depth
+  localparam ICQDB_OFFSET = 32'h100C + NVME_BAR;  // IO CQ head doorbell (queue 1)
+  localparam ACQDB_OFFSET = 32'h1004 + NVME_BAR;  // admin CQ head doorbell (queue 0)
+
+  // CQ head doorbell tracking. iocqhdbl/acqhdbl advanced by cpl FSM per completion;
+  // db FSM rings the CQ head doorbell to catch up (coalescing) so the CQ never fills.
+  logic [31:0]  iocqhdbl;     // IO CQ head pointer    (driven by cpl FSM)
+  logic [31:0]  acqhdbl;      // admin CQ head pointer (driven by cpl FSM)
+  logic [31:0]  io_cqh_rung;  // last IO CQ head value rung    (driven by db FSM)
+  logic [31:0]  a_cqh_rung;   // last admin CQ head value rung (driven by db FSM)
+  logic         cpl_is_io;    // last captured completion was IO (vs admin)
 
   always_ff @(posedge oculink_axi_clk or negedge rstn) begin
     if (!rstn) begin
       db_state                <= DB_IDLE;
       db_done                 <= 0;
-      iosqtdbl                <= 1;
-      asqtdbl                 <= 1;
+      io_sq_rung              <= 0;
+      a_sq_rung               <= 0;
+      io_cqh_rung             <= 0;
+      a_cqh_rung              <= 0;
 
       oculink_s_axi_awaddr    <= 0;
       oculink_s_axi_awburst   <= 0;
@@ -218,8 +296,10 @@ module nvme_driver #(
       case(db_state)
 
         DB_IDLE: begin
-          if (!iosq_empty) db_state <= DB_RING_IODBL;
-          else if(!asq_empty) db_state <= DB_RING_ADBL;
+          if      (iocqhdbl != io_cqh_rung)     db_state <= DB_RING_IOCQH;  // free IO CQ slots first
+          else if (acqhdbl  != a_cqh_rung)      db_state <= DB_RING_ACQH;
+          else if (io_serve_cnt != io_sq_rung)  db_state <= DB_RING_IODBL;  // counter-driven (no FIFO race)
+          else if (a_serve_cnt  != a_sq_rung)   db_state <= DB_RING_ADBL;
         end
 
         DB_RING_IODBL: begin
@@ -252,42 +332,24 @@ module nvme_driver #(
           oculink_s_axi_awvalid  <= 0;
 
           if (oculink_s_axi_wready) begin
-            oculink_s_axi_wdata  <= {
-                                        iosqtdbl,
-                                        iosqtdbl,
-                                        iosqtdbl,
-                                        iosqtdbl,
-                                        iosqtdbl,
-                                        iosqtdbl,
-                                        iosqtdbl,
-                                        iosqtdbl
-                                      };                    
+            oculink_s_axi_wdata  <= {8{io_serve_cnt}};
             oculink_s_axi_wlast  <= 1;
             oculink_s_axi_wstrb  <= 32'hffff_ffff;
             oculink_s_axi_wvalid <= 1;
-            iosqtdbl             <= iosqtdbl + 1;
+            io_sq_rung           <= io_serve_cnt;   // record rung (catches up to cmd's serve count)
             db_state             <= DB_WAIT_RESP;
           end
         end
-        
+
         DB_SEND_ADATA: begin
           oculink_s_axi_awvalid  <= 0;
 
           if (oculink_s_axi_wready) begin
-            oculink_s_axi_wdata  <= {
-                                        asqtdbl,
-                                        asqtdbl,
-                                        asqtdbl,
-                                        asqtdbl,
-                                        asqtdbl,
-                                        asqtdbl,
-                                        asqtdbl,
-                                        asqtdbl
-                                      };                    
+            oculink_s_axi_wdata  <= {8{a_serve_cnt}};
             oculink_s_axi_wlast  <= 1;
             oculink_s_axi_wstrb  <= 32'hffff_ffff;
             oculink_s_axi_wvalid <= 1;
-            asqtdbl              <= asqtdbl + 1;
+            a_sq_rung            <= a_serve_cnt;
             db_state             <= DB_WAIT_RESP;
           end
         end
@@ -305,6 +367,64 @@ module nvme_driver #(
           if (cmd_done) begin
             db_done   <= 0;
             db_state  <= DB_IDLE;
+          end
+        end
+
+        // ---- CQ head doorbell rings (no SQE serve, so no cmd_done handshake) ----
+        DB_RING_IOCQH: begin
+          if (oculink_s_axi_awready) begin
+            oculink_s_axi_awaddr    <= ICQDB_OFFSET;
+            oculink_s_axi_awburst   <= 2'd1;
+            oculink_s_axi_awid      <= 4'd0;
+            oculink_s_axi_awlen     <= 8'd0;
+            oculink_s_axi_awregion  <= 4'd0;
+            oculink_s_axi_awsize    <= 3'd2;
+            oculink_s_axi_awvalid   <= 1;
+            db_state                <= DB_SEND_IOCQH;
+          end
+        end
+
+        DB_RING_ACQH: begin
+          if (oculink_s_axi_awready) begin
+            oculink_s_axi_awaddr    <= ACQDB_OFFSET;
+            oculink_s_axi_awburst   <= 2'd1;
+            oculink_s_axi_awid      <= 4'd0;
+            oculink_s_axi_awlen     <= 8'd0;
+            oculink_s_axi_awregion  <= 4'd0;
+            oculink_s_axi_awsize    <= 3'd2;
+            oculink_s_axi_awvalid   <= 1;
+            db_state                <= DB_SEND_ACQH;
+          end
+        end
+
+        DB_SEND_IOCQH: begin
+          oculink_s_axi_awvalid <= 0;
+          if (oculink_s_axi_wready) begin
+            oculink_s_axi_wdata  <= {8{iocqhdbl}};
+            oculink_s_axi_wlast  <= 1;
+            oculink_s_axi_wstrb  <= 32'hffff_ffff;
+            oculink_s_axi_wvalid <= 1;
+            io_cqh_rung          <= iocqhdbl;   // record what we rung (coalesces with later completions)
+            db_state             <= DB_CQH_WAIT;
+          end
+        end
+
+        DB_SEND_ACQH: begin
+          oculink_s_axi_awvalid <= 0;
+          if (oculink_s_axi_wready) begin
+            oculink_s_axi_wdata  <= {8{acqhdbl}};
+            oculink_s_axi_wlast  <= 1;
+            oculink_s_axi_wstrb  <= 32'hffff_ffff;
+            oculink_s_axi_wvalid <= 1;
+            a_cqh_rung           <= acqhdbl;
+            db_state             <= DB_CQH_WAIT;
+          end
+        end
+
+        DB_CQH_WAIT: begin
+          oculink_s_axi_wvalid <= 0;
+          if (oculink_s_axi_bvalid && (oculink_s_axi_bresp == 2'd0)) begin
+            db_state <= DB_IDLE;   // straight back to IDLE (no cmd_done wait)
           end
         end
 
@@ -336,7 +456,10 @@ module nvme_driver #(
   logic [31:0]  cmd_nvme_addr;
   logic [31:0]  cmd_fpga_addr;
   logic [31:0]  cmd_nlb;
-  logic         cmd_done;
+  logic         cmd_is_admin;  // 0 = serving an IO SQE, 1 = serving an admin SQE (set when descriptor popped)
+  // cmd_done declared earlier (near db_state)
+  // sqear is popped while the cmd FSM waits in CMD_RECV_ADDR for a buffered SQE-AR.
+  assign sqear_pop = (cmd_state == CMD_RECV_ADDR) && !sqear_empty;
 
   always_ff @(posedge oculink_axi_clk or negedge rstn) begin
     if (!rstn) begin
@@ -346,6 +469,9 @@ module nvme_driver #(
       cmd_fpga_addr <= 0;
       cmd_nlb       <= 0;
       cmd_done      <= 0;
+      cmd_is_admin  <= 0;
+      io_serve_cnt  <= 0;
+      a_serve_cnt   <= 0;
 
       oculink_m_axi_rdata_cmd  <= 0;
       oculink_m_axi_rid_cmd    <= 0; 
@@ -382,6 +508,8 @@ module nvme_driver #(
             cmd_nvme_addr <= iosq_dout[95:64];
             cmd_fpga_addr <= iosq_dout[63:32];
             cmd_nlb       <= iosq_dout[31:0];
+            cmd_is_admin  <= 1'b0;
+            io_serve_cnt  <= (io_serve_cnt == IOSQ_QDEPTH-1) ? 32'd0 : io_serve_cnt + 1; // advance IO SQ tail
             cmd_state     <= CMD_RECV_ADDR;
           end
         end
@@ -391,28 +519,24 @@ module nvme_driver #(
 
           if (asq_valid) begin
             cmd_opcode    <= asq_dout ? IOCQ_CREATE_OPCODE : IOSQ_CREATE_OPCODE;
+            cmd_is_admin  <= 1'b1;
+            a_serve_cnt   <= (a_serve_cnt == ASQ_QDEPTH-1) ? 32'd0 : a_serve_cnt + 1; // advance admin SQ tail
             cmd_state     <= CMD_RECV_ADDR;
           end
         end
 
         CMD_RECV_ADDR: begin
-          if ( oculink_m_axi_arvalid && 
-              (oculink_m_axi_araddr >= IOSQ_BAR) &&
-              (oculink_m_axi_araddr < IOSQ_BAR + IOSQ_SIZE)) begin
-            
-            cmd_state <= CMD_SEND_IOCMD1;
-          end
-
-          else if ( oculink_m_axi_arvalid && 
-              (oculink_m_axi_araddr >= ASQ_BAR) &&
-              (oculink_m_axi_araddr < ASQ_BAR + ASQ_SIZE)) begin
-            
-            cmd_state <= CMD_SEND_ACMD1;
+          // Wait for a buffered SQE-AR (the sqear FIFO catches every accepted SQE-class AR so a back-to-back
+          // SQE-AR can never be dropped by an unbuffered arvalid). Branch by the descriptor type we popped.
+          // (sqear_head carries the AR's is_admin and must equal cmd_is_admin under the no-admin/IO-interleave
+          //  usage; checked by a sim assertion below.)
+          if (!sqear_empty) begin
+            cmd_state <= cmd_is_admin ? CMD_SEND_ACMD1 : CMD_SEND_IOCMD1;
           end
         end
 
         CMD_SEND_IOCMD1: begin
-          if (oculink_m_axi_rready) begin
+          if (oculink_m_axi_rready && rtag_sel_cmd) begin   // serve only when our SQE tag is the R head
             oculink_m_axi_rdata_cmd <= { 
                                         32'h0000_0000,  // DW7
                                         cmd_nvme_addr,  // DW6 : DPTR0 : NVMe Address
@@ -434,14 +558,14 @@ module nvme_driver #(
         CMD_SEND_IOCMD2: begin
           oculink_m_axi_rvalid_cmd <= 0;
 
-          if (oculink_m_axi_rready) begin
+          if (oculink_m_axi_rready && rtag_sel_cmd) begin
             oculink_m_axi_rdata_cmd <= {
                                         32'h0000_0000,  // DW15
                                         32'h0000_0000,  // DW14
                                         32'h0000_0000,  // DW13
-                                        cmd_nlb,        // DW12 : NLB 
+                                        cmd_nlb,        // DW12 : NLB
                                         32'h0000_0000,  // DW11 : SLBA [63:32]
-                                        32'h0000_0000,  // DW10 : SLBA [31:00]
+                                        cmd_fpga_addr,  // DW10 : SLBA [31:00] (CSR 0x54 'fpga_addr' repurposed as start LBA)
                                         32'h0000_0000,  // DW9
                                         32'h0000_0000   // DW8 : DPTR1 
                                       };                                   
@@ -455,7 +579,7 @@ module nvme_driver #(
         end
 
         CMD_SEND_ACMD1: begin
-          if (oculink_m_axi_rready) begin
+          if (oculink_m_axi_rready && rtag_sel_cmd) begin   // serve only when our SQE tag is the R head
             oculink_m_axi_rdata_cmd <= { 
                                         32'h0000_0000,  // DW7
                                         (cmd_opcode == IOCQ_CREATE_OPCODE) ? IOCQ_BAR : IOSQ_BAR,  // DW6
@@ -477,17 +601,17 @@ module nvme_driver #(
         CMD_SEND_ACMD2: begin
           oculink_m_axi_rvalid_cmd <= 0;
 
-          if (oculink_m_axi_rready) begin
+          if (oculink_m_axi_rready && rtag_sel_cmd) begin
             oculink_m_axi_rdata_cmd <= {
                                         32'h0000_0000,  // DW15
                                         32'h0000_0000,  // DW14
                                         32'h0000_0000,  // DW13
                                         32'h0000_0000,  // DW12
                                         (cmd_opcode == IOCQ_CREATE_OPCODE) ? 32'h1 : 32'h0001_0001,  // DW11
-                                        32'h0010_0001,  // DW10
+                                        32'h003F_0001,  // DW10 : QSIZE=63 (queue depth 64), QID=1
                                         32'h0000_0000,  // DW9
                                         32'h0000_0000   // DW8
-                                      };                                   
+                                      };
             oculink_m_axi_rid_cmd    <= 0; 
             oculink_m_axi_rlast_cmd  <= 1;
             oculink_m_axi_rresp_cmd  <= 0;
@@ -580,7 +704,7 @@ module nvme_driver #(
         end
 
         RDRSP_SEND_RESP: begin
-          if (oculink_m_axi_bready && !is_receving_cpl) begin
+          if (oculink_m_axi_bready && !wtag_sel_cpl) begin   // send B only when a read-data tag is the B head
             oculink_m_axi_bid_rd     <= 0;
             oculink_m_axi_bresp_rd   <= 0;
             oculink_m_axi_bvalid_rd  <= 1;
@@ -595,74 +719,20 @@ module nvme_driver #(
 
   /* Write data */
 
-  localparam WR_IDLE       = 8'd0;
-  localparam WR_FIFO_POP   = 8'd1;
-  localparam WR_SEND_DATA  = 8'd2;
-
-  localparam WRADDR_IDLE      = 8'd0;
-  localparam WRADDR_FIFO_POP  = 8'd1;
-  localparam WRADDR_NEXT_WAIT = 8'd2;
-  localparam WRADDR_FIFO_POP_NEXT  = 8'd3;
-
-
-  logic [7:0]   wr_state;
-  logic         wr_done;
+  // The legacy 16-entry write-address length ring (wraddr_fifo IP + wraddr_wrlen[]/recv_cnt/send_cnt) is gone:
+  // each write-data read's burst length now rides in its rtag entry (rtag_head_arlen), so the demux paces
+  // wrdata directly and outstanding write-data reads are no longer capped at 16.
   logic [7:0]   wr_len;
-  logic         wraddr_fifo_rd_en;
-  logic [7:0]   wraddr_fifo_dout;
-  logic         wraddr_fifo_full;
-  logic         wraddr_fifo_empty;
-  logic         wraddr_fifo_valid;
-
-  wraddr_fifo wraddr_fifo_i (
-    .srst(!rstn),
-    .clk(oculink_axi_clk),
-    .din(oculink_m_axi_arlen),
-    .wr_en(oculink_m_axi_arvalid && (oculink_m_axi_araddr >= IORW_BAR)),
-    .dout(wraddr_fifo_dout),
-    .rd_en(wraddr_fifo_rd_en),
-    .full(wraddr_fifo_full),
-    .empty(wraddr_fifo_empty),
-    .valid(wraddr_fifo_valid),
-    .wr_rst_busy(),
-    .rd_rst_busy()
-  );
-
-
-  logic [7:0] wraddr_state;
-  logic [3:0] wraddr_recv_cnt;
-  logic [7:0] wraddr_wrlen [0:15];
-
-  // m_axi_ar : Write Address
-  // Read/Write available address : 0xC000 ~
-  always_ff @(posedge oculink_axi_clk or negedge rstn) begin
-    if (!rstn) begin
-      wraddr_state <= WRADDR_IDLE;
-      wraddr_recv_cnt <= 0;
-      wraddr_wrlen[0] <= 0;
-      wraddr_wrlen[1] <= 0;
-    end
-    else begin
-      if (oculink_m_axi_arvalid && (oculink_m_axi_araddr >= IORW_BAR)) begin
-        wraddr_recv_cnt <= wraddr_recv_cnt + 1;
-        wraddr_wrlen[wraddr_recv_cnt] <= oculink_m_axi_arlen;
-      end
-
-    end
-  end
 
   localparam WRDATA_IDLE       = 8'd0;
   localparam WRDATA_SEND_DATA  = 8'd1;
-  localparam WRDATA_CHECK_NEXT = 8'd2;
 
   logic [7:0] wrdata_state;
-  logic [3:0] wrdata_send_cnt;
 
   // m_axi_r : Write Data
   always_ff @(posedge oculink_axi_clk or negedge rstn) begin
     if (!rstn) begin
       wrdata_state <= WRDATA_IDLE;
-      wrdata_send_cnt <= 0;
       wr_len <= 0;
       oculink_m_axi_rdata_wr   <= 0;
       oculink_m_axi_rid_wr     <= 0;
@@ -676,15 +746,18 @@ module nvme_driver #(
           oculink_m_axi_rvalid_wr  <= 0;
           oculink_m_axi_rlast_wr   <= 0;
 
-          if (wraddr_recv_cnt != wrdata_send_cnt) begin
+          // Start a burst only for a data-class head that is NOT being popped this cycle. The rtag pop is
+          // registered (1 cycle after rlast), so without the !rtag_pop guard this IDLE would re-trigger on the
+          // SAME tag during its own rlast beat and serve a spurious second burst.
+          if (!rtag_empty && !rtag_head_is_sqe && !rtag_pop) begin   // data read is the oldest outstanding AR
             wrdata_state <= WRDATA_SEND_DATA;
-            wr_len <= wraddr_wrlen[wrdata_send_cnt];
+            wr_len <= rtag_head_arlen;                  // burst length comes from the tag (no 16-entry ring)
           end
         end
 
         WRDATA_SEND_DATA: begin
 
-          if (oculink_m_axi_rready) begin
+          if (oculink_m_axi_rready && !rtag_sel_cmd) begin  // serve only when a write-data tag is the R head
             oculink_m_axi_rdata_wr <= {
                                         wrdata[7],
                                         wrdata[6],
@@ -703,8 +776,7 @@ module nvme_driver #(
 
             if (wr_len == 0) begin
               oculink_m_axi_rlast_wr <= 1;
-              wrdata_send_cnt <= wrdata_send_cnt + 1;
-              wrdata_state <= WRDATA_CHECK_NEXT;
+              wrdata_state <= WRDATA_IDLE;   // rlast pops the rtag; re-check the new head from IDLE
             end
           end
 
@@ -713,17 +785,6 @@ module nvme_driver #(
           end
         end
 
-        WRDATA_CHECK_NEXT: begin
-          oculink_m_axi_rvalid_wr  <= 0;
-
-          if (wraddr_recv_cnt != wrdata_send_cnt) begin
-            wrdata_state <= WRDATA_SEND_DATA;
-            wr_len <= wraddr_wrlen[wrdata_send_cnt];
-          end
-          else begin
-            wrdata_state <= WRDATA_IDLE;
-          end
-        end
       endcase
     end
   end
@@ -747,7 +808,11 @@ module nvme_driver #(
       cpl_state                 <= CPL_IDLE;
       cpl_data                  <= 0;
       cpl_done                  <= 0;
+      cpl_count                 <= 0;
       is_receving_cpl           <= 0;
+      iocqhdbl                  <= 0;
+      acqhdbl                   <= 0;
+      cpl_is_io                 <= 0;
 
       oculink_m_axi_bid_cpl     <= 0;
       oculink_m_axi_bresp_cpl   <= 0;
@@ -771,6 +836,7 @@ module nvme_driver #(
         CPL_RECV_IOCPL: begin
           if (oculink_m_axi_wvalid && (oculink_m_axi_wlast == 1)) begin
             is_receving_cpl <= 1;
+            cpl_is_io       <= 1;
             cpl_data        <= oculink_m_axi_wdata;
             cpl_state       <= CPL_RESP;
           end
@@ -779,13 +845,14 @@ module nvme_driver #(
         CPL_RECV_ACPL: begin
           if (oculink_m_axi_wvalid && (oculink_m_axi_wlast == 1)) begin
             is_receving_cpl <= 1;
+            cpl_is_io       <= 0;
             cpl_data        <= oculink_m_axi_wdata;
             cpl_state       <= CPL_RESP;
           end
         end
 
         CPL_RESP: begin
-          if (oculink_m_axi_bready) begin
+          if (oculink_m_axi_bready && wtag_sel_cpl) begin   // send B only when our CQE tag is the B head
             oculink_m_axi_bid_cpl     <= 0;
             oculink_m_axi_bresp_cpl   <= 0;
             oculink_m_axi_bvalid_cpl  <= 1;
@@ -796,13 +863,29 @@ module nvme_driver #(
         CPL_DONE: begin
           oculink_m_axi_bvalid_cpl  <= 0;
           cpl_done                  <= 1;
-          if (iosq_valid || asq_valid) cpl_state <= CPL_IDLE;
+          cpl_count                 <= cpl_count + 1;  // per-completion counter (host polls this for multi-outstanding)
+          // advance the consumed CQ head so the db FSM rings the CQ head doorbell (frees CQ slots)
+          if (cpl_is_io) iocqhdbl <= (iocqhdbl == IOCQ_QDEPTH-1) ? 32'd0 : iocqhdbl + 1;
+          else           acqhdbl  <= (acqhdbl  == ACQ_QDEPTH-1)  ? 32'd0 : acqhdbl  + 1;
+          cpl_state                 <= CPL_IDLE;       // always re-arm to capture every completion
         end
       endcase
     end
   end
 
 
+
+
+  /* Read-back data + completion status exposed to host CSR (read after cpl_done) */
+  assign rddata[0] = rd_data[31:0];
+  assign rddata[1] = rd_data[63:32];
+  assign rddata[2] = rd_data[95:64];
+  assign rddata[3] = rd_data[127:96];
+  assign rddata[4] = rd_data[159:128];
+  assign rddata[5] = rd_data[191:160];
+  assign rddata[6] = rd_data[223:192];
+  assign rddata[7] = rd_data[255:224];
+  assign cpl_status = cpl_data[127:96];  // CQE DW3 : status[31:17], phase[16], cid[15:0]
 
 
   ila_0 ila_0_i(
@@ -827,8 +910,8 @@ module nvme_driver #(
     .probe17(asq_valid),
     .probe18(db_state), // 8
     .probe19(db_done),
-    .probe20(iosqtdbl), // 32
-    .probe21(asqtdbl),  // 32
+    .probe20(io_serve_cnt), // 32 (IO SQ tail)
+    .probe21(a_serve_cnt),  // 32 (admin SQ tail)
     .probe22(cmd_state),  // 8
     .probe23(cmd_opcode), // 32
     .probe24(cmd_nvme_addr),  // 32
@@ -839,18 +922,18 @@ module nvme_driver #(
     .probe29(rd_data), // 256
     .probe30(rd_done), 
     .probe31(rdrsp_state), //8
-    .probe32(wr_state), //8
-    .probe33(wr_done),
+    .probe32({rtag_full, rtag_empty, sqear_full, sqear_empty, wtag_full, wtag_empty, rtag_sel_cmd, wtag_sel_cpl}), //8 demux flags
+    .probe33(rtag_head_is_sqe),
     .probe34(wr_len), // 8
-    .probe35(wraddr_fifo_rd_en),
-    .probe36(wraddr_fifo_dout), // 8
-    .probe37(wraddr_fifo_full),
-    .probe38(wraddr_fifo_empty),
-    .probe39(wraddr_fifo_valid),
-    .probe40(wraddr_state), //8
-    .probe41(wraddr_recv_cnt), // 4
+    .probe35(rtag_pop),
+    .probe36(rtag_head_arlen), // 8
+    .probe37(rtag_full),
+    .probe38(rtag_empty),
+    .probe39(rtag_sel_cmd),
+    .probe40({6'd0, wtag_head, wtag_sel_cpl}), //8
+    .probe41({sqear_empty, wtag_empty, rtag_empty, wtag_pop}), // 4
     .probe42(wrdata_state), // 8
-    .probe43(wrdata_send_cnt), // 4
+    .probe43(4'd0), // 4 (retired wrdata_send_cnt)
     .probe44(cpl_state), // 8
     .probe45(cpl_data)  // 256
   );

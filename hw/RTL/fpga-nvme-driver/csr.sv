@@ -30,7 +30,10 @@ module csr(
   output logic [31:0] oculink_0a_fpga_addr,
   output logic [31:0] oculink_0a_nlb,
   input logic         oculink_0a_cpl_done,
-  output logic [31:0] oculink_0a_wrdata [7:0]
+  output logic [31:0] oculink_0a_wrdata [7:0],
+  input logic [31:0]  oculink_0a_rddata [7:0],
+  input logic [31:0]  oculink_0a_cpl_status,
+  input logic [31:0]  oculink_0a_cpl_count
 );
   
   // scratch reg for debugging
@@ -120,6 +123,8 @@ module csr(
         16'h0054: host_dout <= oculink_0a_fpga_addr;
         16'h0058: host_dout <= oculink_0a_nlb;
         16'h005C: host_dout <= oculink_0a_cpl_done;
+        16'h0060: host_dout <= oculink_0a_cpl_status;   // last completion CQE DW3 (status/phase/cid)
+        16'h0064: host_dout <= oculink_0a_cpl_count;    // monotonic completion counter (multi-outstanding)
         16'h0100: host_dout <= oculink_0a_wrdata[0];
         16'h0104: host_dout <= oculink_0a_wrdata[1];
         16'h0108: host_dout <= oculink_0a_wrdata[2];
@@ -128,6 +133,14 @@ module csr(
         16'h0114: host_dout <= oculink_0a_wrdata[5];
         16'h0118: host_dout <= oculink_0a_wrdata[6];
         16'h011C: host_dout <= oculink_0a_wrdata[7];
+        16'h0200: host_dout <= oculink_0a_rddata[0];   // read-back data (valid after cpl_done)
+        16'h0204: host_dout <= oculink_0a_rddata[1];
+        16'h0208: host_dout <= oculink_0a_rddata[2];
+        16'h020C: host_dout <= oculink_0a_rddata[3];
+        16'h0210: host_dout <= oculink_0a_rddata[4];
+        16'h0214: host_dout <= oculink_0a_rddata[5];
+        16'h0218: host_dout <= oculink_0a_rddata[6];
+        16'h021C: host_dout <= oculink_0a_rddata[7];
 
         default: host_dout <= 32'd0;
       endcase
