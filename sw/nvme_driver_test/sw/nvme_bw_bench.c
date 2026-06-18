@@ -21,11 +21,31 @@ static uint32_t rctrl(uint32_t o){return rcfg(0x80000000u|(0x4000+o));}
 static void wctrl(uint32_t o,uint32_t d){wcfg(0x80000000u|(0x4000+o),d);}
 static double now(){struct timespec t;clock_gettime(CLOCK_MONOTONIC,&t);return t.tv_sec+t.tv_nsec*1e-9;}
 
+int g_mps=256, g_mrrs=256;   // bytes to program into SSD PCIe Device Control (0 = leave as-is)
+static int encb(int b){switch(b){case 128:return 0;case 256:return 1;case 512:return 2;case 1024:return 3;case 2048:return 4;case 4096:return 5;default:return -1;}}
 static void bringup(){
   wr(0x04,1); usleep(1000000); wr(0x04,0);
   wr(0x30,0); wcfg(0x18,0x100); rcfg(0x18);
   printf("  NVMe id=%08X\n", rcfg((1u<<20)|0x00));
   wcfg((1u<<20)|0x04,0x6); wcfg((1u<<20)|0x10,0x4000); wcfg((1u<<20)|0x14,0x0);
+  // tune PCIe Device Control MPS/MRRS on BOTH the root port (no 1<<20) and the SSD (1<<20).
+  // MPS must match on both ends; set root first, then SSD, before any IO (no traffic in flight).
+  if(g_mps||g_mrrs){
+    uint32_t rdc=rcfg(0x78);                                   // root-port DevControl @ PCIe cap 0x70+8
+    if(g_mps>0)  rdc=(rdc&~(0x7u<<5)) |((uint32_t)encb(g_mps)<<5);
+    if(g_mrrs>0) rdc=(rdc&~(0x7u<<12))|((uint32_t)encb(g_mrrs)<<12);
+    wcfg(0x78,rdc);
+    uint32_t dc=rcfg((1u<<20)|0x78);                           // SSD DevControl
+    if(g_mps>0)  dc=(dc&~(0x7u<<5)) |((uint32_t)encb(g_mps)<<5);
+    if(g_mrrs>0) dc=(dc&~(0x7u<<12))|((uint32_t)encb(g_mrrs)<<12);
+    wcfg((1u<<20)|0x78,dc);
+    uint32_t rv=rcfg(0x78), sv=rcfg((1u<<20)|0x78);
+    printf("  MPS/MRRS root=(%s/%s) ssd=(%s/%s)\n",
+      ((const char*[]){"128","256","512","1024","2048","4096"})[(rv>>5)&7],
+      ((const char*[]){"128","256","512","1024","2048","4096"})[(rv>>12)&7],
+      ((const char*[]){"128","256","512","1024","2048","4096"})[(sv>>5)&7],
+      ((const char*[]){"128","256","512","1024","2048","4096"})[(sv>>12)&7]);
+  }
   wcfg(0x148,0x1); rcfg(0x148); wr(0x30,1);
   wr(0x30,0); wctrl(0x14,0x0); while(rctrl(0x1C)!=0);
   wctrl(0x24,(64<<16)|64); wctrl(0x28,0x8000); wctrl(0x2C,0); wctrl(0x30,0x9000); wctrl(0x34,0);
@@ -42,7 +62,7 @@ static void sweep(uint32_t trig,const char*name,int QD){
   uint32_t beatreg = (trig==0x4C) ? 0x68 : 0x6C;
   printf("\n== %s : bandwidth vs transfer size (QD=%d)  [Gen3 x4 ceiling ~3940 MB/s] ==\n",name,QD);
   printf("  %-7s %-8s %-10s %-12s %-12s %s\n","blocks","KB/cmd","cmds/s","cmplMB/s","REALMB/s","status");
-  int nlbs[]={7,15,31,63,127,255};
+  int nlbs[]={127,255,511,1023,2047};
   for(unsigned n=0;n<sizeof(nlbs)/sizeof(int);n++){
     int nlb=nlbs[n]; int blocks=nlb+1; long bytes_cmd=(long)blocks*512;
     int cmds = (int)(128L*1024*1024 / bytes_cmd); if(cmds>1500) cmds=1500; if(cmds<QD*4) cmds=QD*4;
@@ -73,6 +93,8 @@ int main(int argc,char**argv){
   setvbuf(stdout,NULL,_IONBF,0);
   const char*p=argc>1?argv[1]:"/sys/bus/pci/devices/0000:18:00.0/resource0";
   int QD=argc>3?atoi(argv[3]):8;
+  if(argc>4) g_mps=atoi(argv[4]);
+  if(argc>5) g_mrrs=atoi(argv[5]);
   int fd=open(p,O_RDWR|O_SYNC); if(fd<0){printf("open:%s\n",strerror(errno));return 1;}
   B=(volatile uint32_t*)mmap(0,64*1024,PROT_READ|PROT_WRITE,MAP_SHARED,fd,0);
   if(B==MAP_FAILED){printf("mmap:%s\n",strerror(errno));return 1;}

@@ -246,6 +246,33 @@ of the synthetic pattern (short-circuit) and/or a high-rate W-channel limit; QD=
 sustained figure. Next levers if more is wanted: a real-data read pattern + investigating why QD>1 doesn't add
 real bandwidth (W-channel under large-read load), and the host-DMA datapath for real host-payload GB/s.
 
+## PCIe MPS/MRRS tuning — closing toward link peak (2026-06-18, SW-only, no synth)
+
+The manual bringup left PCIe Max Payload Size (MPS) at the 128 B reset default on BOTH the FPGA OcuLink ROOT PORT
+(id 10ee:9134, MaxPayloadSupported=1024 B) and the SSD (MaxPayloadSupported=256 B, MRRS=512 B). 128 B TLPs cap
+OcuLink utilisation. Tools: `nvme_pcie_cfg` (SSD DevControl), `nvme_rootmps` (root-port DevControl), `nvme_linkspeed`.
+
+Fix (runtime, in bringup): set BOTH root-port and SSD MPS=256 (the SSD's max), before any IO. CAUTION: setting only
+the SSD MPS>root MPS WEDGES the SSD (256 B writes the root can't receive -> recover by reprogram+rescan). Set both.
+
+REAL OcuLink data BW (beat counters, QD=1, 1 MB, cmpl==REAL):
+```
+              MPS=128        MPS=256
+  WRITE       1.57 GB/s      2.40 GB/s   (40% -> 61% of 3.94)
+  READ        2.55 GB/s      2.83 GB/s   (65% -> 72%)
+```
+MPS=256 is now the bench default. ~1.5x write / +11% read, purely from PCIe config.
+
+**Why ~80% of peak (3.15 GB/s) is hard here:**
+1. **SSD MaxPayload = 256 B (hardware cap).** Can't use bigger TLPs. At 256 B the link payload ceiling is ~91%
+   (~3.6 GB/s); we reach 61-72%, so there is headroom but it's TLP-rate-bound, not TLP-size-bound.
+2. **QD>1 does not add REAL bandwidth** — beat counters show `cmpl = QD x REAL` (cmpl exceeds the link, so it's
+   inflated; REAL even drops). This happens at 128 KB too (32 AWs << 256 wtag depth, so NOT tag-FIFO overflow), so
+   it's QD-intrinsic — either the SSD's read path for this synthetic pattern or a W-channel-under-concurrent-load
+   effect; identical for written vs never-written LBAs. QD=1 is the clean figure. Hiding per-command latency via QD
+   (the normal way to approach link peak) is therefore blocked until this is root-caused (needs an ILA trace or a
+   threaded sim BFM). Writes are additionally SSD-256B-MPS capped, so write 80% may be physically out of reach.
+
 ## Known limitation -> next step (superseded once MO-4 lands on HW)
 Complete multiple-outstanding (QD up to 64) requires **demuxing both `m_axi` channels** so SQE-serve / write-data
 (R) and CQE / read-data (W) can interleave: route each AR/AW by address (IOSQ/ASQ vs IORW; IOCQ/ACQ vs IORW),
