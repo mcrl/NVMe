@@ -32,6 +32,8 @@ module nvme_driver #(
   output logic [31:0]   rddata [7:0],   // read-back data to host (last 32B of read payload)
   output logic [31:0]   cpl_status,     // last completion CQE DW3 (status/phase/cid)
   output logic [31:0]   cpl_count,      // monotonic completion counter (multi-outstanding)
+  output logic [31:0]   r_data_beats,   // count of write-payload R beats served (real data moved, x32 B)
+  output logic [31:0]   w_data_beats,   // count of read-data W beats captured (real data moved, x32 B)
 
 
   // AXI Slave : aw, w, b 
@@ -109,6 +111,9 @@ module nvme_driver #(
   logic          oculink_m_axi_rlast_wr;
   logic [1:0]    oculink_m_axi_rresp_wr;
   logic          oculink_m_axi_rvalid_wr;
+  logic [255:0]  oculink_m_axi_rdata_lg;   // PRP-list generator (declared early; driven in the listgen FSM)
+  logic          oculink_m_axi_rvalid_lg;
+  logic          oculink_m_axi_rlast_lg;
 
   // ---------------- m_axi in-order demux tag FIFOs ----------------
   // Root cause of the QD>1 hang: the R/B muxes selected on a PRODUCER-STATE flag (is_sending_cmd /
@@ -118,22 +123,34 @@ module nvme_driver #(
   // the head (= oldest outstanding transaction). is_sending_cmd / is_receving_cpl are kept driven for the
   // ILA probes but no longer select the mux.
 
-  // R-tag: {is_sqe, arlen[7:0]} per accepted AR; head selects the R source; pop on the served burst's rlast.
-  localparam RTAG_W = 9;
+  // PRP layout (all in the served OcuLink data region, IORW_BAR = 0xC000):
+  //   PRP1 = 0xC000 (page 1, always). For 2-page xfers PRP2 = 0xE000 (page 2, direct).
+  //   For >2-page xfers PRP2 = 0xD000, a PRP-LIST page whose entries are pages 2..N = 0xE000,0xF000,...
+  localparam [31:0] PRP_LIST_BASE = IORW_BAR + 32'h1000;   // 0xD000
+  localparam [31:0] PRP_PAGE2     = IORW_BAR + 32'h2000;   // 0xE000 (page 2 = first list entry)
+
+  // R-tag: {class[1:0], arlen[7:0]} per accepted AR; head selects the R source; pop on the burst's rlast.
+  //   class 0 = write-command payload (wrdata), 1 = SQE serve (cmd), 2 = PRP-list (listgen).
+  localparam RTAG_W = 10;
   wire ar_is_sqe   = ((oculink_m_axi_araddr >= IOSQ_BAR) && (oculink_m_axi_araddr < IOSQ_BAR + IOSQ_SIZE)) ||
                      ((oculink_m_axi_araddr >= ASQ_BAR)  && (oculink_m_axi_araddr < ASQ_BAR  + ASQ_SIZE));
   wire ar_is_admin = (oculink_m_axi_araddr >= ASQ_BAR)  && (oculink_m_axi_araddr < ASQ_BAR + ASQ_SIZE);
+  wire ar_is_list  = (oculink_m_axi_araddr >= PRP_LIST_BASE) && (oculink_m_axi_araddr < PRP_LIST_BASE + 32'h1000);
+  wire [1:0] ar_class = ar_is_sqe ? 2'd1 : ar_is_list ? 2'd2 : 2'd0;
   logic [RTAG_W-1:0] rtag_head;
   logic              rtag_empty, rtag_full;
   wire               rtag_pop = oculink_m_axi_rvalid & oculink_m_axi_rready & oculink_m_axi_rlast;
   tagfifo #(.WIDTH(RTAG_W), .DEPTH(256)) rtag_i (
     .clk(oculink_axi_clk), .srst(!rstn),
-    .push(oculink_m_axi_arvalid), .din({ar_is_sqe, oculink_m_axi_arlen}),
+    .push(oculink_m_axi_arvalid), .din({ar_class, oculink_m_axi_arlen}),
     .pop(rtag_pop), .head(rtag_head), .empty(rtag_empty), .full(rtag_full)
   );
-  wire        rtag_head_is_sqe = rtag_head[8];
+  wire [1:0]  rtag_head_cls    = rtag_head[9:8];
   wire [7:0]  rtag_head_arlen  = rtag_head[7:0];
-  wire        rtag_sel_cmd     = (!rtag_empty) & rtag_head_is_sqe;  // R mux: 1=SQE(cmd), 0=write-data(wrdata)
+  wire        rtag_head_is_sqe = (rtag_head_cls == 2'd1);             // (kept name for ILA/tb)
+  wire        rtag_sel_cmd     = (!rtag_empty) & (rtag_head_cls == 2'd1);  // SQE  -> cmd
+  wire        rtag_sel_list    = (!rtag_empty) & (rtag_head_cls == 2'd2);  // list -> listgen
+  wire        rtag_sel_data    = (!rtag_empty) & (rtag_head_cls == 2'd0);  // data -> wrdata
 
   // SQE-AR buffer: records each accepted SQE-class AR so the cmd FSM never misses an unbuffered arvalid.
   logic sqear_head;
@@ -161,11 +178,14 @@ module nvme_driver #(
   wire [1:0]  wcap_cls   = wcap_avail ? wtagmem[w_capp[WTAG_AW-1:0]] : {aw_is_cqe, aw_is_iocq};
   wire        wburst_end = oculink_m_axi_wvalid && oculink_m_axi_wlast && (wcap_avail || w_same);
 
-  assign oculink_m_axi_rdata  = rtag_sel_cmd ? oculink_m_axi_rdata_cmd  : oculink_m_axi_rdata_wr;
-  assign oculink_m_axi_rid    = rtag_sel_cmd ? oculink_m_axi_rid_cmd    : oculink_m_axi_rid_wr;
-  assign oculink_m_axi_rlast  = rtag_sel_cmd ? oculink_m_axi_rlast_cmd  : oculink_m_axi_rlast_wr;
-  assign oculink_m_axi_rresp  = rtag_sel_cmd ? oculink_m_axi_rresp_cmd  : oculink_m_axi_rresp_wr;
-  assign oculink_m_axi_rvalid = rtag_sel_cmd ? oculink_m_axi_rvalid_cmd : oculink_m_axi_rvalid_wr;
+  assign oculink_m_axi_rdata  = rtag_sel_cmd  ? oculink_m_axi_rdata_cmd  :
+                                rtag_sel_list ? oculink_m_axi_rdata_lg   : oculink_m_axi_rdata_wr;
+  assign oculink_m_axi_rid    = 4'd0;
+  assign oculink_m_axi_rlast  = rtag_sel_cmd  ? oculink_m_axi_rlast_cmd  :
+                                rtag_sel_list ? oculink_m_axi_rlast_lg   : oculink_m_axi_rlast_wr;
+  assign oculink_m_axi_rresp  = 2'd0;
+  assign oculink_m_axi_rvalid = rtag_sel_cmd  ? oculink_m_axi_rvalid_cmd :
+                                rtag_sel_list ? oculink_m_axi_rvalid_lg  : oculink_m_axi_rvalid_wr;
   assign oculink_m_axi_bid    = 4'd0;
   assign oculink_m_axi_bresp  = 2'd0;        // every B is OKAY/id-0 (CQE and read-data alike)
   assign oculink_m_axi_bvalid = wb_avail;    // one B per captured W burst, in AW-accept order
@@ -459,6 +479,12 @@ module nvme_driver #(
   // sqear is popped while the cmd FSM waits in CMD_RECV_ADDR for a buffered SQE-AR.
   assign sqear_pop = (cmd_state == CMD_RECV_ADDR) && !sqear_empty;
 
+  // PRP2 (SQE DW8) for the IO command: 0 for <=1 page, page-2 address for exactly 2 pages (direct),
+  // PRP-list address for >2 pages. 1 page = 8 x 512 B blocks -> n_pages = ceil((nlb+1)/8) = (nlb+8)>>3.
+  wire [31:0] cmd_npages = (cmd_nlb + 32'd8) >> 3;
+  wire [31:0] cmd_prp2   = (cmd_npages <= 32'd1) ? 32'h0 :
+                           (cmd_npages == 32'd2) ? PRP_PAGE2 : PRP_LIST_BASE;
+
   always_ff @(posedge oculink_axi_clk or negedge rstn) begin
     if (!rstn) begin
       cmd_state     <= CMD_IDLE;
@@ -564,9 +590,9 @@ module nvme_driver #(
                                         cmd_nlb,        // DW12 : NLB
                                         32'h0000_0000,  // DW11 : SLBA [63:32]
                                         cmd_fpga_addr,  // DW10 : SLBA [31:00] (CSR 0x54 'fpga_addr' repurposed as start LBA)
-                                        32'h0000_0000,  // DW9
-                                        32'h0000_0000   // DW8 : DPTR1 
-                                      };                                   
+                                        32'h0000_0000,  // DW9 : PRP2 [63:32]
+                                        cmd_prp2        // DW8 : PRP2 [31:00] (0 / page2 / PRP-list per n_pages)
+                                      };
             oculink_m_axi_rid_cmd    <= 0; 
             oculink_m_axi_rlast_cmd  <= 1;
             oculink_m_axi_rresp_cmd  <= 0;
@@ -672,7 +698,7 @@ module nvme_driver #(
           // Start a burst only for a data-class head that is NOT being popped this cycle. The rtag pop is
           // registered (1 cycle after rlast), so without the !rtag_pop guard this IDLE would re-trigger on the
           // SAME tag during its own rlast beat and serve a spurious second burst.
-          if (!rtag_empty && !rtag_head_is_sqe && !rtag_pop) begin   // data read is the oldest outstanding AR
+          if (rtag_sel_data && !rtag_pop) begin   // a write-data read (class 0) is the oldest outstanding AR
             wrdata_state <= WRDATA_SEND_DATA;
             wr_len <= rtag_head_arlen;                  // burst length comes from the tag (no 16-entry ring)
           end
@@ -680,7 +706,7 @@ module nvme_driver #(
 
         WRDATA_SEND_DATA: begin
 
-          if (oculink_m_axi_rready && !rtag_sel_cmd) begin  // serve only when a write-data tag is the R head
+          if (oculink_m_axi_rready && rtag_sel_data) begin  // serve only when a write-data tag is the R head
             oculink_m_axi_rdata_wr <= {
                                         wrdata[7],
                                         wrdata[6],
@@ -708,6 +734,54 @@ module nvme_driver #(
           end
         end
 
+      endcase
+    end
+  end
+
+
+  /* PRP-list generator: serves data-page addresses (pages 2..N) when the SSD reads PRP2 of a >2-page
+     transfer (class LIST). entry(k)=PRP_PAGE2 + k*4096, four 64-bit little-endian entries per 256-bit beat.
+     (rdata_lg/rvalid_lg/rlast_lg are declared up with the other R-source signals.) */
+  logic [7:0]   lg_len, lg_beat;
+  localparam LG_IDLE = 8'd0, LG_SEND = 8'd1;
+  logic [7:0]   lg_state;
+  always_ff @(posedge oculink_axi_clk or negedge rstn) begin
+    if (!rstn) begin
+      lg_state <= LG_IDLE; lg_len <= 0; lg_beat <= 0;
+      oculink_m_axi_rdata_lg <= 0; oculink_m_axi_rvalid_lg <= 0; oculink_m_axi_rlast_lg <= 0;
+    end
+    else begin
+      case (lg_state)
+        LG_IDLE: begin
+          oculink_m_axi_rvalid_lg <= 0;
+          oculink_m_axi_rlast_lg  <= 0;
+          if (rtag_sel_list && !rtag_pop) begin   // a PRP-list read is the oldest outstanding AR
+            lg_len  <= rtag_head_arlen;
+            lg_beat <= 0;
+            lg_state <= LG_SEND;
+          end
+        end
+        LG_SEND: begin
+          if (oculink_m_axi_rready && rtag_sel_list) begin
+            oculink_m_axi_rdata_lg <= {
+              {32'h0, (PRP_PAGE2 + (((({24'h0,lg_beat})<<2) + 32'd3)<<12))},
+              {32'h0, (PRP_PAGE2 + (((({24'h0,lg_beat})<<2) + 32'd2)<<12))},
+              {32'h0, (PRP_PAGE2 + (((({24'h0,lg_beat})<<2) + 32'd1)<<12))},
+              {32'h0, (PRP_PAGE2 + (((({24'h0,lg_beat})<<2) + 32'd0)<<12))}
+            };
+            oculink_m_axi_rvalid_lg <= 1;
+            oculink_m_axi_rlast_lg  <= 0;
+            lg_beat <= lg_beat + 1;
+            lg_len  <= lg_len - 1;
+            if (lg_len == 0) begin
+              oculink_m_axi_rlast_lg <= 1;
+              lg_state <= LG_IDLE;          // rlast pops the rtag; re-check the new head from IDLE
+            end
+          end
+          else begin
+            oculink_m_axi_rvalid_lg <= 0;
+          end
+        end
       endcase
     end
   end
@@ -752,6 +826,21 @@ module nvme_driver #(
       end
       // 3) one B per captured burst, in AW-accept order
       if (wb_avail && oculink_m_axi_bready) w_bp <= w_bp + 1'b1;
+    end
+  end
+
+  // ---- real data-beat counters (each beat = 32 B) for honest bandwidth measurement ----
+  // r_data_beats: write-command payload the SSD reads from us (R, class DATA).
+  // w_data_beats: read-command payload the SSD writes to us (W, non-CQE burst).
+  always_ff @(posedge oculink_axi_clk or negedge rstn) begin
+    if (!rstn) begin
+      r_data_beats <= 0;
+      w_data_beats <= 0;
+    end else begin
+      if (oculink_m_axi_rvalid & oculink_m_axi_rready & rtag_sel_data)
+        r_data_beats <= r_data_beats + 1'b1;
+      if (oculink_m_axi_wvalid & oculink_m_axi_wready & (wcap_avail | w_same) & ~wcap_cls[1])
+        w_data_beats <= w_data_beats + 1'b1;
     end
   end
 

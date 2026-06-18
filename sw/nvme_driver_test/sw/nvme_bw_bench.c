@@ -36,27 +36,36 @@ static void bringup(){
 }
 
 // trig 0x4C=write, 0x48=read. Sweep blocks/command (nlb+1) at queue depth QD.
+// REALMB/s = FPGA data-beat counter (0x68 write-payload R / 0x6C read-payload W, x32 B) = actual bytes
+// moved over OcuLink. cmplMB/s = completions x size (overcounts if the SSD fast-acks ahead of real transfer).
 static void sweep(uint32_t trig,const char*name,int QD){
-  printf("\n== %s : bandwidth vs transfer size (QD=%d) ==\n",name,QD);
-  printf("  %-8s %-8s %-10s %-12s %-10s\n","blocks","KB/cmd","cmds/s","blkMB/s","status");
-  int nlbs[]={0,1,2,3};
+  uint32_t beatreg = (trig==0x4C) ? 0x68 : 0x6C;
+  printf("\n== %s : bandwidth vs transfer size (QD=%d)  [Gen3 x4 ceiling ~3940 MB/s] ==\n",name,QD);
+  printf("  %-7s %-8s %-10s %-12s %-12s %s\n","blocks","KB/cmd","cmds/s","cmplMB/s","REALMB/s","status");
+  int nlbs[]={7,15,31,63,127,255};
   for(unsigned n=0;n<sizeof(nlbs)/sizeof(int);n++){
     int nlb=nlbs[n]; int blocks=nlb+1; long bytes_cmd=(long)blocks*512;
-    // aim ~128 MB per point, but cap command count to keep runtime bounded
     int cmds = (int)(128L*1024*1024 / bytes_cmd); if(cmds>1500) cmds=1500; if(cmds<QD*4) cmds=QD*4;
     int batches = cmds/QD; if(batches<1) batches=1;
     wr(0x58,nlb);
-    uint32_t cbase=rd(0x64), submitted=0; int stalled=0;
+    // For READ, pre-write the same LBAs (QD-batched) so reads return real data instead of being
+    // short-circuited as never-written -> gives the true read transfer rate (from SSD cache/NAND).
+    if(trig==0x48){
+      uint32_t pc=rd(0x64); unsigned ps=0;
+      for(int b=0;b<batches;b++){ for(int k=0;k<QD;k++){ wr(0x54,(b*QD+k)*blocks%0x100000); wr(0x4C,0); ps++; }
+        long it=0; for(; it<8000000L && (uint32_t)(rd(0x64)-pc)<ps; it++); }
+    }
+    uint32_t cbase=rd(0x64), bbase=rd(beatreg), submitted=0; int stalled=0;
     double t0=now();
     for(int b=0;b<batches && !stalled;b++){
       for(int k=0;k<QD;k++){ wr(0x54,(b*QD+k)*blocks % 0x100000); wr(trig,0); submitted++; }
-      long it=0; for(; it<3000000L && (uint32_t)(rd(0x64)-cbase)<submitted; it++);
+      long it=0; for(; it<8000000L && (uint32_t)(rd(0x64)-cbase)<submitted; it++);
       if((uint32_t)(rd(0x64)-cbase)<submitted) stalled=1;
     }
-    double s=now()-t0; uint32_t done=rd(0x64)-cbase; double ips=done/s;
-    double mbps=ips*bytes_cmd/1e6;
-    printf("  %-8d %-8.1f %-10.0f %-12.1f %s\n",blocks,bytes_cmd/1024.0,ips,mbps,
-           stalled?"STALL/short":"ok");
+    double s=now()-t0; uint32_t done=rd(0x64)-cbase; uint32_t beats=rd(beatreg)-bbase;
+    double cmpl=(done/s)*bytes_cmd/1e6, real=(double)beats*32.0/1e6/s;
+    if(stalled) printf("  %-7d %-8.1f %-10s %-12s %-12.1f STALL %u/%u\n",blocks,bytes_cmd/1024.0,"-","-",real,done,submitted);
+    else        printf("  %-7d %-8.1f %-10.0f %-12.1f %-12.1f ok\n",blocks,bytes_cmd/1024.0,done/s,cmpl,real);
   }
 }
 

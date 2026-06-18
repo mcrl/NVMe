@@ -67,6 +67,30 @@ module tb_cpl_stress;
     m_wvalid <= 0; m_wlast <= 0;
   endtask
 
+  // read the PRP list (AR to 0xD000) and verify entry(k) = 0xE000 + k*4096
+  task automatic check_list(input int nbeats);
+    int b, bad; logic [255:0] beat; logic [31:0] exp, got;
+    b=0; bad=0;
+    @(posedge oculink_axi_clk);
+    m_araddr <= 32'hD000; m_arlen <= nbeats-1; m_arvalid <= 1;
+    do @(posedge oculink_axi_clk); while(!m_arready);
+    m_arvalid <= 0;
+    forever begin
+      @(posedge oculink_axi_clk);
+      if (m_rvalid) begin
+        beat = m_rdata;
+        for (int ii=0; ii<4; ii++) begin
+          exp = 32'hE000 + ((4*b+ii) << 12);
+          got = beat[ii*64 +: 32];
+          if (got !== exp) begin bad++; if(bad<=4) $display("[LIST] beat %0d entry %0d got %08h exp %08h", b, ii, got, exp); end
+        end
+        b++;
+        if (m_rlast) break;
+      end
+    end
+    $display("[LIST] read %0d beats (%0d entries), %0d mismatches => %s", b, b*4, bad, bad==0?"PASS":"FAIL");
+  endtask
+
   int i, base; int N = 200;
   initial begin
     repeat(20) @(posedge oculink_axi_clk); rstn = 1; repeat(20) @(posedge oculink_axi_clk);
@@ -76,6 +100,8 @@ module tb_cpl_stress;
     repeat(400) @(posedge oculink_axi_clk);
     $display("[CPLSTRESS] posted %0d back-to-back CQEs; cpl_count rose by %0d => %s",
              N, cpl_count-base, ((cpl_count-base)==N) ? "PASS (none missed)" : "FAIL (missed completions)");
+    check_list(8);   // verify the PRP-list generator (32 entries = pages 2..33)
+    repeat(50) @(posedge oculink_axi_clk);
     $finish;
   end
   initial begin #500000; $display("[CPLSTRESS] TIMEOUT"); $finish; end

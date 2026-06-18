@@ -33,7 +33,9 @@ module csr(
   output logic [31:0] oculink_0a_wrdata [7:0],
   input logic [31:0]  oculink_0a_rddata [7:0],
   input logic [31:0]  oculink_0a_cpl_status,
-  input logic [31:0]  oculink_0a_cpl_count
+  input logic [31:0]  oculink_0a_cpl_count,
+  input logic [31:0]  oculink_0a_r_data_beats,
+  input logic [31:0]  oculink_0a_w_data_beats
 );
   
   // scratch reg for debugging
@@ -125,6 +127,8 @@ module csr(
         16'h005C: host_dout <= oculink_0a_cpl_done;
         16'h0060: host_dout <= oculink_0a_cpl_status;   // last completion CQE DW3 (status/phase/cid)
         16'h0064: host_dout <= oculink_0a_cpl_count;    // monotonic completion counter (multi-outstanding)
+        16'h0068: host_dout <= oculink_0a_r_data_beats; // real write-payload R beats served (x32 B)
+        16'h006C: host_dout <= oculink_0a_w_data_beats; // real read-payload  W beats captured (x32 B)
         16'h0100: host_dout <= oculink_0a_wrdata[0];
         16'h0104: host_dout <= oculink_0a_wrdata[1];
         16'h0108: host_dout <= oculink_0a_wrdata[2];

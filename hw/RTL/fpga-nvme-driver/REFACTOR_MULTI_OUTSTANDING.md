@@ -194,6 +194,58 @@ so with large transfers this design should approach ~4 GB/s.
    so "block MB/s" (what the SSD/link sees) >> real host-payload MB/s. Real GB/s of *host* data needs the host-DMA
    datapath rebuild (stream host_xdma BRAM/DMA into the OcuLink data phase) — the larger, separate B2 work.
 
+## MO-7 IMPLEMENTED — PRP2 + PRP-list (large transfers, sim-verified; HW pending)
+
+Diagnosis correction (via a QD=1 single-command probe, `nvme_prp_probe.c`): the ">2 KB stall" was NOT a PRP page
+limit — at QD=1, every size up to 128 KB completes. The real causes were (a) PRP2 unset (DW8=0) so 2-page
+transfers went to a garbage 2nd page, and (b) no PRP list so >8 KB (>2 pages) had no valid page addresses, plus
+(c) the high-QD completion race. So large transfers + low QD (which sidesteps the race) is the bandwidth sweet spot.
+
+Implementation (nvme_driver.sv):
+- **SQE DW8 (PRP2)** now set per transfer size: `n_pages = (nlb+8)>>3`; PRP2 = 0 (<=1 page) / `0xE000` (==2 pages,
+  direct 2nd page) / `0xD000` (>2 pages, PRP-list page).
+- **R-tag carries a 2-bit class** {DATA=0, SQE=1, LIST=2} (was 1-bit is_sqe). The R mux is now 3-way
+  (cmd / listgen / wrdata), each with its own ownership guard.
+- **listgen FSM**: when the SSD reads the PRP-list page (class LIST, 0xD000), it serves the data-page addresses
+  pages 2..N = `0xE000 + k*4096`, four 64-bit little-endian entries per 256-bit beat. (All pages are in the served
+  OcuLink data region, so the FPGA serves/captures the actual payload at any of them.)
+
+Verified in xsim: regression clean (tb_nvme_driver 70 writes + 8 reads, tb_cpl_stress 200/200); the PRP-list
+generator returns correct entries (`[LIST] 8 beats, 32 entries, 0 mismatches`). The real SSD's consumption of the
+PRP list is only testable on HW (the ssd_model doesn't emulate PRP) — HW measurement pending.
+
+## MO-7 HARDWARE — large transfers saturate the OcuLink Gen3 x4 link (2026-06-18)
+
+OcuLink link confirmed via the SSD's PCIe Link Status (`nvme_linkspeed.c`): **negotiated = capable = Gen3 (8 GT/s)
+x4 = ~3.94 GB/s per direction**. So the small-block ~0.2 GB/s was ~5% of the link.
+
+With MO-7 (PRP2 + PRP-list), large transfers work and bandwidth scales with size (block-level MB/s, MO-7 bitstream,
+timing MET WNS +0.030ns):
+```
+READ  : QD1 128KB 2.24 GB/s ; QD2 128KB 3.85 GB/s (~98% of the 3.94 link!) ; >QD2 readings exceed the link
+WRITE : QD1 128KB 1.45 GB/s ; QD2 128KB 2.90 GB/s ; QD4 readings exceed the link
+```
+So MO-7 takes throughput from ~0.2 GB/s (512 B) to ~3.85 GB/s (128 KB read, QD2) — essentially the full Gen3 x4
+link, ~19x. The bottleneck moved from per-command overhead to the link itself.
+
+**Hardware data-beat counters settle the real number (CSR 0x68 = write-payload R beats, 0x6C = read-payload W
+beats, x32 B; `nvme_bw_bench` prints REALMB/s alongside cmplMB/s).** The completion-based numbers were INFLATED:
+at QD=1 cmpl==REAL (serialized = honest), but at QD>=2 the SSD fast-acks writes into cache and short-circuits reads
+of unwritten LBAs, so completions outrun real link transfer (e.g. WRITE QD4 128KB: cmpl 5780 vs REAL 1445 MB/s;
+READ QD4 128KB: cmpl 3607 vs REAL ~900). The earlier "3.85 GB/s link saturation" was a cmpl artifact, NOT real.
+
+**Honest sustained bandwidth (QD=1, 128 KB, cmpl==REAL, beat-counter-validated):**
+```
+  READ  (pre-written LBAs): 2.27 GB/s     WRITE: 1.45 GB/s
+  (reading never-written LBAs is slower, ~1.14 GB/s — the SSD's dealloc/zero path)
+```
+So MO-7 lifts REAL throughput from ~0.2 GB/s (512 B) to ~1.45 GB/s write / ~2.27 GB/s read (128 KB) — ~7-11x. The
+OcuLink Gen3 x4 link (3.94 GB/s) is NOT the bottleneck; the SSD/bridge transfer rate is (~1.45-2.27 GB/s here).
+Higher QD does NOT raise REAL bandwidth (it inflates cmpl only) — the QD>1 REAL dip for large reads is an artifact
+of the synthetic pattern (short-circuit) and/or a high-rate W-channel limit; QD=1 large transfers are the clean
+sustained figure. Next levers if more is wanted: a real-data read pattern + investigating why QD>1 doesn't add
+real bandwidth (W-channel under large-read load), and the host-DMA datapath for real host-payload GB/s.
+
 ## Known limitation -> next step (superseded once MO-4 lands on HW)
 Complete multiple-outstanding (QD up to 64) requires **demuxing both `m_axi` channels** so SQE-serve / write-data
 (R) and CQE / read-data (W) can interleave: route each AR/AW by address (IOSQ/ASQ vs IORW; IOCQ/ACQ vs IORW),
