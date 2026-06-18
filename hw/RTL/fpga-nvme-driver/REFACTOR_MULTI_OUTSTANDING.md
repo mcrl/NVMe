@@ -169,6 +169,31 @@ WRITE: QD1 128k  QD2 259k  QD8 333k (peak, 170 MB/s)  QD16+ : marginal 2-cmd rac
   SQ-tail + CQ-head rings can't free CQ slots fast enough at peak write rate, so the SSD stalls posting the last
   CQEs). Low value to chase: writes already saturate at QD8 (~333k), so QD16 would gain little. Tracked as MO-6.
 
+## Why the MB/s looked low for Gen3 x4 — it was IOPS-bound, not bandwidth-bound (2026-06-18)
+
+The early numbers (~209 MB/s block) were measured at **512 B/command (nlb=0)** — that is IOPS-bound: each command
+pays a fixed overhead (SQE fetch + doorbell + CQE + OcuLink round-trip), so bandwidth = IOPS x 512 B and the tiny
+block makes it look slow. The OcuLink datapath is 256-bit @ 125 MHz = **4 GB/s = exactly Gen3 x4**, so the link is
+nowhere near saturated by 512 B transfers.
+
+`sw/nvme_driver_test/sw/nvme_bw_bench.c` sweeps blocks/command (nlb) and shows bandwidth scales with transfer size
+(block-level MB/s, READ):
+```
+  512 B  -> 121 MB/s       1 KB -> 242/421 MB/s
+  2 KB   -> 477 MB/s (QD16),  903 MB/s (QD32)   <- ~4.3x the 512 B number, ~1 GB/s
+  >2-3 KB -> STALL
+```
+Command rate stays ~440k/s (QD32), so MB/s = rate x block size. At 440k/s the link saturates around ~9 KB/command,
+so with large transfers this design should approach ~4 GB/s.
+
+**Two ceilings to lift to actually hit Gen3 x4:**
+1. **PRP1-only (DW8/PRP2 = 0, no PRP list)** caps a command to ~one 4 KB page; in practice transfers >~2 KB stall.
+   Implementing PRP2 + a PRP-list walker would allow 64-128 KB/command -> overhead amortized -> link-rate (~4 GB/s).
+   This is the single biggest throughput lever. (New task.)
+2. **Effective host data is 32 B/command** — the datapath replays one 256-bit wrdata/rddata beat to fill the block,
+   so "block MB/s" (what the SSD/link sees) >> real host-payload MB/s. Real GB/s of *host* data needs the host-DMA
+   datapath rebuild (stream host_xdma BRAM/DMA into the OcuLink data phase) — the larger, separate B2 work.
+
 ## Known limitation -> next step (superseded once MO-4 lands on HW)
 Complete multiple-outstanding (QD up to 64) requires **demuxing both `m_axi` channels** so SQE-serve / write-data
 (R) and CQE / read-data (W) can interleave: route each AR/AW by address (IOSQ/ASQ vs IORW; IOCQ/ACQ vs IORW),
