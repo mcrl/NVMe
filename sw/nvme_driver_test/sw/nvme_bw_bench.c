@@ -22,6 +22,7 @@ static void wctrl(uint32_t o,uint32_t d){wcfg(0x80000000u|(0x4000+o),d);}
 static double now(){struct timespec t;clock_gettime(CLOCK_MONOTONIC,&t);return t.tv_sec+t.tv_nsec*1e-9;}
 
 int g_mps=256, g_mrrs=256;   // bytes to program into SSD PCIe Device Control (0 = leave as-is)
+int g_distinct=0;            // 1 = distinct PRP1 per outstanding command
 static int encb(int b){switch(b){case 128:return 0;case 256:return 1;case 512:return 2;case 1024:return 3;case 2048:return 4;case 4096:return 5;default:return -1;}}
 static void bringup(){
   wr(0x04,1); usleep(1000000); wr(0x04,0);
@@ -62,7 +63,7 @@ static void sweep(uint32_t trig,const char*name,int QD){
   uint32_t beatreg = (trig==0x4C) ? 0x68 : 0x6C;
   printf("\n== %s : bandwidth vs transfer size (QD=%d)  [Gen3 x4 ceiling ~3940 MB/s] ==\n",name,QD);
   printf("  %-7s %-8s %-10s %-12s %-12s %s\n","blocks","KB/cmd","cmds/s","cmplMB/s","REALMB/s","status");
-  int nlbs[]={127,255,511,1023,2047};
+  int nlbs[]={255,1023,2047};
   for(unsigned n=0;n<sizeof(nlbs)/sizeof(int);n++){
     int nlb=nlbs[n]; int blocks=nlb+1; long bytes_cmd=(long)blocks*512;
     int cmds = (int)(128L*1024*1024 / bytes_cmd); if(cmds>1500) cmds=1500; if(cmds<QD*4) cmds=QD*4;
@@ -70,15 +71,18 @@ static void sweep(uint32_t trig,const char*name,int QD){
     wr(0x58,nlb);
     // For READ, pre-write the same LBAs (QD-batched) so reads return real data instead of being
     // short-circuited as never-written -> gives the true read transfer rate (from SSD cache/NAND).
+    // g_distinct: give each of the QD outstanding commands its own PRP1 buffer (base 0x10000, stride 0x10000)
+    // so QD>1 commands don't overlap on the same host buffer (this design uses a single nvme_addr otherwise).
+    #define PRP1(k) (g_distinct ? (0x10000u + ((unsigned)((k)%QD))*0x10000u) : 0xC000u)
     if(trig==0x48){
       uint32_t pc=rd(0x64); unsigned ps=0;
-      for(int b=0;b<batches;b++){ for(int k=0;k<QD;k++){ wr(0x54,(b*QD+k)*blocks%0x100000); wr(0x4C,0); ps++; }
+      for(int b=0;b<batches;b++){ for(int k=0;k<QD;k++){ wr(0x50,PRP1(k)); wr(0x54,(b*QD+k)*blocks%0x100000); wr(0x4C,0); ps++; }
         long it=0; for(; it<8000000L && (uint32_t)(rd(0x64)-pc)<ps; it++); }
     }
     uint32_t cbase=rd(0x64), bbase=rd(beatreg), submitted=0; int stalled=0;
     double t0=now();
     for(int b=0;b<batches && !stalled;b++){
-      for(int k=0;k<QD;k++){ wr(0x54,(b*QD+k)*blocks % 0x100000); wr(trig,0); submitted++; }
+      for(int k=0;k<QD;k++){ wr(0x50,PRP1(k)); wr(0x54,(b*QD+k)*blocks % 0x100000); wr(trig,0); submitted++; }
       long it=0; for(; it<8000000L && (uint32_t)(rd(0x64)-cbase)<submitted; it++);
       if((uint32_t)(rd(0x64)-cbase)<submitted) stalled=1;
     }
@@ -95,6 +99,7 @@ int main(int argc,char**argv){
   int QD=argc>3?atoi(argv[3]):8;
   if(argc>4) g_mps=atoi(argv[4]);
   if(argc>5) g_mrrs=atoi(argv[5]);
+  if(argc>6) g_distinct=atoi(argv[6]);
   int fd=open(p,O_RDWR|O_SYNC); if(fd<0){printf("open:%s\n",strerror(errno));return 1;}
   B=(volatile uint32_t*)mmap(0,64*1024,PROT_READ|PROT_WRITE,MAP_SHARED,fd,0);
   if(B==MAP_FAILED){printf("mmap:%s\n",strerror(errno));return 1;}
