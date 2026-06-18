@@ -97,8 +97,7 @@ module nvme_driver #(
   assign oculink_m_axi_awready  = 1;
   assign oculink_m_axi_wready   = 1;
 
-  logic is_sending_cmd;
-  logic is_receving_cpl;
+  logic is_sending_cmd;   // kept for ILA only (no longer a mux select)
 
   logic [255:0]  oculink_m_axi_rdata_cmd;
   logic [3:0]    oculink_m_axi_rid_cmd;
@@ -110,12 +109,6 @@ module nvme_driver #(
   logic          oculink_m_axi_rlast_wr;
   logic [1:0]    oculink_m_axi_rresp_wr;
   logic          oculink_m_axi_rvalid_wr;
-  logic [3:0]    oculink_m_axi_bid_cpl;
-  logic [1:0]    oculink_m_axi_bresp_cpl;
-  logic          oculink_m_axi_bvalid_cpl;
-  logic [3:0]    oculink_m_axi_bid_rd;
-  logic [1:0]    oculink_m_axi_bresp_rd;
-  logic          oculink_m_axi_bvalid_rd;
 
   // ---------------- m_axi in-order demux tag FIFOs ----------------
   // Root cause of the QD>1 hang: the R/B muxes selected on a PRODUCER-STATE flag (is_sending_cmd /
@@ -151,26 +144,31 @@ module nvme_driver #(
     .pop(sqear_pop), .head(sqear_head), .empty(sqear_empty), .full(sqear_full)
   );
 
-  // W-tag: is_cqe per accepted AW; head selects the B source; pop on the burst's B handshake.
-  wire aw_is_cqe = (oculink_m_axi_awaddr >= ACQ_BAR) && (oculink_m_axi_awaddr < IOSQ_BAR); // ACQ|IOCQ ranges
-  logic wtag_head;
-  logic wtag_empty, wtag_full;
-  wire  wtag_pop = oculink_m_axi_bvalid & oculink_m_axi_bready;
-  tagfifo #(.WIDTH(1), .DEPTH(256)) wtag_i (
-    .clk(oculink_axi_clk), .srst(!rstn),
-    .push(oculink_m_axi_awvalid), .din(aw_is_cqe),
-    .pop(wtag_pop), .head(wtag_head), .empty(wtag_empty), .full(wtag_full)
-  );
-  wire wtag_sel_cpl = (!wtag_empty) & wtag_head;   // B mux: 1=CQE(cpl), 0=read-data(rd)
+  // W-channel acceptor (MO-5): in-order, W-STREAM-DRIVEN capture instead of an FSM that only catches awvalid
+  // while idle (which dropped back-to-back CQEs at high QD). wtag holds {is_cqe, is_iocq} per accepted AW;
+  // three pointers walk it: w_awp (AW push, since awready=1), w_capp (advances per completed W burst ->
+  // capture+count, NEVER blocked by B), w_bp (B response, one OKAY per captured burst in AW order).
+  localparam WTAG_DEPTH = 256;
+  localparam WTAG_AW    = $clog2(WTAG_DEPTH);
+  wire aw_is_cqe  = (oculink_m_axi_awaddr >= ACQ_BAR)  && (oculink_m_axi_awaddr < IOSQ_BAR); // ACQ|IOCQ
+  wire aw_is_iocq = (oculink_m_axi_awaddr >= IOCQ_BAR) && (oculink_m_axi_awaddr < IOSQ_BAR); // IOCQ (vs ACQ)
+  logic [1:0]       wtagmem [0:WTAG_DEPTH-1];
+  logic [WTAG_AW:0] w_awp, w_capp, w_bp;
+  wire        wcap_avail = (w_capp != w_awp);
+  wire        wb_avail   = (w_bp   != w_capp);            // a captured burst awaits its B
+  // class of the W burst now completing; same-cycle AW+W(wlast) (empty wtag) reads the live AW class
+  wire        w_same     = oculink_m_axi_awvalid && (w_capp == w_awp);
+  wire [1:0]  wcap_cls   = wcap_avail ? wtagmem[w_capp[WTAG_AW-1:0]] : {aw_is_cqe, aw_is_iocq};
+  wire        wburst_end = oculink_m_axi_wvalid && oculink_m_axi_wlast && (wcap_avail || w_same);
 
   assign oculink_m_axi_rdata  = rtag_sel_cmd ? oculink_m_axi_rdata_cmd  : oculink_m_axi_rdata_wr;
   assign oculink_m_axi_rid    = rtag_sel_cmd ? oculink_m_axi_rid_cmd    : oculink_m_axi_rid_wr;
   assign oculink_m_axi_rlast  = rtag_sel_cmd ? oculink_m_axi_rlast_cmd  : oculink_m_axi_rlast_wr;
   assign oculink_m_axi_rresp  = rtag_sel_cmd ? oculink_m_axi_rresp_cmd  : oculink_m_axi_rresp_wr;
   assign oculink_m_axi_rvalid = rtag_sel_cmd ? oculink_m_axi_rvalid_cmd : oculink_m_axi_rvalid_wr;
-  assign oculink_m_axi_bid    = wtag_sel_cpl ? oculink_m_axi_bid_cpl    : oculink_m_axi_bid_rd;
-  assign oculink_m_axi_bresp  = wtag_sel_cpl ? oculink_m_axi_bresp_cpl  : oculink_m_axi_bresp_rd;
-  assign oculink_m_axi_bvalid = wtag_sel_cpl ? oculink_m_axi_bvalid_cpl : oculink_m_axi_bvalid_rd;
+  assign oculink_m_axi_bid    = 4'd0;
+  assign oculink_m_axi_bresp  = 2'd0;        // every B is OKAY/id-0 (CQE and read-data alike)
+  assign oculink_m_axi_bvalid = wb_avail;    // one B per captured W burst, in AW-accept order
 
 
   /* IO Submission Queue */
@@ -637,84 +635,9 @@ module nvme_driver #(
   end
 
 
-  /* Read data */
-
-  localparam RD_IDLE       = 8'd0;
-  localparam RD_RECV_DATA  = 8'd1;
-
-  logic [7:0]   rd_state;
+  /* Read-command payload AND completions are captured by the unified W-channel acceptor (below,
+     under "Completion"). The old rd / rdrsp / cpl FSMs are replaced by it. */
   logic [255:0] rd_data;
-  logic         rd_done;
-
-  // Read/Write available address : 0xC000 ~
-  always_ff @(posedge oculink_axi_clk or negedge rstn) begin
-    if (!rstn) begin
-      rd_state <= RD_IDLE;
-      rd_data  <= 0;
-      rd_done  <= 0;
-    end
-    else begin
-      case(rd_state)
-        RD_IDLE: begin
-          rd_done  <= 0;
-
-          if (oculink_m_axi_awvalid && (oculink_m_axi_awaddr >= IORW_BAR)) begin
-            rd_state  <= RD_RECV_DATA;
-          end
-        end
-
-        RD_RECV_DATA: begin
-          if (oculink_m_axi_wvalid) begin
-            rd_data <= oculink_m_axi_wdata;
-            
-            if(oculink_m_axi_wlast == 1) begin
-              rd_done <= 1;
-              rd_state <= RD_IDLE;
-            end
-          end
-        end
-
-      endcase
-    end
-  end
-
-
-  /* Read Response */
-
-  localparam RDRSP_IDLE       = 8'd0;
-  localparam RDRSP_SEND_RESP  = 8'd1;
-
-  logic [7:0] rdrsp_state;
-
-  always_ff @(posedge oculink_axi_clk or negedge rstn) begin
-    if(!rstn) begin
-      rdrsp_state                 <= RDRSP_IDLE;
-      oculink_m_axi_bid_rd     <= 0;
-      oculink_m_axi_bresp_rd   <= 0;
-      oculink_m_axi_bvalid_rd  <= 0;
-    end
-    else begin
-      case(rdrsp_state) 
-        RDRSP_IDLE: begin
-          oculink_m_axi_bvalid_rd <= 0;
-
-          if (rd_done) begin
-            rdrsp_state <= RDRSP_SEND_RESP;
-          end
-        end
-
-        RDRSP_SEND_RESP: begin
-          if (oculink_m_axi_bready && !wtag_sel_cpl) begin   // send B only when a read-data tag is the B head
-            oculink_m_axi_bid_rd     <= 0;
-            oculink_m_axi_bresp_rd   <= 0;
-            oculink_m_axi_bvalid_rd  <= 1;
-            rdrsp_state                 <= RDRSP_IDLE;
-          end
-        end
-
-      endcase
-    end
-  end
 
 
   /* Write data */
@@ -792,84 +715,43 @@ module nvme_driver #(
 
   /* Completion */
 
-  localparam CPL_IDLE       = 8'd0;
-  localparam CPL_RECV_IOCPL = 8'd1;
-  localparam CPL_RECV_ACPL  = 8'd2;
-  localparam CPL_RESP       = 8'd3;
-  localparam CPL_DONE       = 8'd4;
-
-  logic [7:0]   cpl_state;
+  /* ---- Unified W-channel acceptor (MO-5) ----
+     Replaces the old rd / rdrsp / cpl FSMs. The completion count is driven by the W STREAM (one count
+     per CQE wlast, using the tag class at w_capp), not by an FSM that only catches awvalid while idle —
+     so back-to-back CQEs at high QD are never dropped. Read-command payload lands in rd_data on its
+     burst's wlast. B (w_bp) is one OKAY per captured burst, in AW-accept order. */
   logic [255:0] cpl_data;
-
-  // 9000~9FFF : ACQ address
-  // A000~AFFF : IOCQ address
   always_ff @(posedge oculink_axi_clk or negedge rstn) begin
-    if(!rstn) begin
-      cpl_state                 <= CPL_IDLE;
-      cpl_data                  <= 0;
-      cpl_done                  <= 0;
-      cpl_count                 <= 0;
-      is_receving_cpl           <= 0;
-      iocqhdbl                  <= 0;
-      acqhdbl                   <= 0;
-      cpl_is_io                 <= 0;
-
-      oculink_m_axi_bid_cpl     <= 0;
-      oculink_m_axi_bresp_cpl   <= 0;
-      oculink_m_axi_bvalid_cpl  <= 0;
+    if (!rstn) begin
+      w_awp     <= 0;  w_capp <= 0;  w_bp <= 0;
+      cpl_data  <= 0;  rd_data <= 0;
+      cpl_count <= 0;  cpl_done <= 0;  cpl_is_io <= 0;
+      iocqhdbl  <= 0;  acqhdbl  <= 0;
     end
     else begin
-      case(cpl_state)
-        CPL_IDLE: begin
-          oculink_m_axi_bvalid_cpl  <= 0;
-          is_receving_cpl           <= 0;
-          cpl_done                  <= 0;
-
-          if (oculink_m_axi_awvalid && (oculink_m_axi_awaddr >= IOCQ_BAR) && (oculink_m_axi_awaddr < IOSQ_BAR)) begin
-            cpl_state <= CPL_RECV_IOCPL;
-          end
-          else if (oculink_m_axi_awvalid && (oculink_m_axi_awaddr >= ACQ_BAR) && (oculink_m_axi_awaddr < IOCQ_BAR)) begin
-            cpl_state <= CPL_RECV_ACPL;
-          end
+      cpl_done <= 1'b0;
+      // 1) record every accepted AW (awready tied 1) -> its class {is_cqe, is_iocq}
+      if (oculink_m_axi_awvalid) begin
+        wtagmem[w_awp[WTAG_AW-1:0]] <= {aw_is_cqe, aw_is_iocq};
+        w_awp <= w_awp + 1'b1;
+      end
+      // 2) capture+count each completing W burst (on wlast), routed by the capture-head class
+      if (wburst_end) begin
+        if (wcap_cls[1]) begin                 // CQE -> count + advance the consumed CQ head
+          cpl_data  <= oculink_m_axi_wdata;
+          cpl_count <= cpl_count + 1;
+          cpl_done  <= 1'b1;
+          cpl_is_io <= wcap_cls[0];
+          if (wcap_cls[0]) iocqhdbl <= (iocqhdbl == IOCQ_QDEPTH-1) ? 32'd0 : iocqhdbl + 1;
+          else             acqhdbl  <= (acqhdbl  == ACQ_QDEPTH-1)  ? 32'd0 : acqhdbl  + 1;
         end
-
-        CPL_RECV_IOCPL: begin
-          if (oculink_m_axi_wvalid && (oculink_m_axi_wlast == 1)) begin
-            is_receving_cpl <= 1;
-            cpl_is_io       <= 1;
-            cpl_data        <= oculink_m_axi_wdata;
-            cpl_state       <= CPL_RESP;
-          end
+        else begin                             // read-command payload (capture last beat)
+          rd_data <= oculink_m_axi_wdata;
         end
-
-        CPL_RECV_ACPL: begin
-          if (oculink_m_axi_wvalid && (oculink_m_axi_wlast == 1)) begin
-            is_receving_cpl <= 1;
-            cpl_is_io       <= 0;
-            cpl_data        <= oculink_m_axi_wdata;
-            cpl_state       <= CPL_RESP;
-          end
-        end
-
-        CPL_RESP: begin
-          if (oculink_m_axi_bready && wtag_sel_cpl) begin   // send B only when our CQE tag is the B head
-            oculink_m_axi_bid_cpl     <= 0;
-            oculink_m_axi_bresp_cpl   <= 0;
-            oculink_m_axi_bvalid_cpl  <= 1;
-            cpl_state                 <= CPL_DONE;
-          end
-        end
-
-        CPL_DONE: begin
-          oculink_m_axi_bvalid_cpl  <= 0;
-          cpl_done                  <= 1;
-          cpl_count                 <= cpl_count + 1;  // per-completion counter (host polls this for multi-outstanding)
-          // advance the consumed CQ head so the db FSM rings the CQ head doorbell (frees CQ slots)
-          if (cpl_is_io) iocqhdbl <= (iocqhdbl == IOCQ_QDEPTH-1) ? 32'd0 : iocqhdbl + 1;
-          else           acqhdbl  <= (acqhdbl  == ACQ_QDEPTH-1)  ? 32'd0 : acqhdbl  + 1;
-          cpl_state                 <= CPL_IDLE;       // always re-arm to capture every completion
-        end
-      endcase
+        w_capp <= w_capp + 1'b1;
+      end
+      // 3) one B per captured burst, in AW-accept order
+      if (wb_avail && oculink_m_axi_bready) w_bp <= w_bp + 1'b1;
     end
   end
 
@@ -918,11 +800,11 @@ module nvme_driver #(
     .probe25(cmd_fpga_addr), //32
     .probe26(cmd_nlb), //32
     .probe27(cmd_done), //1
-    .probe28(rd_state), // 8
+    .probe28({w_awp[3:0], w_capp[3:0]}), // 8 (W-acceptor AW/capture ptrs)
     .probe29(rd_data), // 256
-    .probe30(rd_done), 
-    .probe31(rdrsp_state), //8
-    .probe32({rtag_full, rtag_empty, sqear_full, sqear_empty, wtag_full, wtag_empty, rtag_sel_cmd, wtag_sel_cpl}), //8 demux flags
+    .probe30(wburst_end),
+    .probe31({w_bp[3:0], 2'b0, wb_avail, wcap_avail}), //8
+    .probe32({rtag_full, rtag_empty, sqear_full, sqear_empty, wcap_avail, wb_avail, rtag_sel_cmd, wburst_end}), //8 demux flags
     .probe33(rtag_head_is_sqe),
     .probe34(wr_len), // 8
     .probe35(rtag_pop),
@@ -930,11 +812,11 @@ module nvme_driver #(
     .probe37(rtag_full),
     .probe38(rtag_empty),
     .probe39(rtag_sel_cmd),
-    .probe40({6'd0, wtag_head, wtag_sel_cpl}), //8
-    .probe41({sqear_empty, wtag_empty, rtag_empty, wtag_pop}), // 4
+    .probe40({6'd0, wcap_cls}), //8 (current W-burst class {is_cqe,is_iocq})
+    .probe41({sqear_empty, wcap_avail, rtag_empty, wb_avail}), // 4
     .probe42(wrdata_state), // 8
-    .probe43(4'd0), // 4 (retired wrdata_send_cnt)
-    .probe44(cpl_state), // 8
+    .probe43(4'd0), // 4 (retired)
+    .probe44({7'd0, cpl_is_io}), // 8
     .probe45(cpl_data)  // 256
   );
 

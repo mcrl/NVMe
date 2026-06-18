@@ -88,8 +88,8 @@ module tb_nvme_driver;
   always @(posedge oculink_axi_clk) if (rstn) begin
     if (m_rvalid && m_rready && m_rlast && dut.rtag_empty)
       $error("[ASSERT] rtag underflow: R rlast handshake with empty rtag @%0t", $time);
-    if (m_bvalid && m_bready && dut.wtag_empty)
-      $error("[ASSERT] wtag underflow: B handshake with empty wtag @%0t", $time);
+    if (m_bvalid && m_bready && !dut.wb_avail)
+      $error("[ASSERT] B underflow: B handshake with no captured burst awaiting B @%0t", $time);
     if (dut.cmd_state == CMD_RECV_ADDR_ST && !dut.sqear_empty && (dut.sqear_head !== dut.cmd_is_admin))
       $error("[ASSERT] SQE-AR class mismatch: sqear_head=%b cmd_is_admin=%b @%0t", dut.sqear_head, dut.cmd_is_admin, $time);
     // count beats per data-read burst and check against arlen+1 at rlast (write-data reads only)

@@ -122,6 +122,53 @@ W-burst read pointer for capture vs the B read pointer — i.e. unify rd+cpl int
 wtag {is_cqe,is_iocq}. This mainly buys robustness/completion at QD>=32 (IOPS is already saturating), so it's a
 follow-up, not part of the demux landing. Verify with a back-to-back-CQE stress in the testbench before synth.
 
+## READ vs WRITE performance (MO-4 bitstream, clean single-mode runs)
+
+`sw/nvme_driver_test/sw/nvme_rw_bench.c` (arg2 = "r"/"w"/"wr"; reads use trigger 0x48, writes 0x4C):
+
+```
+WRITE (low latency -> command-rate bound, saturates ~QD8):
+  QD1 128k  QD2 258k  QD4 250k  QD8 328k (168 MB/s blk, 10.5 MB/s host)  QD16+ stall
+READ  (high NAND latency, QD hides it -> near-LINEAR scaling):
+  QD1 22.6k(44us)  QD2 45k  QD4 90k  QD8 181k  QD16 363k(186 MB/s blk,11.6 MB/s host)  QD32 284k  QD64 stall
+```
+- Read scales ~16x from QD1->QD16 (latency fully hidden); not yet saturated. Write saturates ~QD8.
+- "host MB/s" (32 B/cmd) is the real unique host bytes moved — the datapath replays one 256-bit beat to fill
+  the 512 B block, so block MB/s >> host MB/s until the host-DMA datapath rebuild.
+- IMPORTANT: a stalled sweep corrupts the queue pointers, so a later sweep in the same run all-stalls — measure
+  read and write in separate fresh-bringup runs (arg2 "r" / "w").
+
+## MO-5 IMPLEMENTED — unified W-channel acceptor (back-to-back CQE capture)
+
+The QD>=16/32 stalls are the completion-CAPTURE path, not the demux: the old `cpl` FSM caught `awvalid` only in
+CPL_IDLE and took ~4-5 cycles/CQE (IDLE->RECV->RESP->DONE), so a CQE-AW arriving while it was busy was dropped.
+A focused stress (`sim/tb_cpl_stress.sv`, 64 back-to-back CQEs ~2 cycles apart) reproduced it: **32/64 counted**.
+
+Fix: replace the `rd` + `rdrsp` + `cpl` FSMs with one **W-stream-driven acceptor**. `wtag` now carries
+{is_cqe, is_iocq} per accepted AW and is walked by THREE pointers: `w_awp` (AW push), `w_capp` (advances per
+completed W burst -> capture+count, never blocked by B), `w_bp` (one OKAY B per captured burst, in AW order).
+Completion count is driven by the W stream (one count per CQE `wlast`, routed by the tag class at `w_capp`), so
+back-to-back CQEs are never dropped; read-command payload lands in `rd_data` on its burst's `wlast`. Handles the
+same-cycle AW+W(wlast) case via a live-class bypass. B/id/resp are constant (0/OKAY) so the B mux is gone.
+
+Verified in xsim: `tb_cpl_stress` **64/64 and 200/200 PASS** (was 32/64); `tb_nvme_driver` no regression
+(70 writes wrap + 8 reads, rddata integrity, all assertions clean).
+
+**Hardware (MO-5 bitstream, timing MET WNS +0.104ns):**
+```
+READ : QD16 363k -> QD32 ~295k -> QD64 ~405k cmds/s (209 MB/s blk, 13 MB/s host)   <- QD64 was a STALL pre-MO-5
+WRITE: QD1 128k  QD2 259k  QD8 333k (peak, 170 MB/s)  QD16+ : marginal 2-cmd race (see below)
+```
+- **READ QD64 now completes** (was a hard stall) at ~405k cmds/s / 209 MB/s block — the MO-5 win. Reads are
+  reliable across the whole QD sweep now; the cpl-capture overrun is gone (W-stream capture never drops a CQE).
+- Read throughput plateaus ~300-400k beyond QD16 (SSD read-rate / FPGA serve-rate ceiling), so it is no longer
+  the clean linear curve of QD1-16; QD64 is still the peak.
+- **WRITE still stalls ~2 commands short at QD>=16**, at a *random* batch (542/544, 974/976, ...). This is NOT the
+  cpl capture (the stress proves 200/200, and READ QD16 — which loads the W channel MORE, with read-data + CQE —
+  passes). It is a separate marginal high-rate race on the write path (most likely the single `db` FSM serializing
+  SQ-tail + CQ-head rings can't free CQ slots fast enough at peak write rate, so the SSD stalls posting the last
+  CQEs). Low value to chase: writes already saturate at QD8 (~333k), so QD16 would gain little. Tracked as MO-6.
+
 ## Known limitation -> next step (superseded once MO-4 lands on HW)
 Complete multiple-outstanding (QD up to 64) requires **demuxing both `m_axi` channels** so SQE-serve / write-data
 (R) and CQE / read-data (W) can interleave: route each AR/AW by address (IOSQ/ASQ vs IORW; IOCQ/ACQ vs IORW),
