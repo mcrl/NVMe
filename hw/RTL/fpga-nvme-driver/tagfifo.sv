@@ -14,6 +14,8 @@ module tagfifo #(
   input  logic [WIDTH-1:0]  din,
   input  logic              pop,
   output logic [WIDTH-1:0]  head,         // front entry; valid when !empty
+  output logic [WIDTH-1:0]  head2,                // 2nd entry (behind head); valid when cnt >= 2
+  output logic [$clog2(DEPTH):0] cnt,             // occupancy (0..DEPTH); lets a consumer peek ahead
   output logic              empty,
   output logic              full
 );
@@ -24,6 +26,8 @@ module tagfifo #(
   assign empty = (wptr == rptr);
   assign full  = (wptr[AW] != rptr[AW]) && (wptr[AW-1:0] == rptr[AW-1:0]);
   assign head  = mem[rptr[AW-1:0]];
+  assign head2 = mem[(rptr[AW-1:0] + 1'b1)];   // entry right behind head (back-to-back lookahead)
+  assign cnt   = wptr - rptr;
 
   always_ff @(posedge clk) begin
     if (srst) begin

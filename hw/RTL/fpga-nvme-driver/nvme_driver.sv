@@ -34,6 +34,8 @@ module nvme_driver #(
   output logic [31:0]   cpl_count,      // monotonic completion counter (multi-outstanding)
   output logic [31:0]   r_data_beats,   // count of write-payload R beats served (real data moved, x32 B)
   output logic [31:0]   w_data_beats,   // count of read-data W beats captured (real data moved, x32 B)
+  output logic [31:0]   raw_w_beats,    // DIAG: EVERY accepted W beat (any class) -> SSD-sent vs FPGA-dropped
+  output logic [31:0]   raw_w_bursts,   // DIAG: count of non-CQE (read-data) W bursts (wlast & ~cqe class)
 
 
   // AXI Slave : aw, w, b 
@@ -137,16 +139,21 @@ module nvme_driver #(
   wire ar_is_admin = (oculink_m_axi_araddr >= ASQ_BAR)  && (oculink_m_axi_araddr < ASQ_BAR + ASQ_SIZE);
   wire ar_is_list  = (oculink_m_axi_araddr >= PRP_LIST_BASE) && (oculink_m_axi_araddr < PRP_LIST_BASE + 32'h1000);
   wire [1:0] ar_class = ar_is_sqe ? 2'd1 : ar_is_list ? 2'd2 : 2'd0;
-  logic [RTAG_W-1:0] rtag_head;
+  logic [RTAG_W-1:0] rtag_head, rtag_head2;
+  logic [8:0]        rtag_cnt;
   logic              rtag_empty, rtag_full;
   wire               rtag_pop = oculink_m_axi_rvalid & oculink_m_axi_rready & oculink_m_axi_rlast;
   tagfifo #(.WIDTH(RTAG_W), .DEPTH(256)) rtag_i (
     .clk(oculink_axi_clk), .srst(!rstn),
     .push(oculink_m_axi_arvalid), .din({ar_class, oculink_m_axi_arlen}),
-    .pop(rtag_pop), .head(rtag_head), .empty(rtag_empty), .full(rtag_full)
+    .pop(rtag_pop), .head(rtag_head), .head2(rtag_head2), .cnt(rtag_cnt),
+    .empty(rtag_empty), .full(rtag_full)
   );
   wire [1:0]  rtag_head_cls    = rtag_head[9:8];
   wire [7:0]  rtag_head_arlen  = rtag_head[7:0];
+  // 2-deep lookahead so the write-data server can chain to the next data burst with no inter-burst bubble
+  wire        rtag_next_is_data = (rtag_cnt >= 9'd2) && (rtag_head2[9:8] == 2'd0);
+  wire [7:0]  rtag_head2_arlen  = rtag_head2[7:0];
   wire        rtag_head_is_sqe = (rtag_head_cls == 2'd1);             // (kept name for ILA/tb)
   wire        rtag_sel_cmd     = (!rtag_empty) & (rtag_head_cls == 2'd1);  // SQE  -> cmd
   wire        rtag_sel_list    = (!rtag_empty) & (rtag_head_cls == 2'd2);  // list -> listgen
@@ -382,10 +389,11 @@ module nvme_driver #(
         end
         
         DB_DONE: begin
-          if (cmd_done) begin
-            db_done   <= 0;
-            db_state  <= DB_IDLE;
-          end
+          // MO-9: no cmd_done rendezvous -> the doorbell engine frees itself the cycle after B and is ready to
+          // ring the next (coalesced) SQ-tail immediately. The mutual cmd<->db wait that pinned effective QD~1
+          // is gone; each FSM now waits only on SSD-driven signals (cmd on sqear/rtag, db on its own s_axi B).
+          db_done   <= 0;
+          db_state  <= DB_IDLE;
         end
 
         // ---- CQ head doorbell rings (no SQE serve, so no cmd_done handshake) ----
@@ -649,11 +657,13 @@ module nvme_driver #(
           oculink_m_axi_rlast_cmd   <= 0;
           oculink_m_axi_rvalid_cmd  <= 0;
           is_sending_cmd            <= 0;
-
-          if (db_done) begin
-            cmd_done  <= 0;
-            cmd_state <= CMD_IDLE;
-          end
+          // MO-9: decouple SQE submission from the doorbell-B round-trip. Return to IDLE immediately and pop
+          // the next SQE while the prior SQ-tail doorbell (and its B) are still in flight -> multiple commands
+          // in flight (effective QD>1). io_serve_cnt is the free-running tail; the db FSM coalesces its ring to
+          // the latest value (DB_IDLE @ :324, io_sq_rung<=io_serve_cnt @ :362), which is valid NVMe. The R-demux
+          // (rtag head) still orders SQE serving, so single-ID in-order R is preserved.
+          cmd_done                  <= 0;   // 1-cycle pulse only (kept for ILA); db no longer rendezvous on it
+          cmd_state                 <= CMD_IDLE;
         end
         
       endcase
@@ -695,42 +705,44 @@ module nvme_driver #(
           oculink_m_axi_rvalid_wr  <= 0;
           oculink_m_axi_rlast_wr   <= 0;
 
-          // Start a burst only for a data-class head that is NOT being popped this cycle. The rtag pop is
-          // registered (1 cycle after rlast), so without the !rtag_pop guard this IDLE would re-trigger on the
-          // SAME tag during its own rlast beat and serve a spurious second burst.
+          // Start a burst for a data-class head that is NOT popping this cycle (the !rtag_pop guard stops a
+          // re-trigger on the same tag during its own rlast beat). Present beat 0 right away (rvalid=1).
           if (rtag_sel_data && !rtag_pop) begin   // a write-data read (class 0) is the oldest outstanding AR
-            wrdata_state <= WRDATA_SEND_DATA;
-            wr_len <= rtag_head_arlen;                  // burst length comes from the tag (no 16-entry ring)
+            wrdata_state            <= WRDATA_SEND_DATA;
+            oculink_m_axi_rdata_wr  <= {wrdata[7],wrdata[6],wrdata[5],wrdata[4],wrdata[3],wrdata[2],wrdata[1],wrdata[0]};
+            oculink_m_axi_rid_wr    <= 0;
+            oculink_m_axi_rresp_wr  <= 0;
+            oculink_m_axi_rvalid_wr <= 1;
+            wr_len                  <= rtag_head_arlen;            // burst length rides in the tag
+            oculink_m_axi_rlast_wr  <= (rtag_head_arlen == 8'd0);  // single-beat burst -> rlast on beat 0
           end
         end
 
         WRDATA_SEND_DATA: begin
-
-          if (oculink_m_axi_rready && rtag_sel_data) begin  // serve only when a write-data tag is the R head
-            oculink_m_axi_rdata_wr <= {
-                                        wrdata[7],
-                                        wrdata[6],
-                                        wrdata[5],
-                                        wrdata[4],
-                                        wrdata[3],
-                                        wrdata[2],
-                                        wrdata[1],
-                                        wrdata[0]  
-                                      };
-            oculink_m_axi_rid_wr     <= 0;
-            oculink_m_axi_rresp_wr   <= 0;
-            oculink_m_axi_rvalid_wr  <= 1;
-            oculink_m_axi_rlast_wr   <= 0;
-            wr_len                      <= wr_len - 1;
-
-            if (wr_len == 0) begin
-              oculink_m_axi_rlast_wr <= 1;
-              wrdata_state <= WRDATA_IDLE;   // rlast pops the rtag; re-check the new head from IDLE
+          // A beat is presented (rvalid_wr=1). Advance ONLY when the SSD accepts it (rready); otherwise hold
+          // valid+data+last+wr_len unchanged (AXI-correct stall). That stall-robustness is what makes the
+          // back-to-back chain safe: a burst boundary is crossed only once the rlast beat is truly transferred,
+          // so a mid-stall never desyncs the rtag (the bug that hung >2-page transfers when chaining naively).
+          if (oculink_m_axi_rready) begin
+            if (oculink_m_axi_rlast_wr) begin
+              // last beat of this burst just accepted -> rtag pops now (rvalid & rready & rlast).
+              if (rtag_next_is_data) begin                          // chain straight into the next data burst
+                oculink_m_axi_rdata_wr  <= {wrdata[7],wrdata[6],wrdata[5],wrdata[4],wrdata[3],wrdata[2],wrdata[1],wrdata[0]};
+                oculink_m_axi_rvalid_wr <= 1;
+                wr_len                  <= rtag_head2_arlen;
+                oculink_m_axi_rlast_wr  <= (rtag_head2_arlen == 8'd0);
+              end else begin                                        // next AR isn't data -> stop, re-check from IDLE
+                wrdata_state            <= WRDATA_IDLE;
+                oculink_m_axi_rvalid_wr <= 0;
+                oculink_m_axi_rlast_wr  <= 0;
+              end
+            end else begin
+              // mid-burst beat accepted -> present the next beat
+              oculink_m_axi_rdata_wr  <= {wrdata[7],wrdata[6],wrdata[5],wrdata[4],wrdata[3],wrdata[2],wrdata[1],wrdata[0]};
+              oculink_m_axi_rvalid_wr <= 1;
+              wr_len                  <= wr_len - 1'b1;
+              oculink_m_axi_rlast_wr  <= (wr_len == 8'd1);          // the beat after this one is the burst's last
             end
-          end
-
-          else begin
-            oculink_m_axi_rvalid_wr  <= 0;
           end
         end
 
@@ -836,11 +848,20 @@ module nvme_driver #(
     if (!rstn) begin
       r_data_beats <= 0;
       w_data_beats <= 0;
+      raw_w_beats  <= 0;
+      raw_w_bursts <= 0;
     end else begin
       if (oculink_m_axi_rvalid & oculink_m_axi_rready & rtag_sel_data)
         r_data_beats <= r_data_beats + 1'b1;
       if (oculink_m_axi_wvalid & oculink_m_axi_wready & (wcap_avail | w_same) & ~wcap_cls[1])
         w_data_beats <= w_data_beats + 1'b1;
+      // DIAG: raw_w_beats counts EVERY accepted W beat regardless of class/capture-state -> if at QD>1 this
+      // equals the full SSD-sent count while w_data_beats is half, the FPGA is dropping/mis-counting; if raw is
+      // itself half, the SSD genuinely sent half the read payload.
+      if (oculink_m_axi_wvalid & oculink_m_axi_wready)
+        raw_w_beats <= raw_w_beats + 1'b1;
+      if (oculink_m_axi_wvalid & oculink_m_axi_wready & oculink_m_axi_wlast & (wcap_avail | w_same) & ~wcap_cls[1])
+        raw_w_bursts <= raw_w_bursts + 1'b1;
     end
   end
 

@@ -35,7 +35,9 @@ module csr(
   input logic [31:0]  oculink_0a_cpl_status,
   input logic [31:0]  oculink_0a_cpl_count,
   input logic [31:0]  oculink_0a_r_data_beats,
-  input logic [31:0]  oculink_0a_w_data_beats
+  input logic [31:0]  oculink_0a_w_data_beats,
+  input logic [31:0]  oculink_0a_raw_w_beats,
+  input logic [31:0]  oculink_0a_raw_w_bursts
 );
   
   // scratch reg for debugging
@@ -129,6 +131,8 @@ module csr(
         16'h0064: host_dout <= oculink_0a_cpl_count;    // monotonic completion counter (multi-outstanding)
         16'h0068: host_dout <= oculink_0a_r_data_beats; // real write-payload R beats served (x32 B)
         16'h006C: host_dout <= oculink_0a_w_data_beats; // real read-payload  W beats captured (x32 B)
+        16'h0070: host_dout <= oculink_0a_raw_w_beats;  // DIAG: ALL accepted W beats (any class)
+        16'h0074: host_dout <= oculink_0a_raw_w_bursts; // DIAG: read-data (non-CQE) W bursts
         16'h0100: host_dout <= oculink_0a_wrdata[0];
         16'h0104: host_dout <= oculink_0a_wrdata[1];
         16'h0108: host_dout <= oculink_0a_wrdata[2];

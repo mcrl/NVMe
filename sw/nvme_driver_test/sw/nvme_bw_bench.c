@@ -63,10 +63,10 @@ static void sweep(uint32_t trig,const char*name,int QD){
   uint32_t beatreg = (trig==0x4C) ? 0x68 : 0x6C;
   printf("\n== %s : bandwidth vs transfer size (QD=%d)  [Gen3 x4 ceiling ~3940 MB/s] ==\n",name,QD);
   printf("  %-7s %-8s %-10s %-12s %-12s %s\n","blocks","KB/cmd","cmds/s","cmplMB/s","REALMB/s","status");
-  int nlbs[]={255,1023,2047};
+  int nlbs[]={7,31,127,255};
   for(unsigned n=0;n<sizeof(nlbs)/sizeof(int);n++){
     int nlb=nlbs[n]; int blocks=nlb+1; long bytes_cmd=(long)blocks*512;
-    int cmds = (int)(128L*1024*1024 / bytes_cmd); if(cmds>1500) cmds=1500; if(cmds<QD*4) cmds=QD*4;
+    int cmds = (int)(128L*1024*1024 / bytes_cmd); if(cmds>800) cmds=800; if(cmds<QD*4) cmds=QD*4;
     int batches = cmds/QD; if(batches<1) batches=1;
     wr(0x58,nlb);
     // For READ, pre-write the same LBAs (QD-batched) so reads return real data instead of being
