@@ -1,4 +1,4 @@
-# Vivado temporary files
+# Vivado temporary / build output (regenerable)
 .Xil
 *.cache
 *.gen
@@ -13,13 +13,14 @@ vivado_pid*.str
 *.bda
 *.ui
 *.dcp
-# for xdma-test board design
-hw/IP/**/bd*/*.xci
-# for adam-test board design
-hw/IP/adam-test/design_1/*
-hw/IP/adam-test/design_2/*
-hw/IP/adam-test/design_3/*
-!hw/IP/adam-test/**/*.bd
+*.str
+*.pb
+*.wdb
+*.bit
+webtalk*
+
+# xsim simulation build artifacts
+xsim.dir/
 
 *.nfs*
 
@@ -34,3 +35,17 @@ build
 *.mod
 *.mod.c
 *.zip
+
+# third-party Xilinx DMA drivers (unused: driver_test mmaps resource0 directly)
+sw/nvme_driver_test/dma_ip_drivers/
+
+# compiled sw test binaries (built from the .c sources)
+sw/nvme_driver_test/sw/driver_test
+sw/nvme_driver_test/sw/nvme_bw_bench
+sw/nvme_driver_test/sw/nvme_qd_bench
+sw/nvme_driver_test/sw/nvme_qd_diag
+sw/nvme_driver_test/sw/nvme_rootmps
+sw/nvme_driver_test/sw/nvme_prp_probe
+sw/nvme_driver_test/sw/nvme_pcie_cfg
+sw/nvme_driver_test/sw/nvme_rw_bench
+sw/nvme_driver_test/sw/nvme_linkspeed
