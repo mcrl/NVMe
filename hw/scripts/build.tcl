@@ -7,7 +7,7 @@ open_project $xpr
 puts "BUILD: opened part=[get_property PART [current_project]] top=[get_property TOP [current_fileset]]"
 
 # ---- ensure the non-project RTL added after project creation is present ----
-foreach f {tagfifo.sv nvme_bringup.sv} {
+foreach f {tagfifo.sv nvme_bringup.sv dpram_be.sv} {
   if {[llength [get_files -quiet $f]] == 0} {
     add_files -norecurse -fileset sources_1 $root/hw/rtl/$f
     puts "BUILD: added $f"

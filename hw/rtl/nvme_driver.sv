@@ -30,12 +30,12 @@ module nvme_driver #(
   output logic          cpl_done,
   input logic [31:0]    wrdata [7:0],
   output logic [31:0]   rddata [7:0],   // read-back data to host (last 32B of read payload)
-  // host data buffer port (host_bram_clk): 0x8000-0x8FFF -> wbuf (host writes write-payload),
-  //                                        0x9000-0x9FFF -> rbuf (host reads captured read-payload)
-  input  logic [12:0]   dbuf_addr,      // host_bram byte offset into the 8 KB data window
+  // host data buffer port (host_bram_clk): wbuf region -> host writes write-payload,
+  //                                         rbuf region -> host reads captured read-payload
+  input  logic [16:0]   dbuf_addr,      // host byte offset within a 128 KB buffer (word=[16:5], lane=[4:2])
   input  logic [31:0]   dbuf_wdata,
-  input  logic          dbuf_we,        // write strobe (host writing the 0x8000 wbuf region)
-  output logic [31:0]   dbuf_rdata,     // rbuf read-back (host reading the 0x9000 region)
+  input  logic          dbuf_we,        // write strobe (host writing the wbuf region)
+  output logic [31:0]   dbuf_rdata,     // rbuf read-back (host reading the rbuf region)
   output logic [31:0]   cpl_status,     // last completion CQE DW3 (status/phase/cid)
   output logic [31:0]   cpl_count,      // monotonic completion counter (multi-outstanding)
   output logic [31:0]   r_data_beats,   // count of write-payload R beats served (real data moved, x32 B)
@@ -131,11 +131,12 @@ module nvme_driver #(
   // the head (= oldest outstanding transaction). is_sending_cmd / is_receving_cpl are kept driven for the
   // ILA probes but no longer select the mux.
 
-  // PRP layout (all in the served OcuLink data region, IORW_BAR = 0xC000):
-  //   PRP1 = 0xC000 (page 1, always). For 2-page xfers PRP2 = 0xE000 (page 2, direct).
-  //   For >2-page xfers PRP2 = 0xD000, a PRP-LIST page whose entries are pages 2..N = 0xE000,0xF000,...
-  localparam [31:0] PRP_LIST_BASE = IORW_BAR + 32'h1000;   // 0xD000
-  localparam [31:0] PRP_PAGE2     = IORW_BAR + 32'h2000;   // 0xE000 (page 2 = first list entry)
+  // PRP layout -- data pages are CONTIGUOUS from IORW_BAR (0xC000) so the host fills ONE flat buffer:
+  //   PRP1 = 0xC000 (page 1). For 2-page xfers PRP2 = 0xD000 (page 2, direct).
+  //   For >2-page xfers PRP2 = PRP_LIST_BASE (a PRP-list page held HIGH, above the 128 KB data window so it
+  //   consumes no data-offset slot); its entries are pages 2..N = 0xD000,0xE000,0xF000,... (dense).
+  localparam [31:0] PRP_PAGE2     = IORW_BAR + 32'h1000;    // 0xD000  page 2 = first list entry (dense)
+  localparam [31:0] PRP_LIST_BASE = IORW_BAR + 32'h40000;   // 0x4C000 PRP-list page, above the data window
 
   // R-tag: {class[1:0], arlen[7:0]} per accepted AR; head selects the R source; pop on the burst's rlast.
   //   class 0 = write-command payload (wrdata), 1 = SQE serve (cmd), 2 = PRP-list (listgen).
@@ -687,95 +688,139 @@ module nvme_driver #(
      256 b x 128 = 4 KB each (one NVMe page). Each is single-writer/one-clock + combinational cross-domain
      read, so it is CDC-safe under the host's write-then-trigger-then-poll discipline (same as wrdata[]).
      The per-burst page offset (256-b word index) rides in a small FIFO captured at AR/AW accept.          */
-  logic [255:0] wbuf [0:127];
-  logic [255:0] rbuf [0:127];
-  // host side: dbuf_addr[12]=0 -> 0x8000 wbuf write ; =1 -> 0x9000 rbuf read. [11:5]=word, [4:2]=32b lane.
-  always_ff @(posedge host_bram_clk) begin
-    if (dbuf_we && !dbuf_addr[12])
-      wbuf[dbuf_addr[11:5]][{dbuf_addr[4:2],5'd0} +: 32] <= dbuf_wdata;
-  end
-  always_ff @(posedge host_bram_clk)   // registered to match the CSR read latency (1 cycle)
-    dbuf_rdata <= rbuf[dbuf_addr[11:5]][{dbuf_addr[4:2],5'd0} +: 32];
+  localparam int DBUF_AW  = 12;                 // 4096 x 256 b = 128 KB per buffer
+  localparam int RBUF_LAT = 1;                  // rbuf host read latency (matches axi_bram_ctrl)
+  localparam int WBUF_LAT = 1;                  // wbuf SSD-side read latency
+
+  // host write into wbuf: one 32-b lane per access via byte write-enables (no read-modify-write)
+  wire [DBUF_AW-1:0] dbuf_word = dbuf_addr[16:5];
+  wire [2:0]         dbuf_lane = dbuf_addr[4:2];
+  wire [31:0]        wbuf_wea  = dbuf_we ? (32'hF << {dbuf_lane,2'd0}) : 32'd0;
+  wire [DBUF_AW-1:0] wbuf_rdaddr;                // driven by the latency-tolerant reader (below)
+  wire               wbuf_rden;
+  logic [255:0]      wbuf_rdata;
+  dpram_be #(.DW(256), .AW(DBUF_AW), .RDLAT(WBUF_LAT), .PRIM("block")) u_wbuf (
+    .clka (host_bram_clk),  .ena (1'b1), .wea (wbuf_wea), .addra (dbuf_word), .dina ({8{dbuf_wdata}}),
+    .clkb (oculink_axi_clk),.enb (wbuf_rden), .addrb (wbuf_rdaddr), .doutb (wbuf_rdata)
+  );
+
+  // rbuf: SSD writes whole 256-b beats (full-word we), host reads a 32-b lane (latency RBUF_LAT)
+  wire [DBUF_AW-1:0] rbuf_wraddr;                // driven by the read-payload counter (below)
+  wire               rbuf_we;
+  logic [255:0]      rbuf_rdata256;
+  dpram_be #(.DW(256), .AW(DBUF_AW), .RDLAT(RBUF_LAT), .PRIM("block")) u_rbuf (
+    .clka (oculink_axi_clk),.ena (1'b1), .wea ({32{rbuf_we}}), .addra (rbuf_wraddr), .dina (oculink_m_axi_wdata),
+    .clkb (host_bram_clk),  .enb (1'b1), .addrb (dbuf_word), .doutb (rbuf_rdata256)
+  );
+  logic [2:0] dbuf_lane_q;                       // lane aligned to rbuf doutb (RBUF_LAT=1)
+  always_ff @(posedge host_bram_clk) dbuf_lane_q <= dbuf_lane;
+  assign dbuf_rdata = rbuf_rdata256[{dbuf_lane_q,5'd0} +: 32];
 
   // per-data-burst word offsets (addr-IORW_BAR)>>5, captured in order at AR/AW accept (oculink domain)
-  wire [6:0]  ar_off = (oculink_m_axi_araddr - IORW_BAR) >> 5;   // write-payload read offset
-  wire [6:0]  aw_off = (oculink_m_axi_awaddr - IORW_BAR) >> 5;   // read-payload  write offset
-  logic [6:0] araddr_head, awaddr_head;
-  logic       araddr_empty, awaddr_empty;
-  wire        araddr_pop;     // popped when a write-payload (data) burst's rlast pops the rtag
-  wire        awaddr_pop;     // popped when a read-payload burst's wlast completes
-  logic [6:0] rbuf_off;       // rbuf write offset within the current read-payload burst
-  logic       rd_run;         // inside a read-payload burst (so the first beat reloads the offset)
+  wire [11:0]  ar_off = (oculink_m_axi_araddr - IORW_BAR) >> 5;   // write-payload read offset
+  wire [11:0]  aw_off = (oculink_m_axi_awaddr - IORW_BAR) >> 5;   // read-payload  write offset
+  logic [11:0] araddr_head, awaddr_head;
+  logic        araddr_empty, awaddr_empty;
+  wire         araddr_pop;     // popped when a write-payload (data) burst's rlast pops the rtag
+  wire         awaddr_pop;     // popped when a read-payload burst's wlast completes
+  logic [11:0] rbuf_off;       // rbuf write offset within the current read-payload burst
+  logic        rd_run;         // inside a read-payload burst (so the first beat reloads the offset)
   assign araddr_pop = rtag_pop & rtag_sel_data;
   assign awaddr_pop = oculink_m_axi_wvalid & oculink_m_axi_wready & oculink_m_axi_wlast & (wcap_avail | w_same) & ~wcap_cls[1];
-  tagfifo #(.WIDTH(7), .DEPTH(256)) araddr_i (
+  tagfifo #(.WIDTH(12), .DEPTH(256)) araddr_i (
     .clk(oculink_axi_clk), .srst(!rstn),
     .push(oculink_m_axi_arvalid & (ar_class==2'd0)), .din(ar_off),
     .pop(araddr_pop), .head(araddr_head), .head2(), .cnt(), .empty(araddr_empty), .full()
   );
-  tagfifo #(.WIDTH(7), .DEPTH(256)) awaddr_i (
+  tagfifo #(.WIDTH(12), .DEPTH(256)) awaddr_i (
     .clk(oculink_axi_clk), .srst(!rstn),
     .push(oculink_m_axi_awvalid & ~aw_is_cqe), .din(aw_off),
     .pop(awaddr_pop), .head(awaddr_head), .head2(), .cnt(), .empty(awaddr_empty), .full()
   );
+  // read-payload write into rbuf (driven from the counter block's rd_run/rbuf_off bookkeeping)
+  wire rdpl_beat     = oculink_m_axi_wvalid & oculink_m_axi_wready & (wcap_avail | w_same) & ~wcap_cls[1];
+  assign rbuf_we     = rdpl_beat;
+  assign rbuf_wraddr = rd_run ? rbuf_off : awaddr_head;
+
+  // PRP-list start beat-offset, captured at each list AR so the list generator serves the CORRECT entries
+  // regardless of how the SSD chunks its list reads (a per-burst counter re-served entry 0 each chunk -> only
+  // the first ~chunk of pages got real addresses; the rest aliased/zeroed). offset = (araddr-LIST_BASE)>>5.
+  wire [7:0] lg_off = (oculink_m_axi_araddr - PRP_LIST_BASE) >> 5;
+  wire [7:0] lg_start;
+  wire       lgoff_pop = rtag_pop & rtag_sel_list;
+  tagfifo #(.WIDTH(8), .DEPTH(16)) lgoff_i (
+    .clk(oculink_axi_clk), .srst(!rstn),
+    .push(oculink_m_axi_arvalid & (ar_class==2'd2)), .din(lg_off),
+    .pop(lgoff_pop), .head(lg_start), .head2(), .cnt(), .empty(), .full()
+  );
 
 
-  /* Write data */
+  /* Write data -- latency-tolerant wbuf reader.
+     wbuf is block RAM (read latency WBUF_LAT), so we PREFETCH instead of a 0-latency combinational read:
+     for the head data burst (start word = araddr_head, length = rtag_head_arlen+1) we issue sequential wbuf
+     reads, throttled by credit so every issued read has a reserved slot in a small output FIFO. Reads land
+     WBUF_LAT cycles later and push into the FIFO; the AXI R channel drains it. One burst at a time in head
+     order -- the SSD paces these MRds, so the inter-burst refill bubble costs no HW bandwidth. This is the
+     same shape the DRAM stage needs (swap the wbuf read for an AXI read master). */
+  localparam int OFIFO_AW = 3;                  // output FIFO depth = 8
+  localparam int OFIFO_N  = (1<<OFIFO_AW);
 
-  // The legacy 16-entry write-address length ring (wraddr_fifo IP + wraddr_wrlen[]/recv_cnt/send_cnt) is gone:
-  // each write-data read's burst length now rides in its rtag entry (rtag_head_arlen), so the demux paces
-  // wrdata directly and outstanding write-data reads are no longer capped at 16.
-  logic [7:0]   wr_len;
-  logic [6:0]   wbuf_off;     // wbuf read offset within the current write-payload burst
+  logic [11:0] req_addr;        // next wbuf word to read
+  logic [7:0]  req_rem;         // beats still to issue after the current one
+  logic        req_active;      // issuing the head burst
+  logic        req_last;        // the read being issued is the burst's last beat
+  logic        head_done;       // head burst fully issued (await its drain before the next)
 
-  localparam WRDATA_IDLE       = 8'd0;
-  localparam WRDATA_SEND_DATA  = 8'd1;
+  logic [255:0]      ofifo_data [0:OFIFO_N-1];
+  logic              ofifo_last [0:OFIFO_N-1];
+  logic [OFIFO_AW:0] ofifo_wp, ofifo_rp;
+  wire               ofifo_empty = (ofifo_wp == ofifo_rp);
+  logic [OFIFO_AW:0] outstanding;               // issued reads not yet drained (credit)
 
-  logic [7:0] wrdata_state;
+  wire req_start = rtag_sel_data & ~head_done & ~req_active;
+  wire can_issue = req_active & (outstanding < OFIFO_N[OFIFO_AW:0]);
+  assign wbuf_rden   = can_issue;
+  assign wbuf_rdaddr = req_addr;
 
-  // m_axi_r : Write Data -- serve the host's wbuf (REAL payload) for each write-payload read burst. The burst's
-  // start word-offset is araddr_head (FIFO captured at the data AR); it advances per beat. (No back-to-back
-  // chaining here -- the SSD paces these MRds, so the 1-cycle inter-burst gap costs no HW bandwidth.)
+  logic pvalid_d, plast_d;      // 1-cycle pipeline (WBUF_LAT=1): issue -> wbuf doutb valid
+  wire  ofifo_push = pvalid_d;
+  wire  ofifo_pop  = oculink_m_axi_rvalid_wr & oculink_m_axi_rready & rtag_sel_data;
+
   always_ff @(posedge oculink_axi_clk or negedge rstn) begin
     if (!rstn) begin
-      wrdata_state <= WRDATA_IDLE; wr_len <= 0; wbuf_off <= 0;
-      oculink_m_axi_rdata_wr<=0; oculink_m_axi_rid_wr<=0; oculink_m_axi_rlast_wr<=0;
-      oculink_m_axi_rresp_wr<=0; oculink_m_axi_rvalid_wr<=0;
+      req_addr<=0; req_rem<=0; req_active<=0; req_last<=0; head_done<=0;
+      ofifo_wp<=0; ofifo_rp<=0; outstanding<=0; pvalid_d<=0; plast_d<=0;
     end else begin
-      case(wrdata_state)
-        WRDATA_IDLE: begin
-          oculink_m_axi_rvalid_wr <= 0;
-          oculink_m_axi_rlast_wr  <= 0;
-          if (rtag_sel_data && !rtag_pop) begin
-            oculink_m_axi_rdata_wr  <= wbuf[araddr_head];          // beat 0 at the burst's start offset
-            wbuf_off                <= araddr_head + 7'd1;         // next beat's offset
-            oculink_m_axi_rid_wr    <= 0;
-            oculink_m_axi_rresp_wr  <= 0;
-            oculink_m_axi_rvalid_wr <= 1;
-            wr_len                  <= rtag_head_arlen;
-            oculink_m_axi_rlast_wr  <= (rtag_head_arlen == 8'd0);
-            wrdata_state            <= WRDATA_SEND_DATA;
-          end
-        end
-        WRDATA_SEND_DATA: begin
-          // advance only on rready (AXI-correct stall hold). araddr_fifo pops on the rlast (araddr_pop).
-          if (oculink_m_axi_rready) begin
-            if (oculink_m_axi_rlast_wr) begin
-              wrdata_state            <= WRDATA_IDLE;
-              oculink_m_axi_rvalid_wr <= 0;
-              oculink_m_axi_rlast_wr  <= 0;
-            end else begin
-              oculink_m_axi_rdata_wr  <= wbuf[wbuf_off];
-              wbuf_off                <= wbuf_off + 7'd1;
-              oculink_m_axi_rvalid_wr <= 1;
-              wr_len                  <= wr_len - 1'b1;
-              oculink_m_axi_rlast_wr  <= (wr_len == 8'd1);
-            end
-          end
-        end
-      endcase
+      if (req_start) begin
+        req_addr   <= araddr_head;
+        req_rem    <= rtag_head_arlen;
+        req_active <= 1'b1;
+        req_last   <= (rtag_head_arlen == 8'd0);
+      end
+      if (can_issue) begin
+        req_addr <= req_addr + 12'd1;
+        if (req_rem == 8'd0) begin req_active <= 1'b0; head_done <= 1'b1; end
+        else begin req_rem <= req_rem - 8'd1; req_last <= (req_rem == 8'd1); end
+      end
+      if (araddr_pop) head_done <= 1'b0;          // burst drained -> next head may start
+
+      pvalid_d <= can_issue;                       // wbuf doutb valid 1 cycle after a read is issued
+      plast_d  <= can_issue & req_last;
+      if (ofifo_push) begin
+        ofifo_data[ofifo_wp[OFIFO_AW-1:0]] <= wbuf_rdata;
+        ofifo_last[ofifo_wp[OFIFO_AW-1:0]] <= plast_d;
+        ofifo_wp <= ofifo_wp + 1'b1;
+      end
+      if (ofifo_pop) ofifo_rp <= ofifo_rp + 1'b1;
+      outstanding <= outstanding + (can_issue ? 1'b1 : 1'b0) - (ofifo_pop ? 1'b1 : 1'b0);
     end
   end
+
+  assign oculink_m_axi_rdata_wr  = ofifo_data[ofifo_rp[OFIFO_AW-1:0]];
+  assign oculink_m_axi_rid_wr    = 4'd0;
+  assign oculink_m_axi_rresp_wr  = 2'd0;
+  assign oculink_m_axi_rlast_wr  = ofifo_last[ofifo_rp[OFIFO_AW-1:0]];
+  assign oculink_m_axi_rvalid_wr = ~ofifo_empty;
 
 
   /* PRP-list generator: serves data-page addresses (pages 2..N) when the SSD reads PRP2 of a >2-page
@@ -796,7 +841,7 @@ module nvme_driver #(
           oculink_m_axi_rlast_lg  <= 0;
           if (rtag_sel_list && !rtag_pop) begin   // a PRP-list read is the oldest outstanding AR
             lg_len  <= rtag_head_arlen;
-            lg_beat <= 0;
+            lg_beat <= lg_start;                   // start at THIS list read's beat offset (not 0)
             lg_state <= LG_SEND;
           end
         end
@@ -882,11 +927,12 @@ module nvme_driver #(
     end else begin
       if (oculink_m_axi_rvalid & oculink_m_axi_rready & rtag_sel_data)
         r_data_beats <= r_data_beats + 1'b1;
-      // read-payload beat: count it AND store the REAL data into rbuf at the burst's page offset (host reads it)
-      if (oculink_m_axi_wvalid & oculink_m_axi_wready & (wcap_avail | w_same) & ~wcap_cls[1]) begin
+      // read-payload beat: count it; the rbuf write itself is driven combinationally (rbuf_we/rbuf_wraddr)
+      // off this same bookkeeping (rd_run/rbuf_off) -- here we only advance the burst's page offset.
+      if (rdpl_beat) begin
         w_data_beats <= w_data_beats + 1'b1;
-        if (!rd_run) begin rbuf[awaddr_head] <= oculink_m_axi_wdata; rbuf_off <= awaddr_head + 7'd1; rd_run <= 1'b1; end
-        else         begin rbuf[rbuf_off]    <= oculink_m_axi_wdata; rbuf_off <= rbuf_off  + 7'd1;               end
+        if (!rd_run) begin rbuf_off <= awaddr_head + 12'd1; rd_run <= 1'b1; end
+        else         begin rbuf_off <= rbuf_off  + 12'd1;               end
         if (oculink_m_axi_wlast) rd_run <= 1'b0;   // burst end -> next read-payload beat reloads the offset
       end
       // DIAG: raw_w_beats counts EVERY accepted W beat regardless of class/capture-state -> if at QD>1 this

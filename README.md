@@ -62,9 +62,12 @@ READ  (SSD→host): same SQE synth (incl. PRP1/PRP2) → SSD AW+W(read data): W-
 
 ### Address map (what the SSD sees in the FPGA BAR window)
 ```
-0x8000 ASQ   0x9000 ACQ   0xA000 IOCQ   0xB000 IOSQ   0xC000 IORW(data)   0xD000 PRP-list   0xE000 page2
+0x8000 ASQ   0x9000 ACQ   0xA000 IOCQ   0xB000 IOSQ   0xC000 IORW(data, DENSE: page k = 0xC000+(k-1)*0x1000)
+page2 = 0xD000 direct (2-page) ; >2 pages: PRP2 = PRP-list @ 0x4C000 (held high, above the 128 KB data window)
 NVMe ctrl regs @ 0x8000_4000 ; doorbells: SQ-tail +0x1008, CQ-head +0x100C
 ```
+Data pages are **contiguous** from 0xC000 so the host fills one flat buffer; the PRP-list page sits above the
+data window so it consumes no data-offset slot.
 
 ### CSR map (host BAR, `csr.sv`)
 | off | write | read |
@@ -81,8 +84,10 @@ NVMe ctrl regs @ 0x8000_4000 ; doorbells: SQ-tail +0x1008, CQ-head +0x100C
 | 0x68 / 0x6C | — | r_data_beats / w_data_beats (×32 B, real bytes moved) |
 | 0x70 / 0x74 | — | raw_w_beats / raw_w_bursts (DIAG: SSD-sent vs FPGA-dropped) |
 | 0x100–0x11C | wrdata[0..7] (legacy 32 B pattern) | same |
-| 0x8000–0x8FFF | wbuf: host writes the real 4 KB write-payload | — |
-| 0x9000–0x9FFF | — | rbuf: host reads the captured 4 KB read-payload |
+| 0x40000–0x5FFFF | wbuf: host writes the real write-payload (**128 KB**) | — |
+| 0x60000–0x7FFFF | — | rbuf: host reads the captured read-payload (**128 KB**) |
+
+Host BAR window is **1 MB** (`host_bram_addr[19:0]`): `[19:17]`=000 CSR, 010 wbuf (0x40000), 011 rbuf (0x60000).
 
 ---
 
@@ -111,12 +116,18 @@ The original driver was single-outstanding, 32 B/command, hardcoded LBA 0. The c
   issues reads/writes. `nvme_configurator` stays the per-TLP executor; the sequencer drives it and the admin
   path (muxed against the host CSR while it runs) and forces cfg_done=1 once ready. Verified on HW from a
   freshly-programmed card (`nvme_autobringup`): host issues only the trigger + R/W, FPGA builds the queues.
-- **Real host data path (`wbuf`/`rbuf`).** Replaced the 32 B `wrdata` replay with two 256 b x 128 (4 KB)
-  buffers in `nvme_driver`: `wbuf` (host writes the write-payload, the wrdata FSM serves it to the SSD) and
-  `rbuf` (the W-acceptor stores the read-payload, the host reads it). Per-burst page offset rides in small
-  AR/AW address FIFOs. Host accesses them at BAR 0x8000 (wbuf) / 0x9000 (rbuf). HW-verified end to end
-  (`nvme_dmatest`, 3/3): a 4 KB pattern round-trips host->wbuf->SSD->NAND->SSD->rbuf->host with 0 mismatch.
-  (Stage A = 4 KB via register-array buffers; next: large URAM + host-BAR expansion, then FPGA DRAM.)
+- **Real host data path (`wbuf`/`rbuf`), Stage A → B.** Replaced the 32 B `wrdata` replay with real host-data
+  buffers in `nvme_driver`. **Stage B (HW-verified, `nvme_dmatest` 4/32/128 KB all 0-mismatch):** each buffer is
+  **256 b × 4096 = 128 KB on-chip SRAM** (`dpram_be.sv`, block-RAM with a `"ultra"` URAM drop-in), reached through
+  the **1 MB host BAR window** (wbuf 0x40000, rbuf 0x60000). Because the RAM has read latency, the write-payload
+  server **prefetches** behind a small output FIFO (credit-throttled) instead of a 0-latency combinational read —
+  the same shape the DRAM stage will need. **Dense PRP** makes the data pages contiguous so the host fills one flat
+  buffer. Two bugs the scale-up exposed and fixed: (1) the host BAR decode now gates CSR off the data regions (a
+  0x40008 write used to alias to `bringup_start`); (2) the **PRP-list generator** re-served entry 0 on every list
+  read chunk (a per-burst beat counter) → real data truncated at ~page 11; it now captures each list AR's address
+  offset in a FIFO and serves from there, robust to however the SSD chunks its list reads. Sim `tb_datapath.sv`
+  T1–T6 (latency FSM, 8 KB burst, dense page-2 offset, PRP-list at offsets 0/8) all pass.
+  (Next: FPGA DDR4 DRAM — pinout `hw/ddr/ddr4_pins.xdc` + part CSV captured; reuses the latency-tolerant server.)
 
 Sim (`hw/RTL/fpga-nvme-driver/sim/`): `tb_cpl_stress.sv` (RDBURST/RDSTALL/RDCQE — write-serve bubble + stall +
 W-acceptor), `tb_nvme_driver.sv` + `ssd_model.sv` (70 writes / 8 reads + BEATCOUNT), `tb_nvme_qd.sv` +
@@ -146,8 +157,10 @@ it by mmap'ing `…/resource0`. For `xdma` to bind, boot with `pci=realloc`.
 ---
 
 ## 4. Host tools (`sw/nvme_driver_test/sw/`, build with `gcc -O2`)
-- `nvme_dmatest.c` — real host-data round-trip: fills wbuf (0x8000) with a 4 KB pattern, WRITE then READ the
-  same LBA, reads rbuf (0x9000), checks the data round-tripped through the SSD.
+- `nvme_dmatest.c` — real host-data round-trip at scale: fills wbuf (0x40000) with a pattern, WRITE then READ
+  the same LBA, reads rbuf (0x60000), checks the data round-tripped. Verified 4 KB / 32 KB / **128 KB** (0 mismatch).
+  `nvme_dma128diag.c` (per-page status + beat counters) / `nvme_off.c` (single-page round-trip at any page offset)
+  are the localizers used to root-cause the PRP-list truncation.
 - `nvme_autobringup.c` — exercises the autonomous HW bring-up: pulses sw_reset, writes CSR 0x08, polls 0x0C
   ready, then does a R/W — no manual config sequence at all.
 - `driver_test.c` — end-to-end (manual) bringup + single R/W + data-pattern check.
@@ -176,6 +189,7 @@ command + QD CQE beats), independent of distinct buffers / data / size / PRP-lis
 (US+ integrated block max; the SSD itself is Gen4-capable) and (b) the 256 B MPS + the SSD's serial-streaming /
 concurrent-read-coalesce behaviour. A Gen4-capable PCIe path (Versal-class) would roughly double the ceiling.
 
-Real host data now moves end to end via the `wbuf`/`rbuf` buffers (§2) — HW-verified for 4 KB. Open / future:
-grow it (large URAM + host-BAR window, then the board DRAM) for >4 KB transfers; and an ILA trace to confirm
-the QD>1 coalesce is SSD-inherent vs command-pattern-triggered.
+Real host data now moves end to end via the `wbuf`/`rbuf` buffers (§2) — **HW-verified up to 128 KB** (4/32/128 KB,
+0 mismatch) through 128 KB on-chip SRAM and a 1 MB host BAR window. Open / future: the board **DDR4 DRAM** path
+(pinout + part CSV in `hw/ddr/`; reuses the latency-tolerant prefetch server); and an ILA trace to confirm the
+QD>1 coalesce is SSD-inherent vs command-pattern-triggered.

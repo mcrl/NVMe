@@ -89,7 +89,7 @@ module top(
 
   // host bram interfaces
   logic host_axi_rstn;
-  logic [15:0]host_bram_addr;
+  logic [19:0]host_bram_addr;
   logic host_bram_clk;
   logic [31:0]host_bram_din;
   logic [31:0]host_bram_dout;

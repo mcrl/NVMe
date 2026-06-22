@@ -1,7 +1,7 @@
 module kernel(
 
   // host bram interface
-  input logic [15:0]  host_bram_addr,
+  input logic [19:0]  host_bram_addr,
   input logic         host_bram_clk,
   input logic [31:0]  host_bram_din,
   output logic [31:0] host_bram_dout,
@@ -117,17 +117,19 @@ module kernel(
   assign oculink_0a_send_iocq_create_cmd = bringup_busy ? bu_send_iocq : csr_send_iocq;
   assign oculink_0a_send_iosq_create_cmd = bringup_busy ? bu_send_iosq : csr_send_iosq;
 
-  // ---- host data-buffer window: 0x8000-0x8FFF -> wbuf (host writes write-payload),
-  //                               0x9000-0x9FFF -> rbuf (host reads captured read-payload) ----
+  // ---- host BAR window map (20-bit / 1 MB):  [19:17]==000 CSR (low 128 KB)
+  //        [19:17]==010 -> wbuf (0x40000, host writes write-payload, 128 KB)
+  //        [19:17]==011 -> rbuf (0x60000, host reads captured read-payload, 128 KB) ----
   logic [31:0] csr_host_dout;
-  logic [12:0] dbuf_addr;
+  logic [16:0] dbuf_addr;
   logic [31:0] dbuf_wdata, dbuf_rdata;
   logic        dbuf_we, dbuf_rd_sel_q;
-  assign dbuf_addr  = host_bram_addr[12:0];
+  wire         csr_en = host_bram_en & (host_bram_addr[19:17]==3'b000);  // gate CSR off the data regions
+  assign dbuf_addr  = host_bram_addr[16:0];
   assign dbuf_wdata = host_bram_din;
-  assign dbuf_we    = (|host_bram_we) & host_bram_en & (host_bram_addr[15:13]==3'b100); // write 0x8000-0x9FFF
+  assign dbuf_we    = (|host_bram_we) & host_bram_en & (host_bram_addr[19:17]==3'b010); // wbuf write 0x40000
   always_ff @(posedge host_bram_clk)
-    dbuf_rd_sel_q <= host_bram_en & (host_bram_addr[15:12]==4'b1001);                   // 0x9000 rbuf read (1cyc)
+    dbuf_rd_sel_q <= host_bram_en & (host_bram_addr[19:17]==3'b011);                    // rbuf read 0x60000 (1cyc)
   assign host_bram_dout = dbuf_rd_sel_q ? dbuf_rdata : csr_host_dout;
   logic [31:0]    oculink_0a_nvme_addr;
   logic [31:0]    oculink_0a_fpga_addr;
@@ -184,11 +186,11 @@ module kernel(
 
   csr csr_i(
     // host bram
-    .host_addr      (host_bram_addr),
+    .host_addr      (host_bram_addr[15:0]),
     .host_clk       (host_bram_clk),
     .host_din       (host_bram_din),
     .host_dout      (csr_host_dout),
-    .host_en        (host_bram_en),
+    .host_en        (csr_en),
     .host_rst       (host_bram_rst),
     .host_we        (host_bram_we),
 

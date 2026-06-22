@@ -12,7 +12,7 @@ module tb_datapath;
   logic [31:0] nvme_addr=0, fpga_addr=0, nlb=0, cpl_status, cpl_count;
   logic        cpl_done;
   logic [31:0] wrdata [7:0]; logic [31:0] rddata [7:0];
-  logic [12:0] dbuf_addr=0; logic [31:0] dbuf_wdata=0; logic dbuf_we=0; logic [31:0] dbuf_rdata;
+  logic [16:0] dbuf_addr=0; logic [31:0] dbuf_wdata=0; logic dbuf_we=0; logic [31:0] dbuf_rdata;
 
   logic        s_awready,s_wready,s_bvalid; logic [3:0] s_bid; logic [1:0] s_bresp;
   logic [31:0] s_awaddr; logic [1:0] s_awburst; logic [3:0] s_awid; logic [7:0] s_awlen;
@@ -71,9 +71,9 @@ module tb_datapath;
   // host reads one 256-b rbuf word (8 lanes); dbuf_rdata is registered (1-cycle)
   task automatic rbuf_rd(input int word, output logic [255:0] val);
     for (int l=0;l<8;l++) begin
-      dbuf_addr <= (1<<12)|(word<<5)|(l<<2);
-      @(posedge host_bram_clk);   // addr applied
-      @(posedge host_bram_clk);   // dbuf_rdata now = rbuf[addr] (registered)
+      dbuf_addr <= (word<<5)|(l<<2);   // no select bit: dbuf_rdata always reflects rbuf[word][lane]
+      @(posedge host_bram_clk);   // addrb sampled
+      @(posedge host_bram_clk);   // doutb + lane_q stable -> dbuf_rdata valid (RBUF_LAT=1)
       val[l*32 +: 32] = dbuf_rdata;
     end
   endtask
@@ -109,6 +109,65 @@ module tb_datapath;
     for (i=0;i<16;i++) begin rbuf_rd(i, got); exp={8{32'hCAFE0000 + i}};
       if (got !== exp) begin bad++; if(bad<=3) $display("[DP] T2 word %0d got %h exp %h",i,got,exp); end end
     $display("[DP] T2 read-payload->rbuf: 16 words, %0d mismatch => %s", bad, bad==0?"PASS":"FAIL");
+
+    // ---- T3: long 256-beat write-payload burst at off 0 (latency FSM + credit FIFO under continuous drain) ----
+    for (i=0;i<256;i++) wbuf_wr(i, {8{32'h5A5A0000 + i}});
+    repeat(10) @(posedge oculink_axi_clk);
+    @(posedge oculink_axi_clk); m_araddr<=IORW; m_arlen<=255; m_arvalid<=1;
+    do @(posedge oculink_axi_clk); while(!m_arready); m_arvalid<=0;
+    bad=0; i=0;
+    forever begin @(posedge oculink_axi_clk);
+      if (m_rvalid && m_rready) begin
+        if (m_rdata !== {8{32'h5A5A0000 + i}}) begin bad++; if(bad<=3) $display("[DP] T3 beat %0d got %h",i,m_rdata); end
+        i++; if (m_rlast) break;
+      end
+    end
+    $display("[DP] T3 long wbuf burst (256 beats=8KB): %0d beats, %0d mismatch => %s", i, bad, bad==0?"PASS":"FAIL");
+
+    // ---- T4: write-payload burst at off 128 (page 2 in DENSE PRP: araddr = IORW + 0x1000) ----
+    @(posedge oculink_axi_clk); m_araddr<=IORW+32'h1000; m_arlen<=15; m_arvalid<=1;
+    do @(posedge oculink_axi_clk); while(!m_arready); m_arvalid<=0;
+    bad=0; i=0;
+    forever begin @(posedge oculink_axi_clk);
+      if (m_rvalid && m_rready) begin
+        if (m_rdata !== {8{32'h5A5A0000 + (128+i)}}) begin bad++; if(bad<=3) $display("[DP] T4 beat %0d got %h",i,m_rdata); end
+        i++; if (m_rlast) break;
+      end
+    end
+    $display("[DP] T4 dense page-2 offset (off 128): %0d beats, %0d mismatch => %s", i, bad, bad==0?"PASS":"FAIL");
+
+    // ---- T5: read-payload burst at off 128 -> rbuf[128..], host reads it back (dense offset, W side) ----
+    @(posedge oculink_axi_clk); m_awaddr<=IORW+32'h1000; m_awlen<=15; m_awvalid<=1;
+    do @(posedge oculink_axi_clk); while(!m_awready); m_awvalid<=0;
+    for (i=0;i<16;i++) begin
+      m_wdata<={8{32'h3C3C0000 + i}}; m_wlast<=(i==15); m_wvalid<=1;
+      do @(posedge oculink_axi_clk); while(!m_wready);
+    end
+    m_wvalid<=0; m_wlast<=0;
+    repeat(20) @(posedge oculink_axi_clk);
+    bad=0;
+    for (i=0;i<16;i++) begin rbuf_rd(128+i, got); exp={8{32'h3C3C0000 + i}};
+      if (got !== exp) begin bad++; if(bad<=3) $display("[DP] T5 word %0d got %h exp %h",128+i,got,exp); end end
+    $display("[DP] T5 dense read-payload->rbuf (off 128): 16 words, %0d mismatch => %s", bad, bad==0?"PASS":"FAIL");
+
+    // ---- T6: PRP-list generator -- read the list at offset 0 AND offset 8 (a 2nd chunk). Entries must be the
+    //          DENSE page addresses for THAT offset; the old per-burst counter re-served entry 0 each chunk so
+    //          only the first chunk's pages got real addresses (this is the HW page-11 truncation). ----
+    for (int rdn=0; rdn<2; rdn++) begin
+      automatic int off = (rdn==0)?0:8;
+      @(posedge oculink_axi_clk); m_araddr <= (IORW+32'h40000) + off*32; m_arlen<=7; m_arvalid<=1;  // 0x4C000 = LIST_BASE
+      do @(posedge oculink_axi_clk); while(!m_arready); m_arvalid<=0;
+      bad=0; i=0;
+      forever begin @(posedge oculink_axi_clk);
+        if (m_rvalid && m_rready) begin
+          exp = 0;
+          for (int j=0;j<4;j++) exp[j*64 +: 32] = 32'hD000 + (((off+i)*4+j)*32'h1000);  // PRP_PAGE2 + k*4096
+          if (m_rdata !== exp) begin bad++; if(bad<=2) $display("[DP] T6 off%0d beat %0d got %h exp %h",off,i,m_rdata,exp); end
+          i++; if (m_rlast) break;
+        end
+      end
+      $display("[DP] T6 PRP-list off=%0d (entries %0d..): %0d beats, %0d mismatch => %s", off, off*4, i, bad, bad==0?"PASS":"FAIL");
+    end
     $finish;
   end
   initial begin #2000000; $display("[DP] TIMEOUT"); $finish; end
