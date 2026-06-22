@@ -46,7 +46,8 @@ top.sv
 ├── oculink_0a_bd         SSD-side PCIe root + GTH x4 (m_axi / s_axi)
 └── kernel.sv
     ├── csr.sv            register file (host BAR ↔ registers)
-    ├── nvme_configurator.sv   SSD PCIe config-space setup
+    ├── nvme_configurator.sv   config-access executor (one PCIe config/mem TLP per request)
+    ├── nvme_bringup.sv   autonomous bring-up sequencer (drives the configurator + admin path)
     └── nvme_driver.sv    ← the controller (cmd / wrdata / listgen / W-acceptor / db FSMs + tag FIFOs)
 ```
 
@@ -69,6 +70,7 @@ NVMe ctrl regs @ 0x8000_4000 ; doorbells: SQ-tail +0x1008, CQ-head +0x100C
 | off | write | read |
 |---|---|---|
 | 0x04 | sw_reset | — |
+| 0x08 / 0x0C | bring-up start (kick HW sequencer) | bring-up status: bit0=ready, bit1=busy |
 | 0x10/0x14/0x18 · 0x1C | cfg-write trig / wraddr / wrdata · wr_done | SSD/root PCIe config access |
 | 0x20/0x24 · 0x28/0x2C | cfg-read trig / rdaddr · rddata / rd_done | (use `(1<<20)\|off` = SSD endpoint) |
 | 0x30 | cfg_done / bridge enable | cfg_done |
@@ -101,6 +103,12 @@ The original driver was single-outstanding, 32 B/command, hardcoded LBA 0. The c
   wait so the cmd FSM keeps many SQEs in flight (SQ-tail coalesces to the latest `io_serve_cnt`).
 - **DIAG counters** (CSR 0x70/0x74) — count *every* accepted W beat, to separate "FPGA dropped" from
   "SSD sent less" (used to root-cause the QD>1 behaviour in §5).
+- **Autonomous bring-up (`nvme_bringup.sv`).** Originally the host ran the whole ~20-step bring-up by hand
+  (PCIe enumerate → MPS/MRRS=256 → CC.EN/CSTS → AQA/ASQ/ACQ → IOCQ/IOSQ create). Now a HW microcode sequencer
+  replays that exact sequence on a single CSR 0x08 trigger; the host just waits for 0x0C bit0 (ready) and then
+  issues reads/writes. `nvme_configurator` stays the per-TLP executor; the sequencer drives it and the admin
+  path (muxed against the host CSR while it runs) and forces cfg_done=1 once ready. Verified on HW from a
+  freshly-programmed card (`nvme_autobringup`): host issues only the trigger + R/W, FPGA builds the queues.
 
 Sim (`hw/RTL/fpga-nvme-driver/sim/`): `tb_cpl_stress.sv` (RDBURST/RDSTALL/RDCQE — write-serve bubble + stall +
 W-acceptor), `tb_nvme_driver.sv` + `ssd_model.sv` (70 writes / 8 reads + BEATCOUNT), `tb_nvme_qd.sv` +
@@ -130,7 +138,9 @@ it by mmap'ing `…/resource0`. For `xdma` to bind, boot with `pci=realloc`.
 ---
 
 ## 4. Host tools (`sw/nvme_driver_test/sw/`, build with `gcc -O2`)
-- `driver_test.c` — end-to-end bringup + single R/W + data-pattern check.
+- `nvme_autobringup.c` — exercises the autonomous HW bring-up: pulses sw_reset, writes CSR 0x08, polls 0x0C
+  ready, then does a R/W — no manual config sequence at all.
+- `driver_test.c` — end-to-end (manual) bringup + single R/W + data-pattern check.
 - `nvme_bw_bench.c` — bandwidth vs transfer size / QD. **REALMB/s (beat counter) is the honest number**;
   cmplMB/s over-reports at QD>1 (SSD coalesce). Args: `<resource0> r|w|wr <QD> <mps> <mrrs> <distinct>`.
 - `nvme_qd_diag.c` — single-batch QD raw-counter probe (cpl/w_data_beats/raw_w_beats). `SPACEDUS=<us>` env.

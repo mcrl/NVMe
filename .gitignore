@@ -49,3 +49,4 @@ sw/nvme_driver_test/sw/nvme_prp_probe
 sw/nvme_driver_test/sw/nvme_pcie_cfg
 sw/nvme_driver_test/sw/nvme_rw_bench
 sw/nvme_driver_test/sw/nvme_linkspeed
+sw/nvme_driver_test/sw/nvme_autobringup
