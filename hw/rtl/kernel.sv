@@ -116,6 +116,19 @@ module kernel(
   assign cfg_0a_cfgdone = bringup_busy ? bu_cfg_done   : (bringup_ready | csr_cfgdone);
   assign oculink_0a_send_iocq_create_cmd = bringup_busy ? bu_send_iocq : csr_send_iocq;
   assign oculink_0a_send_iosq_create_cmd = bringup_busy ? bu_send_iosq : csr_send_iosq;
+
+  // ---- host data-buffer window: 0x8000-0x8FFF -> wbuf (host writes write-payload),
+  //                               0x9000-0x9FFF -> rbuf (host reads captured read-payload) ----
+  logic [31:0] csr_host_dout;
+  logic [12:0] dbuf_addr;
+  logic [31:0] dbuf_wdata, dbuf_rdata;
+  logic        dbuf_we, dbuf_rd_sel_q;
+  assign dbuf_addr  = host_bram_addr[12:0];
+  assign dbuf_wdata = host_bram_din;
+  assign dbuf_we    = (|host_bram_we) & host_bram_en & (host_bram_addr[15:13]==3'b100); // write 0x8000-0x9FFF
+  always_ff @(posedge host_bram_clk)
+    dbuf_rd_sel_q <= host_bram_en & (host_bram_addr[15:12]==4'b1001);                   // 0x9000 rbuf read (1cyc)
+  assign host_bram_dout = dbuf_rd_sel_q ? dbuf_rdata : csr_host_dout;
   logic [31:0]    oculink_0a_nvme_addr;
   logic [31:0]    oculink_0a_fpga_addr;
   logic [31:0]    oculink_0a_nlb;
@@ -174,7 +187,7 @@ module kernel(
     .host_addr      (host_bram_addr),
     .host_clk       (host_bram_clk),
     .host_din       (host_bram_din),
-    .host_dout      (host_bram_dout),
+    .host_dout      (csr_host_dout),
     .host_en        (host_bram_en),
     .host_rst       (host_bram_rst),
     .host_we        (host_bram_we),
@@ -275,6 +288,10 @@ module kernel(
     .cpl_done               (oculink_0a_cpl_done),
     .wrdata                 (oculink_0a_wrdata),
     .rddata                 (oculink_0a_rddata),
+    .dbuf_addr              (dbuf_addr),
+    .dbuf_wdata             (dbuf_wdata),
+    .dbuf_we                (dbuf_we),
+    .dbuf_rdata             (dbuf_rdata),
     .cpl_status             (oculink_0a_cpl_status),
     .cpl_count              (oculink_0a_cpl_count),
     .r_data_beats           (oculink_0a_r_data_beats),
