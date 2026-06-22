@@ -13,8 +13,28 @@ module top(
   output [15:0]host_mgt_txp,
   input [0:0]host_ref_clk_n,
   input [0:0]host_ref_clk_p,
-  input host_rstn
+  input host_rstn,
+  // ---- PL DDR4 (4 GB DDR4-2400, J19 300 MHz ref) ----
+  input  c0_sys_clk_p,
+  input  c0_sys_clk_n,
+  output [16:0] c0_ddr4_adr,
+  output [1:0]  c0_ddr4_ba,
+  output [0:0]  c0_ddr4_bg,
+  output [0:0]  c0_ddr4_cke,
+  output [0:0]  c0_ddr4_odt,
+  output [0:0]  c0_ddr4_cs_n,
+  output        c0_ddr4_act_n,
+  output [0:0]  c0_ddr4_ck_t,
+  output [0:0]  c0_ddr4_ck_c,
+  output        c0_ddr4_reset_n,
+  inout  [71:0] c0_ddr4_dq,
+  inout  [8:0]  c0_ddr4_dqs_t,
+  inout  [8:0]  c0_ddr4_dqs_c,
+  inout  [8:0]  c0_ddr4_dm_dbi_n
   );
+
+  // PL DDR4 cal/BIST status (read at CSR 0x80)
+  logic [31:0] ddr4_status;
   
 
   // oculink 0a axi interface
@@ -206,6 +226,7 @@ module top(
     .host_bram_en(host_bram_en),
     .host_bram_rst(host_bram_rst),
     .host_bram_we(host_bram_we),
+    .ddr4_status(ddr4_status),
     .oculink_0a_axi_rstn(oculink_0a_axi_rstn),
     .oculink_0a_axi_aclk(oculink_0a_axi_aclk),
     .oculink_0a_m_axi_araddr(oculink_0a_m_axi_araddr),
@@ -270,6 +291,17 @@ module top(
     .oculink_0a_s_axi_wready(oculink_0a_s_axi_wready),
     .oculink_0a_s_axi_wstrb(oculink_0a_s_axi_wstrb),
     .oculink_0a_s_axi_wvalid(oculink_0a_s_axi_wvalid)
+  );
+
+  // ---- PL DDR4 bring-up + self-test (status read at CSR 0x80) ----
+  ddr4_test ddr4_test_i (
+    .sys_clk_p (c0_sys_clk_p), .sys_clk_n (c0_sys_clk_n),
+    .rstn (host_rstn), .stat_clk (host_bram_clk), .ddr4_status (ddr4_status),
+    .c0_ddr4_adr(c0_ddr4_adr), .c0_ddr4_ba(c0_ddr4_ba), .c0_ddr4_bg(c0_ddr4_bg),
+    .c0_ddr4_cke(c0_ddr4_cke), .c0_ddr4_odt(c0_ddr4_odt), .c0_ddr4_cs_n(c0_ddr4_cs_n),
+    .c0_ddr4_act_n(c0_ddr4_act_n), .c0_ddr4_ck_t(c0_ddr4_ck_t), .c0_ddr4_ck_c(c0_ddr4_ck_c),
+    .c0_ddr4_reset_n(c0_ddr4_reset_n), .c0_ddr4_dq(c0_ddr4_dq),
+    .c0_ddr4_dqs_t(c0_ddr4_dqs_t), .c0_ddr4_dqs_c(c0_ddr4_dqs_c), .c0_ddr4_dm_dbi_n(c0_ddr4_dm_dbi_n)
   );
 
 endmodule

@@ -9,6 +9,9 @@ module kernel(
   input logic         host_bram_rst,
   input logic [3:0]   host_bram_we,
 
+  // PL DDR4 cal/BIST status (read at CSR 0x80)
+  input logic [31:0]  ddr4_status,
+
   // oculink 0a interface
   input logic           oculink_0a_axi_rstn,
   input logic           oculink_0a_axi_aclk,
@@ -224,7 +227,8 @@ module kernel(
     .oculink_0a_r_data_beats          (oculink_0a_r_data_beats),
     .oculink_0a_w_data_beats          (oculink_0a_w_data_beats),
     .oculink_0a_raw_w_beats           (oculink_0a_raw_w_beats),
-    .oculink_0a_raw_w_bursts          (oculink_0a_raw_w_bursts)
+    .oculink_0a_raw_w_bursts          (oculink_0a_raw_w_bursts),
+    .ddr4_status                      (ddr4_status)
   );
 
   nvme_configurator nvme_0a_configurator_i(
