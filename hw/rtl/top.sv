@@ -33,8 +33,14 @@ module top(
   inout  [8:0]  c0_ddr4_dm_dbi_n
   );
 
-  // PL DDR4 cal/BIST status (read at CSR 0x80)
-  logic [31:0] ddr4_status;
+  // PL DDR4 data path: user clock + cal + AXI between the ddr4_test wrapper and the kernel/nvme_driver
+  logic        ddr4_ui_clk, ddr4_ui_rst, ddr4_cal_done, ddr4_cp_rstn;
+  logic [31:0] m_ddr4_awaddr; logic [7:0] m_ddr4_awlen; logic m_ddr4_awvalid, m_ddr4_awready;
+  logic [255:0] m_ddr4_wdata; logic m_ddr4_wlast, m_ddr4_wvalid, m_ddr4_wready;
+  logic [1:0]  m_ddr4_bresp; logic m_ddr4_bvalid, m_ddr4_bready;
+  logic [31:0] m_ddr4_araddr; logic [7:0] m_ddr4_arlen; logic m_ddr4_arvalid, m_ddr4_arready;
+  logic [255:0] m_ddr4_rdata; logic m_ddr4_rlast, m_ddr4_rvalid, m_ddr4_rready; logic [1:0] m_ddr4_rresp;
+  assign ddr4_cp_rstn = ddr4_cal_done & ~ddr4_ui_rst;   // copy engine runs only after calibration
   
 
   // oculink 0a axi interface
@@ -226,7 +232,13 @@ module top(
     .host_bram_en(host_bram_en),
     .host_bram_rst(host_bram_rst),
     .host_bram_we(host_bram_we),
-    .ddr4_status(ddr4_status),
+    .cp_clk(ddr4_ui_clk), .cp_rstn(ddr4_cp_rstn), .cal_done_raw(ddr4_cal_done),
+    .ddr4_awaddr(m_ddr4_awaddr), .ddr4_awlen(m_ddr4_awlen), .ddr4_awvalid(m_ddr4_awvalid), .ddr4_awready(m_ddr4_awready),
+    .ddr4_wdata(m_ddr4_wdata), .ddr4_wlast(m_ddr4_wlast), .ddr4_wvalid(m_ddr4_wvalid), .ddr4_wready(m_ddr4_wready),
+    .ddr4_bresp(m_ddr4_bresp), .ddr4_bvalid(m_ddr4_bvalid), .ddr4_bready(m_ddr4_bready),
+    .ddr4_araddr(m_ddr4_araddr), .ddr4_arlen(m_ddr4_arlen), .ddr4_arvalid(m_ddr4_arvalid), .ddr4_arready(m_ddr4_arready),
+    .ddr4_rdata(m_ddr4_rdata), .ddr4_rlast(m_ddr4_rlast), .ddr4_rvalid(m_ddr4_rvalid), .ddr4_rready(m_ddr4_rready),
+    .ddr4_rresp(m_ddr4_rresp),
     .oculink_0a_axi_rstn(oculink_0a_axi_rstn),
     .oculink_0a_axi_aclk(oculink_0a_axi_aclk),
     .oculink_0a_m_axi_araddr(oculink_0a_m_axi_araddr),
@@ -293,10 +305,15 @@ module top(
     .oculink_0a_s_axi_wvalid(oculink_0a_s_axi_wvalid)
   );
 
-  // ---- PL DDR4 bring-up + self-test (status read at CSR 0x80) ----
+  // ---- PL DDR4 wrapper: IP + AXI slave driven by nvme_driver's ddr4_engine master ----
   ddr4_test ddr4_test_i (
-    .sys_clk_p (c0_sys_clk_p), .sys_clk_n (c0_sys_clk_n),
-    .rstn (host_rstn), .stat_clk (host_bram_clk), .ddr4_status (ddr4_status),
+    .sys_clk_p (c0_sys_clk_p), .sys_clk_n (c0_sys_clk_n), .rstn (host_rstn),
+    .ui_clk (ddr4_ui_clk), .ui_rst (ddr4_ui_rst), .cal_done (ddr4_cal_done),
+    .s_awaddr(m_ddr4_awaddr), .s_awlen(m_ddr4_awlen), .s_awvalid(m_ddr4_awvalid), .s_awready(m_ddr4_awready),
+    .s_wdata(m_ddr4_wdata), .s_wlast(m_ddr4_wlast), .s_wvalid(m_ddr4_wvalid), .s_wready(m_ddr4_wready),
+    .s_bresp(m_ddr4_bresp), .s_bvalid(m_ddr4_bvalid), .s_bready(m_ddr4_bready),
+    .s_araddr(m_ddr4_araddr), .s_arlen(m_ddr4_arlen), .s_arvalid(m_ddr4_arvalid), .s_arready(m_ddr4_arready),
+    .s_rdata(m_ddr4_rdata), .s_rlast(m_ddr4_rlast), .s_rvalid(m_ddr4_rvalid), .s_rready(m_ddr4_rready), .s_rresp(m_ddr4_rresp),
     .c0_ddr4_adr(c0_ddr4_adr), .c0_ddr4_ba(c0_ddr4_ba), .c0_ddr4_bg(c0_ddr4_bg),
     .c0_ddr4_cke(c0_ddr4_cke), .c0_ddr4_odt(c0_ddr4_odt), .c0_ddr4_cs_n(c0_ddr4_cs_n),
     .c0_ddr4_act_n(c0_ddr4_act_n), .c0_ddr4_ck_t(c0_ddr4_ck_t), .c0_ddr4_ck_c(c0_ddr4_ck_c),

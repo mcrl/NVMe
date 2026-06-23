@@ -36,6 +36,20 @@ module nvme_driver #(
   input  logic [31:0]   dbuf_wdata,
   input  logic          dbuf_we,        // write strobe (host writing the wbuf region)
   output logic [31:0]   dbuf_rdata,     // rbuf read-back (host reading the rbuf region)
+
+  // ---- DDR4 data-path: copy engine control (cp_clk = DDR4 ui_clk) + DDR4 AXI master ----
+  input  logic          cp_clk,         // DDR4 ui_clk
+  input  logic          cp_rstn,        // ~ui_rst & cal_done
+  input  logic          cp_go_tgl,      // host_bram_clk: TOGGLES on each copy trigger (CDC'd to cp_clk inside)
+  input  logic          cp_go_read,     // 0=write channel (wbuf->wbuf2), 1=read channel (rbuf->rbuf2)
+  input  logic [12:0]   cp_nwords,      // 256-b words to copy (stable before the toggle)
+  output logic          cp_busy,        // cp_clk; the host polls it via CSR (synced there)
+  output logic [31:0]   ddr4_awaddr, output logic [7:0] ddr4_awlen, output logic ddr4_awvalid, input logic ddr4_awready,
+  output logic [255:0]  ddr4_wdata,  output logic ddr4_wlast,  output logic ddr4_wvalid,  input logic ddr4_wready,
+  input  logic [1:0]    ddr4_bresp,  input logic ddr4_bvalid,  output logic ddr4_bready,
+  output logic [31:0]   ddr4_araddr, output logic [7:0] ddr4_arlen, output logic ddr4_arvalid, input logic ddr4_arready,
+  input  logic [255:0]  ddr4_rdata,  input logic ddr4_rlast,   input logic ddr4_rvalid,   output logic ddr4_rready,
+  input  logic [1:0]    ddr4_rresp,
   output logic [31:0]   cpl_status,     // last completion CQE DW3 (status/phase/cid)
   output logic [31:0]   cpl_count,      // monotonic completion counter (multi-outstanding)
   output logic [31:0]   r_data_beats,   // count of write-payload R beats served (real data moved, x32 B)
@@ -692,29 +706,83 @@ module nvme_driver #(
   localparam int RBUF_LAT = 1;                  // rbuf host read latency (matches axi_bram_ctrl)
   localparam int WBUF_LAT = 1;                  // wbuf SSD-side read latency
 
-  // host write into wbuf: one 32-b lane per access via byte write-enables (no read-modify-write)
+  // ---- DRAM-routed data path: 4 SRAMs + a copy engine push data through the 4 GB DDR4 ----
+  //   wbuf  : host fills it (host_bram_clk) ; copy engine reads it (cp_clk) -> DDR4
+  //   wbuf2 : copy engine writes it from DDR4 (cp_clk) ; the SSD latency server reads it (oculink)
+  //   rbuf  : the SSD writes read-payload (oculink) ; copy engine reads it (cp_clk) -> DDR4
+  //   rbuf2 : copy engine writes it from DDR4 (cp_clk) ; the host reads it (host_bram_clk)
+  // All DDR4 access is cp_clk; the dual-clock SRAMs absorb the host/oculink crossing (no AXI CDC).
   wire [DBUF_AW-1:0] dbuf_word = dbuf_addr[16:5];
   wire [2:0]         dbuf_lane = dbuf_addr[4:2];
   wire [31:0]        wbuf_wea  = dbuf_we ? (32'hF << {dbuf_lane,2'd0}) : 32'd0;
-  wire [DBUF_AW-1:0] wbuf_rdaddr;                // driven by the latency-tolerant reader (below)
-  wire               wbuf_rden;
-  logic [255:0]      wbuf_rdata;
-  dpram_be #(.DW(256), .AW(DBUF_AW), .RDLAT(WBUF_LAT), .PRIM("block")) u_wbuf (
-    .clka (host_bram_clk),  .ena (1'b1), .wea (wbuf_wea), .addra (dbuf_word), .dina ({8{dbuf_wdata}}),
-    .clkb (oculink_axi_clk),.enb (wbuf_rden), .addrb (wbuf_rdaddr), .doutb (wbuf_rdata)
-  );
 
-  // rbuf: SSD writes whole 256-b beats (full-word we), host reads a 32-b lane (latency RBUF_LAT)
-  wire [DBUF_AW-1:0] rbuf_wraddr;                // driven by the read-payload counter (below)
-  wire               rbuf_we;
-  logic [255:0]      rbuf_rdata256;
-  dpram_be #(.DW(256), .AW(DBUF_AW), .RDLAT(RBUF_LAT), .PRIM("block")) u_rbuf (
-    .clka (oculink_axi_clk),.ena (1'b1), .wea ({32{rbuf_we}}), .addra (rbuf_wraddr), .dina (oculink_m_axi_wdata),
-    .clkb (host_bram_clk),  .enb (1'b1), .addrb (dbuf_word), .doutb (rbuf_rdata256)
+  // copy-engine SRAM port wires (cp_clk)
+  wire [DBUF_AW-1:0] cw_raddr;  wire cw_ren;  wire [255:0] cw_rdout;   // read wbuf
+  wire [DBUF_AW-1:0] cw_waddr;  wire [31:0] cw_we; wire [255:0] cw_wdin; // write wbuf2
+  wire [DBUF_AW-1:0] cr_raddr;  wire cr_ren;  wire [255:0] cr_rdout;   // read rbuf
+  wire [DBUF_AW-1:0] cr_waddr;  wire [31:0] cr_we; wire [255:0] cr_wdin; // write rbuf2
+
+  dpram_be #(.DW(256), .AW(DBUF_AW), .RDLAT(1), .PRIM("block")) u_wbuf (    // host fill -> copy read
+    .clka (host_bram_clk), .ena (1'b1), .wea (wbuf_wea), .addra (dbuf_word), .dina ({8{dbuf_wdata}}),
+    .clkb (cp_clk), .enb (cw_ren), .addrb (cw_raddr), .doutb (cw_rdout)
   );
-  logic [2:0] dbuf_lane_q;                       // lane aligned to rbuf doutb (RBUF_LAT=1)
+  wire [DBUF_AW-1:0] wbuf_rdaddr;  wire wbuf_rden;  logic [255:0] wbuf_rdata;
+  dpram_be #(.DW(256), .AW(DBUF_AW), .RDLAT(WBUF_LAT), .PRIM("block")) u_wbuf2 ( // copy write -> SSD read
+    .clka (cp_clk), .ena (1'b1), .wea (cw_we), .addra (cw_waddr), .dina (cw_wdin),
+    .clkb (oculink_axi_clk), .enb (wbuf_rden), .addrb (wbuf_rdaddr), .doutb (wbuf_rdata)
+  );
+  wire [DBUF_AW-1:0] rbuf_wraddr;  wire rbuf_we;
+  dpram_be #(.DW(256), .AW(DBUF_AW), .RDLAT(1), .PRIM("block")) u_rbuf (     // SSD write -> copy read
+    .clka (oculink_axi_clk), .ena (1'b1), .wea ({32{rbuf_we}}), .addra (rbuf_wraddr), .dina (oculink_m_axi_wdata),
+    .clkb (cp_clk), .enb (cr_ren), .addrb (cr_raddr), .doutb (cr_rdout)
+  );
+  logic [255:0] rbuf_rdata256;
+  dpram_be #(.DW(256), .AW(DBUF_AW), .RDLAT(RBUF_LAT), .PRIM("block")) u_rbuf2 ( // copy write -> host read
+    .clka (cp_clk), .ena (1'b1), .wea (cr_we), .addra (cr_waddr), .dina (cr_wdin),
+    .clkb (host_bram_clk), .enb (1'b1), .addrb (dbuf_word), .doutb (rbuf_rdata256)
+  );
+  logic [2:0] dbuf_lane_q;
   always_ff @(posedge host_bram_clk) dbuf_lane_q <= dbuf_lane;
   assign dbuf_rdata = rbuf_rdata256[{dbuf_lane_q,5'd0} +: 32];
+
+  // ---- copy engine + DDR4 AXI master (cp_clk). Channel: 0=write(wbuf->wbuf2) 1=read(rbuf->rbuf2). ----
+  // CDC the host trigger: cp_go_tgl toggles per request; sync + edge-detect -> a 1-cycle cp_clk go pulse.
+  (* ASYNC_REG="true" *) logic [2:0] tgl_s;
+  (* ASYNC_REG="true" *) logic gr_s1, gr_s2; logic [12:0] nw_s1, nw_s2;
+  always_ff @(posedge cp_clk) begin
+    tgl_s <= {tgl_s[1:0], cp_go_tgl};
+    gr_s1 <= cp_go_read; gr_s2 <= gr_s1;        // stable levels, sampled when the pulse fires
+    nw_s1 <= cp_nwords;  nw_s2 <= nw_s1;
+  end
+  wire cp_go_pulse = tgl_s[2] ^ tgl_s[1];
+  logic cp_chan;
+  always_ff @(posedge cp_clk) if (cp_go_pulse) cp_chan <= gr_s2;
+  wire [DBUF_AW-1:0] ce_saddr; wire ce_sen; wire [255:0] ce_sdout;
+  wire [DBUF_AW-1:0] ce_daddr; wire [31:0] ce_dwe; wire [255:0] ce_ddin;
+  assign cw_raddr=ce_saddr; assign cw_ren=ce_sen & ~cp_chan;
+  assign cr_raddr=ce_saddr; assign cr_ren=ce_sen &  cp_chan;
+  assign ce_sdout = cp_chan ? cr_rdout : cw_rdout;
+  assign cw_waddr=ce_daddr; assign cw_we = ~cp_chan ? ce_dwe : 32'd0; assign cw_wdin=ce_ddin;
+  assign cr_waddr=ce_daddr; assign cr_we =  cp_chan ? ce_dwe : 32'd0; assign cr_wdin=ce_ddin;
+
+  wire de_req_valid, de_req_we; wire [31:0] de_req_addr; wire [7:0] de_req_len; wire de_busy;
+  wire [255:0] de_wd_data; wire de_wd_valid, de_wd_ready;
+  wire [255:0] de_rd_data; wire de_rd_valid, de_rd_ready;
+  copy_engine #(.AWORDS(DBUF_AW)) u_copy (.clk(cp_clk), .rstn(cp_rstn), .go(cp_go_pulse), .nwords(nw_s2), .busy(cp_busy),
+    .src_addr(ce_saddr), .src_en(ce_sen), .src_dout(ce_sdout),
+    .dst_addr(ce_daddr), .dst_we(ce_dwe), .dst_din(ce_ddin),
+    .e_req_valid(de_req_valid), .e_req_we(de_req_we), .e_req_addr(de_req_addr), .e_req_len(de_req_len), .e_busy(de_busy),
+    .e_wd_data(de_wd_data), .e_wd_valid(de_wd_valid), .e_wd_ready(de_wd_ready),
+    .e_rd_data(de_rd_data), .e_rd_valid(de_rd_valid), .e_rd_ready(de_rd_ready));
+  ddr4_engine u_de (.clk(cp_clk), .rstn(cp_rstn),
+    .req_valid(de_req_valid), .req_we(de_req_we), .req_addr(de_req_addr), .req_len(de_req_len), .busy(de_busy),
+    .wd_data(de_wd_data), .wd_valid(de_wd_valid), .wd_ready(de_wd_ready),
+    .rd_data(de_rd_data), .rd_valid(de_rd_valid), .rd_ready(de_rd_ready),
+    .m_awaddr(ddr4_awaddr), .m_awlen(ddr4_awlen), .m_awvalid(ddr4_awvalid), .m_awready(ddr4_awready),
+    .m_wdata(ddr4_wdata), .m_wlast(ddr4_wlast), .m_wvalid(ddr4_wvalid), .m_wready(ddr4_wready),
+    .m_bresp(ddr4_bresp), .m_bvalid(ddr4_bvalid), .m_bready(ddr4_bready),
+    .m_araddr(ddr4_araddr), .m_arlen(ddr4_arlen), .m_arvalid(ddr4_arvalid), .m_arready(ddr4_arready),
+    .m_rdata(ddr4_rdata), .m_rlast(ddr4_rlast), .m_rvalid(ddr4_rvalid), .m_rready(ddr4_rready), .m_rresp(ddr4_rresp));
 
   // per-data-burst word offsets (addr-IORW_BAR)>>5, captured in order at AR/AW accept (oculink domain)
   wire [11:0]  ar_off = (oculink_m_axi_araddr - IORW_BAR) >> 5;   // write-payload read offset

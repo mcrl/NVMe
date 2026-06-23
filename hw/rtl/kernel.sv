@@ -9,8 +9,16 @@ module kernel(
   input logic         host_bram_rst,
   input logic [3:0]   host_bram_we,
 
-  // PL DDR4 cal/BIST status (read at CSR 0x80)
-  input logic [31:0]  ddr4_status,
+  // ---- PL DDR4 data path: ui_clk + cal + DDR4 AXI master (to the ddr4_test wrapper in top) ----
+  input  logic        cp_clk,
+  input  logic        cp_rstn,
+  input  logic        cal_done_raw,
+  output logic [31:0] ddr4_awaddr, output logic [7:0] ddr4_awlen, output logic ddr4_awvalid, input logic ddr4_awready,
+  output logic [255:0] ddr4_wdata, output logic ddr4_wlast, output logic ddr4_wvalid, input logic ddr4_wready,
+  input  logic [1:0]  ddr4_bresp, input logic ddr4_bvalid, output logic ddr4_bready,
+  output logic [31:0] ddr4_araddr, output logic [7:0] ddr4_arlen, output logic ddr4_arvalid, input logic ddr4_arready,
+  input  logic [255:0] ddr4_rdata, input logic ddr4_rlast, input logic ddr4_rvalid, output logic ddr4_rready,
+  input  logic [1:0]  ddr4_rresp,
 
   // oculink 0a interface
   input logic           oculink_0a_axi_rstn,
@@ -127,6 +135,8 @@ module kernel(
   logic [16:0] dbuf_addr;
   logic [31:0] dbuf_wdata, dbuf_rdata;
   logic        dbuf_we, dbuf_rd_sel_q;
+  logic        cp_go_tgl, cp_go_read, cp_busy;   // DDR4 copy control (csr <-> nvme_driver)
+  logic [12:0] cp_nwords;
   wire         csr_en = host_bram_en & (host_bram_addr[19:17]==3'b000);  // gate CSR off the data regions
   assign dbuf_addr  = host_bram_addr[16:0];
   assign dbuf_wdata = host_bram_din;
@@ -228,7 +238,11 @@ module kernel(
     .oculink_0a_w_data_beats          (oculink_0a_w_data_beats),
     .oculink_0a_raw_w_beats           (oculink_0a_raw_w_beats),
     .oculink_0a_raw_w_bursts          (oculink_0a_raw_w_bursts),
-    .ddr4_status                      (ddr4_status)
+    .cp_go_tgl                        (cp_go_tgl),
+    .cp_go_read                       (cp_go_read),
+    .cp_nwords                        (cp_nwords),
+    .cp_busy_raw                      (cp_busy),
+    .cal_done_raw                     (cal_done_raw)
   );
 
   nvme_configurator nvme_0a_configurator_i(
@@ -298,6 +312,19 @@ module kernel(
     .dbuf_wdata             (dbuf_wdata),
     .dbuf_we                (dbuf_we),
     .dbuf_rdata             (dbuf_rdata),
+    // DDR4 data path
+    .cp_clk                 (cp_clk),
+    .cp_rstn                (cp_rstn),
+    .cp_go_tgl              (cp_go_tgl),
+    .cp_go_read             (cp_go_read),
+    .cp_nwords              (cp_nwords),
+    .cp_busy                (cp_busy),
+    .ddr4_awaddr            (ddr4_awaddr), .ddr4_awlen(ddr4_awlen), .ddr4_awvalid(ddr4_awvalid), .ddr4_awready(ddr4_awready),
+    .ddr4_wdata             (ddr4_wdata),  .ddr4_wlast(ddr4_wlast), .ddr4_wvalid(ddr4_wvalid), .ddr4_wready(ddr4_wready),
+    .ddr4_bresp             (ddr4_bresp),  .ddr4_bvalid(ddr4_bvalid), .ddr4_bready(ddr4_bready),
+    .ddr4_araddr            (ddr4_araddr), .ddr4_arlen(ddr4_arlen), .ddr4_arvalid(ddr4_arvalid), .ddr4_arready(ddr4_arready),
+    .ddr4_rdata             (ddr4_rdata),  .ddr4_rlast(ddr4_rlast), .ddr4_rvalid(ddr4_rvalid), .ddr4_rready(ddr4_rready),
+    .ddr4_rresp             (ddr4_rresp),
     .cpl_status             (oculink_0a_cpl_status),
     .cpl_count              (oculink_0a_cpl_count),
     .r_data_beats           (oculink_0a_r_data_beats),

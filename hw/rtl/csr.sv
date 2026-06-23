@@ -42,8 +42,16 @@ module csr(
   input logic [31:0]  oculink_0a_w_data_beats,
   input logic [31:0]  oculink_0a_raw_w_beats,
   input logic [31:0]  oculink_0a_raw_w_bursts,
-  input logic [31:0]  ddr4_status            // 0x80 read: {8'hD4, err[15:0], 5'b0, pass, done, cal}
+  // ---- DDR4 data-path control/status ----
+  output logic        cp_go_tgl,             // toggles on each 0x84 write (CDC'd to cp_clk in nvme_driver)
+  output logic        cp_go_read,            // 0x84 bit0: 0=write copy (wbuf->wbuf2), 1=read copy (rbuf->rbuf2)
+  output logic [12:0] cp_nwords,             // 0x88: 256-b words to copy
+  input  logic        cp_busy_raw,           // cp_clk; synced here
+  input  logic        cal_done_raw           // ui_clk; synced here
 );
+  // sync the DDR4 status bits into host_clk for the 0x80 read
+  (* ASYNC_REG="true" *) logic [1:0] busy_s, cal_s;
+  always_ff @(posedge host_clk) begin busy_s<={busy_s[0],cp_busy_raw}; cal_s<={cal_s[0],cal_done_raw}; end
   
   // scratch reg for debugging
   reg [31:0] scratch;
@@ -76,9 +84,12 @@ module csr(
       oculink_0a_nvme_addr            <= 0;
       oculink_0a_fpga_addr            <= 0;
       oculink_0a_nlb                  <= 0;
-    end  
+      cp_go_tgl                       <= 0;
+      cp_go_read                      <= 0;
+      cp_nwords                       <= 13'd4096;   // default: full 128 KB buffer
+    end
     else if (host_we && host_en) begin
-      case(host_addr) 
+      case(host_addr)
         16'h0000: scratch                         <= host_din;
         16'h0004: sw_reset                        <= host_din[0];
         16'h0008: bringup_start                   <= 1'b1;   // kick HW bring-up sequencer
@@ -92,6 +103,8 @@ module csr(
         16'h0044: oculink_0a_send_iosq_create_cmd <= 1'b1;
         16'h0048: oculink_0a_send_read_cmd        <= 1'b1;
         16'h004C: oculink_0a_send_write_cmd       <= 1'b1;
+        16'h0084: begin cp_go_tgl <= ~cp_go_tgl; cp_go_read <= host_din[0]; end  // trigger a DDR4 copy
+        16'h0088: cp_nwords                       <= host_din[12:0];             // words to copy
         16'h0050: oculink_0a_nvme_addr            <= host_din;
         16'h0054: oculink_0a_fpga_addr            <= host_din;
         16'h0058: oculink_0a_nlb                  <= host_din;
@@ -141,7 +154,7 @@ module csr(
         16'h006C: host_dout <= oculink_0a_w_data_beats; // real read-payload  W beats captured (x32 B)
         16'h0070: host_dout <= oculink_0a_raw_w_beats;  // DIAG: ALL accepted W beats (any class)
         16'h0074: host_dout <= oculink_0a_raw_w_bursts; // DIAG: read-data (non-CQE) W bursts
-        16'h0080: host_dout <= ddr4_status;             // PL DDR4 cal/BIST status
+        16'h0080: host_dout <= {30'd0, cal_s[1], busy_s[1]};  // DDR4: bit1=cal_done, bit0=copy busy
         16'h0100: host_dout <= oculink_0a_wrdata[0];
         16'h0104: host_dout <= oculink_0a_wrdata[1];
         16'h0108: host_dout <= oculink_0a_wrdata[2];
