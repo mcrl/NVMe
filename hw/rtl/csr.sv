@@ -44,8 +44,9 @@ module csr(
   input logic [31:0]  oculink_0a_raw_w_bursts,
   // ---- DDR4 data-path control/status ----
   output logic        cp_go_tgl,             // toggles on each 0x84 write (CDC'd to cp_clk in nvme_driver)
-  output logic        cp_go_read,            // 0x84 bit0: 0=write copy (wbuf->wbuf2), 1=read copy (rbuf->rbuf2)
-  output logic [12:0] cp_nwords,             // 0x88: 256-b words to copy
+  output logic [1:0]  cp_op,                 // 0x84[1:0]: 0=copy-push 1=copy-pull 2=refill 3=drain
+  output logic [15:0] cp_nwords,             // 0x88: 256-b words (copy chunk size / stream total)
+  output logic [15:0] cp_base,               // 0x8C: DDR4 word base for the copy op
   input  logic        cp_busy_raw,           // cp_clk; synced here
   input  logic        cal_done_raw           // ui_clk; synced here
 );
@@ -85,8 +86,9 @@ module csr(
       oculink_0a_fpga_addr            <= 0;
       oculink_0a_nlb                  <= 0;
       cp_go_tgl                       <= 0;
-      cp_go_read                      <= 0;
-      cp_nwords                       <= 13'd4096;   // default: full 128 KB buffer
+      cp_op                           <= 0;
+      cp_nwords                       <= 16'd4096;   // default: one 128 KB window
+      cp_base                         <= 0;
     end
     else if (host_we && host_en) begin
       case(host_addr)
@@ -103,8 +105,9 @@ module csr(
         16'h0044: oculink_0a_send_iosq_create_cmd <= 1'b1;
         16'h0048: oculink_0a_send_read_cmd        <= 1'b1;
         16'h004C: oculink_0a_send_write_cmd       <= 1'b1;
-        16'h0084: begin cp_go_tgl <= ~cp_go_tgl; cp_go_read <= host_din[0]; end  // trigger a DDR4 copy
-        16'h0088: cp_nwords                       <= host_din[12:0];             // words to copy
+        16'h0084: begin cp_go_tgl <= ~cp_go_tgl; cp_op <= host_din[1:0]; end     // trigger a DDR4 op
+        16'h0088: cp_nwords                       <= host_din[15:0];             // words (chunk / stream total)
+        16'h008C: cp_base                         <= host_din[15:0];             // DDR4 word base for the copy
         16'h0050: oculink_0a_nvme_addr            <= host_din;
         16'h0054: oculink_0a_fpga_addr            <= host_din;
         16'h0058: oculink_0a_nlb                  <= host_din;

@@ -26,7 +26,7 @@ module tb_copy_engine;
     .clka(clk),.ena(1'b1),.wea(dst_we),.addra(dst_addr),.dina(dst_din),
     .clkb(clk),.enb(1'b1),.addrb(d_ra),.doutb(d_rdout));
 
-  copy_engine #(.AWORDS(AW)) ce (.clk(clk),.rstn(rstn),.go(go),.nwords(nwords),.busy(ce_busy),
+  copy_engine #(.AWORDS(AW)) ce (.clk(clk),.rstn(rstn),.go(go),.nwords(nwords),.ddr4_base(32'd0),.mode(2'd0),.busy(ce_busy),
     .src_addr(src_addr),.src_en(src_en),.src_dout(src_dout),
     .dst_addr(dst_addr),.dst_we(dst_we),.dst_din(dst_din),
     .e_req_valid(e_req_valid),.e_req_we(e_req_we),.e_req_addr(e_req_addr),.e_req_len(e_req_len),.e_busy(e_busy),

@@ -8,7 +8,9 @@
 module copy_engine #(parameter int AWORDS = 12)(   // 2**12 = 4096 words = 128 KB
   input  logic        clk, rstn,
   input  logic        go,                 // 1-cycle pulse
-  input  logic [AWORDS:0] nwords,         // number of 256-b words to copy (from DDR4 word 0)
+  input  logic [AWORDS:0] nwords,         // number of 256-b words to copy
+  input  logic [31:0] ddr4_base,          // DDR4 WORD base for this copy (chunk i -> i*window for host staging)
+  input  logic [1:0]  mode,               // 0=push+pull (legacy), 1=push-only (src->DDR4), 2=pull-only (DDR4->dst)
   output logic        busy,
   // source SRAM read port (latency-1 registered read)
   output logic [AWORDS-1:0] src_addr, output logic src_en, input logic [255:0] src_dout,
@@ -45,10 +47,11 @@ module copy_engine #(parameter int AWORDS = 12)(   // 2**12 = 4096 words = 128 K
     end else begin
       e_req_valid<=0;
       case (st)
-        IDLE: if (go) begin total<=nwords; done_w<=0; sptr<=0; dptr<=0; busy<=1; st<=WSTART; end
+        IDLE: if (go) begin total<=nwords; done_w<=0; sptr<=0; dptr<=0; busy<=1;
+                            st <= (mode==2'd2) ? RSTART : WSTART; end   // pull-only skips the push phase
         // ---- PUSH: src SRAM -> DDR4 ----
         WSTART: begin
-          e_req_valid<=1; e_req_we<=1; e_req_addr<={done_w,5'd0}; e_req_len<=this_len-9'd1;
+          e_req_valid<=1; e_req_we<=1; e_req_addr<=(ddr4_base + done_w) << 5; e_req_len<=this_len-9'd1;
           chunk<=this_len; st<=WLOAD;
         end
         WLOAD: st<=WSEND;                            // src_dout = src[sptr] valid next cycle
@@ -57,12 +60,14 @@ module copy_engine #(parameter int AWORDS = 12)(   // 2**12 = 4096 words = 128 K
                  if (chunk==9'd1) st<=WWAIT; else begin chunk<=chunk-9'd1; st<=WLOAD; end
                end
         WWAIT: if (!e_busy) begin
-                 if (done_w==total) begin done_w<=0; st<=RSTART; end
-                 else st<=WSTART;
+                 if (done_w==total) begin
+                   if (mode==2'd1) begin busy<=0; st<=FIN; end   // push-only: done after the push phase
+                   else begin done_w<=0; st<=RSTART; end          // push+pull: continue to the pull phase
+                 end else st<=WSTART;
                end
         // ---- PULL: DDR4 -> dst SRAM ----
         RSTART: begin
-          e_req_valid<=1; e_req_we<=0; e_req_addr<={done_w,5'd0}; e_req_len<=this_len-9'd1;
+          e_req_valid<=1; e_req_we<=0; e_req_addr<=(ddr4_base + done_w) << 5; e_req_len<=this_len-9'd1;
           chunk<=this_len; st<=RWAIT;
         end
         RWAIT: if (e_rd_valid) begin

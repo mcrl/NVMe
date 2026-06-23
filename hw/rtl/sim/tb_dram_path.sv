@@ -1,27 +1,24 @@
-// Full DRAM-routed data path: host -> wbuf -> (copy engine) -> DDR4 -> wbuf2 -> SSD, and
-// SSD -> rbuf -> (copy engine) -> DDR4 -> rbuf2 -> host. nvme_driver drives a ddr4_axi_model as DDR4.
-//   T1 (write path): host fills wbuf, trigger write-copy, SSD reads the data window -> must equal the pattern
-//                    (the bytes the SSD reads came from DDR4, via wbuf2).
-//   T2 (read path):  SSD writes the data window (-> rbuf), trigger read-copy, host reads rbuf2 -> must match.
+// Full DRAM STREAMING path: a 256 KB single transfer streamed through the 128 KB on-chip window over DDR4.
+//   WRITE: host fills wbuf (2x128KB chunks) -> copy-push -> DDR4[0..256KB] ; refill streams DDR4->wbuf2 ahead
+//          of the SSD ; SSD reads 256 KB (64 pages) -> check each beat.
+//   READ : drain streams rbuf->DDR4 behind the SSD ; SSD writes 256 KB -> DDR4 ; host pulls 2 chunks -> rbuf2
+//          -> check.  nvme_driver drives a ddr4_axi_model as the 4 GB DDR4.
 `timescale 1ns/1ps
 module tb_dram_path;
   logic oculink_axi_clk=0, host_bram_clk=0, cp_clk=0, rstn=0;
   always #4 oculink_axi_clk = ~oculink_axi_clk;   // 125 MHz
   always #2 host_bram_clk   = ~host_bram_clk;     // 250 MHz
-  always #3 cp_clk          = ~cp_clk;            // ~166 MHz (DDR4 ui_clk stand-in, async)
+  always #3 cp_clk          = ~cp_clk;            // ~166 MHz (async)
 
-  logic [12:0] dbuf_addr=0; logic [31:0] dbuf_wdata=0; logic dbuf_we=0; logic [31:0] dbuf_rdata;
-  logic [16:0] dbuf_addr17; assign dbuf_addr17 = {4'd0, dbuf_addr};
-  // copy control
-  logic cp_go_tgl=0, cp_go_read=0; logic [12:0] cp_nwords=512; logic cp_busy;
-  // nvme_driver DDR4 AXI master <-> model
+  localparam int PAGES = 64, WORDS = PAGES*128;   // 256 KB = 8192 words
+  logic [16:0] dbuf_addr=0; logic [31:0] dbuf_wdata=0; logic dbuf_we=0; logic [31:0] dbuf_rdata;
+  logic cp_go_tgl=0; logic [1:0] cp_op=0; logic [15:0] cp_nwords=4096, cp_base=0; logic cp_busy;
   logic [31:0] d_awaddr; logic [7:0] d_awlen; logic d_awvalid, d_awready;
   logic [255:0] d_wdata; logic d_wlast, d_wvalid, d_wready;
   logic [1:0] d_bresp; logic d_bvalid, d_bready;
   logic [31:0] d_araddr; logic [7:0] d_arlen; logic d_arvalid, d_arready;
   logic [255:0] d_rdata; logic d_rlast, d_rvalid, d_rready; logic [1:0] d_rresp;
 
-  // SSD-side m_axi (FPGA is slave): tb drives like the SSD
   logic m_arready; logic [31:0] m_araddr=0; logic [1:0] m_arburst=1; logic [3:0] m_arcache=0;
   logic [3:0] m_arid=0; logic [7:0] m_arlen=0; logic m_arlock=0; logic [2:0] m_arprot=0,m_arsize=5; logic m_arvalid=0;
   logic m_awready; logic [31:0] m_awaddr=0; logic [1:0] m_awburst=1; logic [3:0] m_awcache=0;
@@ -29,12 +26,10 @@ module tb_dram_path;
   logic m_wready; logic [255:0] m_wdata=0; logic m_wlast=0; logic [31:0] m_wstrb='1; logic m_wvalid=0;
   logic m_rready=1; logic [255:0] m_rdata; logic [3:0] m_rid; logic m_rlast; logic [1:0] m_rresp; logic m_rvalid;
   logic m_bready=1; logic [3:0] m_bid; logic [1:0] m_bresp; logic m_bvalid;
-  // s_axi (doorbells) - unused, tie
   logic s_awready=1,s_wready=1,s_bvalid; logic [3:0] s_bid=0; logic [1:0] s_bresp=0;
   logic [31:0] s_awaddr; logic [1:0] s_awburst; logic [3:0] s_awid; logic [7:0] s_awlen; logic [3:0] s_awregion;
   logic [2:0] s_awsize; logic s_awvalid; logic [255:0] s_wdata; logic s_wlast; logic [31:0] s_wstrb; logic s_wvalid; logic s_bready;
   always_ff @(posedge oculink_axi_clk) s_bvalid <= s_wvalid & s_wlast;
-
   logic [31:0] nvme_addr=0, fpga_addr=0, nlb=0, cpl_status, cpl_count; logic cpl_done;
   logic [31:0] wrdata[7:0], rddata[7:0];
   localparam IORW = 32'hC000;
@@ -43,8 +38,8 @@ module tb_dram_path;
     .rstn(rstn), .host_bram_clk(host_bram_clk), .oculink_axi_clk(oculink_axi_clk),
     .send_iocq_create_cmd(1'b0), .send_iosq_create_cmd(1'b0), .send_read_cmd(1'b0), .send_write_cmd(1'b0),
     .nvme_addr(nvme_addr), .fpga_addr(fpga_addr), .nlb(nlb), .cpl_done(cpl_done), .wrdata(wrdata), .rddata(rddata),
-    .dbuf_addr(dbuf_addr17), .dbuf_wdata(dbuf_wdata), .dbuf_we(dbuf_we), .dbuf_rdata(dbuf_rdata),
-    .cp_clk(cp_clk), .cp_rstn(rstn), .cp_go_tgl(cp_go_tgl), .cp_go_read(cp_go_read), .cp_nwords(cp_nwords), .cp_busy(cp_busy),
+    .dbuf_addr(dbuf_addr), .dbuf_wdata(dbuf_wdata), .dbuf_we(dbuf_we), .dbuf_rdata(dbuf_rdata),
+    .cp_clk(cp_clk), .cp_rstn(rstn), .cp_go_tgl(cp_go_tgl), .cp_op(cp_op), .cp_nwords(cp_nwords), .cp_base(cp_base), .cp_busy(cp_busy),
     .ddr4_awaddr(d_awaddr), .ddr4_awlen(d_awlen), .ddr4_awvalid(d_awvalid), .ddr4_awready(d_awready),
     .ddr4_wdata(d_wdata), .ddr4_wlast(d_wlast), .ddr4_wvalid(d_wvalid), .ddr4_wready(d_wready),
     .ddr4_bresp(d_bresp), .ddr4_bvalid(d_bvalid), .ddr4_bready(d_bready),
@@ -70,54 +65,66 @@ module tb_dram_path;
     .oculink_m_axi_rvalid(m_rvalid), .oculink_m_axi_bready(m_bready), .oculink_m_axi_bid(m_bid),
     .oculink_m_axi_bresp(m_bresp), .oculink_m_axi_bvalid(m_bvalid)
   );
-
-  ddr4_axi_model mdl (.clk(cp_clk), .rstn(rstn),
+  ddr4_axi_model #(.AW(16)) mdl (.clk(cp_clk), .rstn(rstn),
     .awaddr(d_awaddr), .awlen(d_awlen), .awvalid(d_awvalid), .awready(d_awready),
     .wdata(d_wdata), .wlast(d_wlast), .wvalid(d_wvalid), .wready(d_wready),
     .bresp(d_bresp), .bvalid(d_bvalid), .bready(d_bready),
     .araddr(d_araddr), .arlen(d_arlen), .arvalid(d_arvalid), .arready(d_arready),
     .rdata(d_rdata), .rlast(d_rlast), .rvalid(d_rvalid), .rready(d_rready), .rresp(d_rresp));
 
-  function automatic logic [255:0] patt(input int i); return {8{32'hBEEF0000 + i}}; endfunction
-
-  task automatic wbuf_wr(input int word, input logic [255:0] val);
+  function automatic logic [255:0] patt(input int w); return {8{32'hBEEF0000 + w}}; endfunction
+  task automatic wbuf_wr(input int word, input logic [255:0] val);  // word index within the 128 KB host buffer
     for (int l=0;l<8;l++) begin @(posedge host_bram_clk); dbuf_addr<=(word<<5)|(l<<2); dbuf_wdata<=val[l*32+:32]; dbuf_we<=1; end
     @(posedge host_bram_clk); dbuf_we<=0;
   endtask
-  task automatic rbuf_rd(input int word, output logic [255:0] val);
+  task automatic rbuf2_rd(input int word, output logic [255:0] val);
     for (int l=0;l<8;l++) begin dbuf_addr<=(word<<5)|(l<<2); @(posedge host_bram_clk); @(posedge host_bram_clk); val[l*32+:32]=dbuf_rdata; end
   endtask
-  task automatic do_copy(input logic is_read);
-    @(posedge host_bram_clk); cp_go_read<=is_read; cp_go_tgl<=~cp_go_tgl;   // toggle (CDC'd inside)
-    do @(posedge cp_clk); while(!cp_busy);    // wait copy start
-    do @(posedge cp_clk); while(cp_busy);     // wait copy done
+  task automatic do_op(input [1:0] op, input [15:0] nw, input [15:0] base, input bit wait_done);
+    @(posedge host_bram_clk); cp_op<=op; cp_nwords<=nw; cp_base<=base; cp_go_tgl<=~cp_go_tgl;
+    repeat(30) @(posedge cp_clk);                       // toggle propagates + the op starts (busy=1)
+    if (wait_done) begin
+      while (cp_busy) @(posedge cp_clk);               // wait for completion (explicit -- no if/do-while ambiguity)
+      repeat(4) @(posedge cp_clk);
+    end
   endtask
 
-  int i, bad; logic [255:0] got;
+  int i, p, b, bad; logic [255:0] got;
   initial begin
     repeat(20) @(posedge oculink_axi_clk); rstn=1; repeat(20) @(posedge oculink_axi_clk);
 
-    // ---- T1 write path: host fills wbuf -> copy -> SSD reads wbuf2 ----
-    for (i=0;i<16;i++) wbuf_wr(i, patt(i));
-    do_copy(1'b0);                                       // wbuf -> DDR4 -> wbuf2
-    @(posedge oculink_axi_clk); m_araddr<=IORW; m_arlen<=15; m_arvalid<=1;
-    do @(posedge oculink_axi_clk); while(!m_arready); m_arvalid<=0;
-    bad=0; i=0;
-    forever begin @(posedge oculink_axi_clk); if (m_rvalid&&m_rready) begin
-      if (m_rdata!==patt(i)) begin bad++; if(bad<=3) $display("[DR] T1 beat %0d got %h exp %h",i,m_rdata,patt(i)); end
-      i++; if (m_rlast) break; end end
-    $display("[DR] T1 host->wbuf->DDR4->wbuf2->SSD: %0d beats, %0d mismatch => %s", i, bad, bad==0?"PASS":"FAIL");
-
-    // ---- T2 read path: SSD writes rbuf -> copy -> host reads rbuf2 ----
-    @(posedge oculink_axi_clk); m_awaddr<=IORW; m_awlen<=15; m_awvalid<=1;
-    do @(posedge oculink_axi_clk); while(!m_awready); m_awvalid<=0;
-    for (i=0;i<16;i++) begin m_wdata<={8{32'hCAFE0000+i}}; m_wlast<=(i==15); m_wvalid<=1; do @(posedge oculink_axi_clk); while(!m_wready); end
-    m_wvalid<=0; m_wlast<=0; repeat(20) @(posedge oculink_axi_clk);
-    do_copy(1'b1);                                       // rbuf -> DDR4 -> rbuf2
+    // ===== WRITE path: stage 256 KB into DDR4 (2 chunks), refill-stream, SSD reads 256 KB =====
+    for (i=0;i<4096;i++) wbuf_wr(i, patt(i));        do_op(0,4096,0,1);        // chunk0 -> DDR4[0..4095]
+    for (i=0;i<4096;i++) wbuf_wr(i, patt(4096+i));   do_op(0,4096,4096,1);     // chunk1 -> DDR4[4096..8191]
+    do_op(2, WORDS, 0, 0);                            // refill start (streams during the read)
+    repeat(6000) @(posedge cp_clk);                   // let the refill prime the window
+    $display("[DBG] after prime: refill my_w=%0d st=%0d busy=%0d ; wbuf2 mem[0]=%h mem[1]=%h",
+             dut.u_refill.my_w, dut.u_refill.st, dut.refill_busy, dut.u_wbuf2.mem[0], dut.u_wbuf2.mem[1]);
     bad=0;
-    for (i=0;i<16;i++) begin rbuf_rd(i, got); if (got!=={8{32'hCAFE0000+i}}) begin bad++; if(bad<=3) $display("[DR] T2 word %0d got %h",i,got); end end
-    $display("[DR] T2 SSD->rbuf->DDR4->rbuf2->host: 16 words, %0d mismatch => %s", bad, bad==0?"PASS":"FAIL");
+    for (p=0;p<PAGES;p++) begin                       // SSD reads page p (128 beats) at dense oculink addr
+      @(posedge oculink_axi_clk); m_araddr<=IORW + p*32'h1000; m_arlen<=127; m_arvalid<=1;
+      do @(posedge oculink_axi_clk); while(!m_arready); m_arvalid<=0;
+      b=0;
+      forever begin @(posedge oculink_axi_clk); if (m_rvalid&&m_rready) begin
+        if (m_rdata!==patt(p*128+b)) begin bad++; if(bad<=4) $display("[DS] WR page %0d beat %0d got %h exp %h",p,b,m_rdata,patt(p*128+b)); end
+        b++; if (m_rlast) break; end end
+    end
+    $display("[DS] WRITE 256KB streamed host->DDR4->wbuf2(128KB win)->SSD: %0d/%0d beats bad => %s", bad, WORDS, bad==0?"PASS":"FAIL");
+
+    // ===== READ path: drain-stream, SSD writes 256 KB -> DDR4, host pulls 2 chunks, check =====
+    do_op(3, WORDS, 0, 0);                            // drain start (streams during the write)
+    for (p=0;p<PAGES;p++) begin                       // SSD writes page p (128 beats)
+      @(posedge oculink_axi_clk); m_awaddr<=IORW + p*32'h1000; m_awlen<=127; m_awvalid<=1;
+      do @(posedge oculink_axi_clk); while(!m_awready); m_awvalid<=0;
+      for (b=0;b<128;b++) begin m_wdata<=patt(8192+p*128+b); m_wlast<=(b==127); m_wvalid<=1; do @(posedge oculink_axi_clk); while(!m_wready); end
+      m_wvalid<=0; m_wlast<=0;
+    end
+    do @(posedge cp_clk); while(cp_busy);             // drain finishes
+    bad=0;
+    do_op(1,4096,0,1);    for (i=0;i<4096;i++) begin rbuf2_rd(i,got); if(got!==patt(8192+i)) begin bad++; if(bad<=4)$display("[DS] RD w%0d got %h",i,got); end end
+    do_op(1,4096,4096,1); for (i=0;i<4096;i++) begin rbuf2_rd(i,got); if(got!==patt(8192+4096+i)) begin bad++; if(bad<=4)$display("[DS] RD2 w%0d got %h",i,got); end end
+    $display("[DS] READ 256KB streamed SSD->rbuf(128KB win)->DDR4->host: %0d/%0d words bad => %s", bad, WORDS, bad==0?"PASS":"FAIL");
     $finish;
   end
-  initial begin #5000000; $display("[DR] TIMEOUT"); $finish; end
+  initial begin #30000000; $display("[DS] TIMEOUT"); $finish; end
 endmodule

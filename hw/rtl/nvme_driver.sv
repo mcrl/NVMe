@@ -40,10 +40,11 @@ module nvme_driver #(
   // ---- DDR4 data-path: copy engine control (cp_clk = DDR4 ui_clk) + DDR4 AXI master ----
   input  logic          cp_clk,         // DDR4 ui_clk
   input  logic          cp_rstn,        // ~ui_rst & cal_done
-  input  logic          cp_go_tgl,      // host_bram_clk: TOGGLES on each copy trigger (CDC'd to cp_clk inside)
-  input  logic          cp_go_read,     // 0=write channel (wbuf->wbuf2), 1=read channel (rbuf->rbuf2)
-  input  logic [12:0]   cp_nwords,      // 256-b words to copy (stable before the toggle)
-  output logic          cp_busy,        // cp_clk; the host polls it via CSR (synced there)
+  input  logic          cp_go_tgl,      // host_bram_clk: TOGGLES on each DDR4 op trigger (CDC'd to cp_clk inside)
+  input  logic [1:0]    cp_op,          // 0=copy-push (wbuf->DDR4), 1=copy-pull (DDR4->rbuf2), 2=refill, 3=drain
+  input  logic [15:0]   cp_nwords,      // 256-b words (copy chunk size, or stream total_words; stable before toggle)
+  input  logic [15:0]   cp_base,        // DDR4 WORD base for the copy op (chunk i -> i*4096); stable before toggle
+  output logic          cp_busy,        // cp_clk: OR of copy/refill/drain busy; host polls via CSR (synced there)
   output logic [31:0]   ddr4_awaddr, output logic [7:0] ddr4_awlen, output logic ddr4_awvalid, input logic ddr4_awready,
   output logic [255:0]  ddr4_wdata,  output logic ddr4_wlast,  output logic ddr4_wvalid,  input logic ddr4_wready,
   input  logic [1:0]    ddr4_bresp,  input logic ddr4_bvalid,  output logic ddr4_bready,
@@ -745,39 +746,86 @@ module nvme_driver #(
   always_ff @(posedge host_bram_clk) dbuf_lane_q <= dbuf_lane;
   assign dbuf_rdata = rbuf_rdata256[{dbuf_lane_q,5'd0} +: 32];
 
-  // ---- copy engine + DDR4 AXI master (cp_clk). Channel: 0=write(wbuf->wbuf2) 1=read(rbuf->rbuf2). ----
-  // CDC the host trigger: cp_go_tgl toggles per request; sync + edge-detect -> a 1-cycle cp_clk go pulse.
+  // a read-payload (SSD->rbuf) beat (declared here so the DDR4 counters below can use it; rbuf_we/rbuf_wraddr
+  // are assigned in the offset block further down)
+  wire rdpl_beat = oculink_m_axi_wvalid & oculink_m_axi_wready & (wcap_avail | w_same) & ~wcap_cls[1];
+
+  // ======== DDR4 streaming data path (cp_clk = ui_clk) ==========================================
+  // host staging via copy_engine (push wbuf->DDR4 / pull DDR4->rbuf2); the SSD-facing transfer streams a
+  // CIRCULAR window over DDR4 via two stream_engines (refill DDR4->wbuf2, drain rbuf->DDR4) so a single
+  // transfer can exceed the 128 KB window. All three share the single ddr4_engine (one active at a time).
+  // Trigger CDC: cp_go_tgl toggles per op; sync+edge-detect -> 1-cycle cp_clk pulse. cp_op/cp_nwords stable.
   (* ASYNC_REG="true" *) logic [2:0] tgl_s;
-  (* ASYNC_REG="true" *) logic gr_s1, gr_s2; logic [12:0] nw_s1, nw_s2;
+  (* ASYNC_REG="true" *) logic [1:0] op_s1, op_s2; logic [15:0] nw_s1, nw_s2, bs_s1, bs_s2;
   always_ff @(posedge cp_clk) begin
     tgl_s <= {tgl_s[1:0], cp_go_tgl};
-    gr_s1 <= cp_go_read; gr_s2 <= gr_s1;        // stable levels, sampled when the pulse fires
-    nw_s1 <= cp_nwords;  nw_s2 <= nw_s1;
+    op_s1 <= cp_op; op_s2 <= op_s1;  nw_s1 <= cp_nwords; nw_s2 <= nw_s1;  bs_s1 <= cp_base; bs_s2 <= bs_s1;
   end
   wire cp_go_pulse = tgl_s[2] ^ tgl_s[1];
-  logic cp_chan;
-  always_ff @(posedge cp_clk) if (cp_go_pulse) cp_chan <= gr_s2;
-  wire [DBUF_AW-1:0] ce_saddr; wire ce_sen; wire [255:0] ce_sdout;
-  wire [DBUF_AW-1:0] ce_daddr; wire [31:0] ce_dwe; wire [255:0] ce_ddin;
-  assign cw_raddr=ce_saddr; assign cw_ren=ce_sen & ~cp_chan;
-  assign cr_raddr=ce_saddr; assign cr_ren=ce_sen &  cp_chan;
-  assign ce_sdout = cp_chan ? cr_rdout : cw_rdout;
-  assign cw_waddr=ce_daddr; assign cw_we = ~cp_chan ? ce_dwe : 32'd0; assign cw_wdin=ce_ddin;
-  assign cr_waddr=ce_daddr; assign cr_we =  cp_chan ? ce_dwe : 32'd0; assign cr_wdin=ce_ddin;
+  wire go_copy   = cp_go_pulse & (op_s2 < 2'd2);          // op 0/1 -> copy (push/pull)
+  wire go_refill = cp_go_pulse & (op_s2 == 2'd2);
+  wire go_drain  = cp_go_pulse & (op_s2 == 2'd3);
+  wire [1:0] copy_mode = op_s2[0] ? 2'd2 : 2'd1;          // op0 -> push-only(1), op1 -> pull-only(2)
 
-  wire de_req_valid, de_req_we; wire [31:0] de_req_addr; wire [7:0] de_req_len; wire de_busy;
-  wire [255:0] de_wd_data; wire de_wd_valid, de_wd_ready;
-  wire [255:0] de_rd_data; wire de_rd_valid, de_rd_ready;
-  copy_engine #(.AWORDS(DBUF_AW)) u_copy (.clk(cp_clk), .rstn(cp_rstn), .go(cp_go_pulse), .nwords(nw_s2), .busy(cp_busy),
-    .src_addr(ce_saddr), .src_en(ce_sen), .src_dout(ce_sdout),
-    .dst_addr(ce_daddr), .dst_we(ce_dwe), .dst_din(ce_ddin),
-    .e_req_valid(de_req_valid), .e_req_we(de_req_we), .e_req_addr(de_req_addr), .e_req_len(de_req_len), .e_busy(de_busy),
-    .e_wd_data(de_wd_data), .e_wd_valid(de_wd_valid), .e_wd_ready(de_wd_ready),
-    .e_rd_data(de_rd_data), .e_rd_valid(de_rd_valid), .e_rd_ready(de_rd_ready));
+  // SSD progress (oculink), reset while the matching stream engine is idle (busy synced cp_clk->oculink)
+  logic refill_busy, drain_busy;
+  (* ASYNC_REG="true" *) logic [1:0] rfb_o, drb_o;
+  always_ff @(posedge oculink_axi_clk) begin rfb_o<={rfb_o[0],refill_busy}; drb_o<={drb_o[0],drain_busy}; end
+  logic [19:0] cons_w, ssd_wr_w;
+  always_ff @(posedge oculink_axi_clk or negedge rstn) begin
+    if (!rstn) begin cons_w<=0; ssd_wr_w<=0; end
+    else begin
+      if (!rfb_o[1]) cons_w<=0;   else if (oculink_m_axi_rvalid & oculink_m_axi_rready & rtag_sel_data) cons_w<=cons_w+1'b1;
+      if (!drb_o[1]) ssd_wr_w<=0; else if (rdpl_beat) ssd_wr_w<=ssd_wr_w+1'b1;
+    end
+  end
+  wire [19:0] cons_w_cp, ssd_wr_w_cp;
+  gray_cdc #(.W(20)) g_cons (.clk_in(oculink_axi_clk), .bin_in(cons_w),   .clk_out(cp_clk), .bin_out(cons_w_cp));
+  gray_cdc #(.W(20)) g_ssdw (.clk_in(oculink_axi_clk), .bin_in(ssd_wr_w), .clk_out(cp_clk), .bin_out(ssd_wr_w_cp));
+
+  // ddr4_engine shared bus + per-engine request/stream nets
+  wire de_busy, de_wd_ready, de_rd_valid; wire [255:0] de_rd_data;
+  wire co_rqv,co_rqwe; wire [31:0] co_rqa; wire [7:0] co_rql; wire [255:0] co_wd; wire co_wdv; wire co_rdr; wire co_busy;
+  wire rf_rqv,rf_rqwe; wire [31:0] rf_rqa; wire [7:0] rf_rql; wire [255:0] rf_wd; wire rf_wdv; wire rf_rdr;
+  wire dr_rqv,dr_rqwe; wire [31:0] dr_rqa; wire [7:0] dr_rql; wire [255:0] dr_wd; wire dr_wdv; wire dr_rdr;
+  wire [1:0] owner = co_busy ? 2'd1 : refill_busy ? 2'd2 : drain_busy ? 2'd3 : 2'd0;
+  wire co_ebusy=(owner==1)&de_busy; wire co_wrdy=(owner==1)&de_wd_ready; wire co_erdv=(owner==1)&de_rd_valid;
+  wire rf_ebusy=(owner==2)&de_busy; wire rf_wrdy=(owner==2)&de_wd_ready; wire rf_erdv=(owner==2)&de_rd_valid;
+  wire dr_ebusy=(owner==3)&de_busy; wire dr_wrdy=(owner==3)&de_wd_ready; wire dr_erdv=(owner==3)&de_rd_valid;
+
+  copy_engine #(.AWORDS(DBUF_AW)) u_copy (.clk(cp_clk),.rstn(cp_rstn),.go(go_copy),.nwords(nw_s2[DBUF_AW:0]),
+    .ddr4_base({16'd0,bs_s2}),.mode(copy_mode),.busy(co_busy),
+    .src_addr(cw_raddr),.src_en(cw_ren),.src_dout(cw_rdout),       // push: read wbuf
+    .dst_addr(cr_waddr),.dst_we(cr_we),.dst_din(cr_wdin),          // pull: write rbuf2
+    .e_req_valid(co_rqv),.e_req_we(co_rqwe),.e_req_addr(co_rqa),.e_req_len(co_rql),.e_busy(co_ebusy),
+    .e_wd_data(co_wd),.e_wd_valid(co_wdv),.e_wd_ready(co_wrdy),
+    .e_rd_data(de_rd_data),.e_rd_valid(co_erdv),.e_rd_ready(co_rdr));
+  stream_engine #(.AWORDS(DBUF_AW),.WIN(1<<DBUF_AW),.DIR(0)) u_refill (.clk(cp_clk),.rstn(cp_rstn),
+    .start(go_refill),.total_words({16'd0,nw_s2}),.peer_prog({12'd0,cons_w_cp}),.my_prog(),.busy(refill_busy),
+    .win_addr(cw_waddr),.win_we(cw_we),.win_din(cw_wdin),          // refill: write wbuf2
+    .win_raddr(),.win_ren(),.win_dout(256'd0),
+    .e_req_valid(rf_rqv),.e_req_we(rf_rqwe),.e_req_addr(rf_rqa),.e_req_len(rf_rql),.e_busy(rf_ebusy),
+    .e_wd_data(rf_wd),.e_wd_valid(rf_wdv),.e_wd_ready(rf_wrdy),
+    .e_rd_data(de_rd_data),.e_rd_valid(rf_erdv),.e_rd_ready(rf_rdr));
+  stream_engine #(.AWORDS(DBUF_AW),.WIN(1<<DBUF_AW),.DIR(1)) u_drain (.clk(cp_clk),.rstn(cp_rstn),
+    .start(go_drain),.total_words({16'd0,nw_s2}),.peer_prog({12'd0,ssd_wr_w_cp}),.my_prog(),.busy(drain_busy),
+    .win_addr(),.win_we(),.win_din(),
+    .win_raddr(cr_raddr),.win_ren(cr_ren),.win_dout(cr_rdout),     // drain: read rbuf
+    .e_req_valid(dr_rqv),.e_req_we(dr_rqwe),.e_req_addr(dr_rqa),.e_req_len(dr_rql),.e_busy(dr_ebusy),
+    .e_wd_data(dr_wd),.e_wd_valid(dr_wdv),.e_wd_ready(dr_wrdy),
+    .e_rd_data(de_rd_data),.e_rd_valid(dr_erdv),.e_rd_ready(dr_rdr));
+  assign cp_busy = co_busy | refill_busy | drain_busy;
+
+  // mux the active owner's request/stream onto the single ddr4_engine
   ddr4_engine u_de (.clk(cp_clk), .rstn(cp_rstn),
-    .req_valid(de_req_valid), .req_we(de_req_we), .req_addr(de_req_addr), .req_len(de_req_len), .busy(de_busy),
-    .wd_data(de_wd_data), .wd_valid(de_wd_valid), .wd_ready(de_wd_ready),
-    .rd_data(de_rd_data), .rd_valid(de_rd_valid), .rd_ready(de_rd_ready),
+    .req_valid((owner==1)?co_rqv:(owner==2)?rf_rqv:(owner==3)?dr_rqv:1'b0),
+    .req_we   ((owner==1)?co_rqwe:(owner==2)?rf_rqwe:dr_rqwe),
+    .req_addr ((owner==1)?co_rqa:(owner==2)?rf_rqa:dr_rqa),
+    .req_len  ((owner==1)?co_rql:(owner==2)?rf_rql:dr_rql), .busy(de_busy),
+    .wd_data  ((owner==1)?co_wd:(owner==2)?rf_wd:dr_wd),
+    .wd_valid ((owner==1)?co_wdv:(owner==2)?rf_wdv:dr_wdv), .wd_ready(de_wd_ready),
+    .rd_data(de_rd_data), .rd_valid(de_rd_valid),
+    .rd_ready ((owner==1)?co_rdr:(owner==2)?rf_rdr:dr_rdr),
     .m_awaddr(ddr4_awaddr), .m_awlen(ddr4_awlen), .m_awvalid(ddr4_awvalid), .m_awready(ddr4_awready),
     .m_wdata(ddr4_wdata), .m_wlast(ddr4_wlast), .m_wvalid(ddr4_wvalid), .m_wready(ddr4_wready),
     .m_bresp(ddr4_bresp), .m_bvalid(ddr4_bvalid), .m_bready(ddr4_bready),
@@ -805,8 +853,7 @@ module nvme_driver #(
     .push(oculink_m_axi_awvalid & ~aw_is_cqe), .din(aw_off),
     .pop(awaddr_pop), .head(awaddr_head), .head2(), .cnt(), .empty(awaddr_empty), .full()
   );
-  // read-payload write into rbuf (driven from the counter block's rd_run/rbuf_off bookkeeping)
-  wire rdpl_beat     = oculink_m_axi_wvalid & oculink_m_axi_wready & (wcap_avail | w_same) & ~wcap_cls[1];
+  // read-payload write into rbuf (driven from the counter block's rd_run/rbuf_off bookkeeping; rdpl_beat declared above)
   assign rbuf_we     = rdpl_beat;
   assign rbuf_wraddr = rd_run ? rbuf_off : awaddr_head;
 

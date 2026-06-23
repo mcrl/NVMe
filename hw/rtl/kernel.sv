@@ -135,8 +135,9 @@ module kernel(
   logic [16:0] dbuf_addr;
   logic [31:0] dbuf_wdata, dbuf_rdata;
   logic        dbuf_we, dbuf_rd_sel_q;
-  logic        cp_go_tgl, cp_go_read, cp_busy;   // DDR4 copy control (csr <-> nvme_driver)
-  logic [12:0] cp_nwords;
+  logic        cp_go_tgl, cp_busy;             // DDR4 op control (csr <-> nvme_driver)
+  logic [1:0]  cp_op;
+  logic [15:0] cp_nwords, cp_base;
   wire         csr_en = host_bram_en & (host_bram_addr[19:17]==3'b000);  // gate CSR off the data regions
   assign dbuf_addr  = host_bram_addr[16:0];
   assign dbuf_wdata = host_bram_din;
@@ -239,8 +240,9 @@ module kernel(
     .oculink_0a_raw_w_beats           (oculink_0a_raw_w_beats),
     .oculink_0a_raw_w_bursts          (oculink_0a_raw_w_bursts),
     .cp_go_tgl                        (cp_go_tgl),
-    .cp_go_read                       (cp_go_read),
+    .cp_op                            (cp_op),
     .cp_nwords                        (cp_nwords),
+    .cp_base                          (cp_base),
     .cp_busy_raw                      (cp_busy),
     .cal_done_raw                     (cal_done_raw)
   );
@@ -316,8 +318,9 @@ module kernel(
     .cp_clk                 (cp_clk),
     .cp_rstn                (cp_rstn),
     .cp_go_tgl              (cp_go_tgl),
-    .cp_go_read             (cp_go_read),
+    .cp_op                  (cp_op),
     .cp_nwords              (cp_nwords),
+    .cp_base                (cp_base),
     .cp_busy                (cp_busy),
     .ddr4_awaddr            (ddr4_awaddr), .ddr4_awlen(ddr4_awlen), .ddr4_awvalid(ddr4_awvalid), .ddr4_awready(ddr4_awready),
     .ddr4_wdata             (ddr4_wdata),  .ddr4_wlast(ddr4_wlast), .ddr4_wvalid(ddr4_wvalid), .ddr4_wready(ddr4_wready),
