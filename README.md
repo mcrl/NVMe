@@ -127,7 +127,15 @@ The original driver was single-outstanding, 32 B/command, hardcoded LBA 0. The c
   read chunk (a per-burst beat counter) → real data truncated at ~page 11; it now captures each list AR's address
   offset in a FIFO and serves from there, robust to however the SSD chunks its list reads. Sim `tb_datapath.sv`
   T1–T6 (latency FSM, 8 KB burst, dense page-2 offset, PRP-list at offsets 0/8) all pass.
-  (Next: FPGA DDR4 DRAM — pinout `hw/ddr/ddr4_pins.xdc` + part CSV captured; reuses the latency-tolerant server.)
+- **DRAM data path (Stage final, HW-verified).** Real host data now genuinely transits the board's **4 GB PL
+  DDR4** both ways: WRITE `host -> wbuf SRAM -> (copy engine) -> DDR4 -> wbuf2 SRAM -> SSD -> NAND`, READ the
+  reverse into `rbuf2`. `nvme_dmatest` 4/32/128 KB all 0-mismatch. The `ddr4_0` MIG IP (4 GB DDR4-2400, 72-bit
+  ECC, J19 300 MHz ref) is driven by `ddr4_engine.sv` (a ui_clk DDR4 AXI master, AW+W presented concurrently
+  because the DDR4 AXI gates `wready` on a pending `awvalid`) via `copy_engine.sv` (SRAM↔DDR4↔SRAM, ≤256-beat
+  bursts). The four staging SRAMs are dual-clock, so **all DDR4 access is one clock (ui_clk) and the SRAMs absorb
+  the host/oculink crossing — no explicit AXI CDC**. CSR 0x84 triggers a copy (bit0 0=write 1=read), 0x88=words,
+  0x80 read bit1=cal_done bit0=busy. (Per-command transfer is SRAM-window-limited to 128 KB; streaming a larger
+  window over the 4 GB is the next step.)
 
 Sim (`hw/RTL/fpga-nvme-driver/sim/`): `tb_cpl_stress.sv` (RDBURST/RDSTALL/RDCQE — write-serve bubble + stall +
 W-acceptor), `tb_nvme_driver.sv` + `ssd_model.sv` (70 writes / 8 reads + BEATCOUNT), `tb_nvme_qd.sv` +
@@ -189,7 +197,7 @@ command + QD CQE beats), independent of distinct buffers / data / size / PRP-lis
 (US+ integrated block max; the SSD itself is Gen4-capable) and (b) the 256 B MPS + the SSD's serial-streaming /
 concurrent-read-coalesce behaviour. A Gen4-capable PCIe path (Versal-class) would roughly double the ceiling.
 
-Real host data now moves end to end via the `wbuf`/`rbuf` buffers (§2) — **HW-verified up to 128 KB** (4/32/128 KB,
-0 mismatch) through 128 KB on-chip SRAM and a 1 MB host BAR window. Open / future: the board **DDR4 DRAM** path
-(pinout + part CSV in `hw/ddr/`; reuses the latency-tolerant prefetch server); and an ILA trace to confirm the
-QD>1 coalesce is SSD-inherent vs command-pattern-triggered.
+Real host data moves end to end — **HW-verified up to 128 KB** (4/32/128 KB, 0 mismatch) — first through 128 KB
+on-chip SRAM (Stage B) and now **through the board's 4 GB PL DDR4** (Stage final, §2): the full A → B → DRAM
+roadmap is complete. Open / future: stream a >128 KB SRAM window over the 4 GB DDR4 for a single large transfer;
+and an ILA trace to confirm the QD>1 coalesce is SSD-inherent vs command-pattern-triggered.
