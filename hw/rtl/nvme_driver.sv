@@ -796,11 +796,12 @@ module nvme_driver #(
   gray_cdc #(.W(20)) g_rfp (.clk_in(cp_clk), .bin_in(refill_myp[19:0]), .clk_out(oculink_axi_clk), .bin_out(refill_prog_o));
   gray_cdc #(.W(20)) g_drp (.clk_in(cp_clk), .bin_in(drain_myp[19:0]),  .clk_out(oculink_axi_clk), .bin_out(drain_prog_o));
   localparam [19:0] WIN_W = 20'd1 << DBUF_AW;        // on-chip window size in 256-b words (= 4096)
+  localparam [19:0] WIN_GUARD = 20'd256;             // keep SSD < (WIN-GUARD) ahead of drain: no slot aliasing
   // READ overrun gate: stall accepting a read-payload W beat once the SSD is a full window ahead of the drain.
   // CQE / command-payload bursts (wcap_cls[1]) are NEVER stalled (completions must always drain).
   // gated only while the drain is actually running this read (drb_o); a read that does not stream through DDR4
   // (e.g. the legacy direct-rbuf path) keeps the old free-running behaviour instead of stalling forever at WIN.
-  wire rdpl_overrun = drb_o[1] & (wcap_avail | w_same) & ~wcap_cls[1] & (ssd_wr_w >= (drain_prog_o + WIN_W));
+  wire rdpl_overrun = drb_o[1] & (wcap_avail | w_same) & ~wcap_cls[1] & (ssd_wr_w >= (drain_prog_o + (WIN_W - WIN_GUARD)));
   assign oculink_m_axi_wready = ~rdpl_overrun;
 
   // cp-domain recovery: fold the host sw_reset (rstn) into the engines' reset so a wedged engine ALWAYS clears

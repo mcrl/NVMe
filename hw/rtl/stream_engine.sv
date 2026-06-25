@@ -7,7 +7,12 @@
 // Linear non-wrapping word counters (my_prog/peer_prog); wrap lives only in the low AWORDS window address.
 // peer_prog arrives already Gray-synced from the oculink domain; my_prog is exported to be Gray-synced back.
 // Bursts are <=256 beats and page-aligned (128 words), so a burst never straddles the power-of-two wrap seam.
-module stream_engine #(parameter int AWORDS=12, parameter int WIN=4096, parameter int DIR=0)(
+// GUARD: keep the producer at most (WIN-GUARD) words ahead of the consumer so the producer's window write
+// address and the consumer's window read address can NEVER alias to the same slot (P-C == WIN). A same-address
+// concurrent read/write on the independent-clock BRAM returns UNDEFINED data -> that was the real HW corruption
+// (intermittent, ~per-wrap), invisible in the idealised sim BRAM. GUARD>=1 removes the aliasing; a full burst
+// of margin (256) is comfortably safe against CDC jitter and costs nothing (the SSD link is the bottleneck).
+module stream_engine #(parameter int AWORDS=12, parameter int WIN=4096, parameter int DIR=0, parameter int GUARD=256)(
   input  logic        clk, rstn,
   input  logic        start,              // 1-cycle: begin streaming a transfer of total_words from DDR4 word 0
   input  logic [31:0] total_words,
@@ -32,8 +37,9 @@ module stream_engine #(parameter int AWORDS=12, parameter int WIN=4096, paramete
 
   wire [31:0] remaining = total - my_w;
   wire [8:0]  this_len  = (remaining > 32'd256) ? 9'd256 : remaining[8:0];
-  // gate: REFILL -> room to fill (don't overwrite unread); DRAIN -> data available (don't read unwritten)
-  wire        room      = (DIR==0) ? ((my_w + {23'd0,this_len}) <= (peer_prog + WIN))
+  // gate: REFILL -> room to fill (don't overwrite unread, and stay GUARD short of the wrap so the producer write
+  // address never aliases the SSD read address); DRAIN -> data available (don't read unwritten).
+  wire        room      = (DIR==0) ? ((my_w + {23'd0,this_len}) <= (peer_prog + (WIN - GUARD)))
                                    : ((my_w + {23'd0,this_len}) <=  peer_prog);
   wire        more      = (my_w < total);
 

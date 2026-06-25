@@ -30,9 +30,21 @@ module dpram_be #(
       for (int i = 0; i < DW/8; i++)
         if (wea[i]) mem[addra][i*8 +: 8] <= dina[i*8 +: 8];
 
+  // Independent-clock SAME-ADDRESS read/write collision: xpm_memory_sdpram returns UNDEFINED port-B data here.
+  // Model it (corrupt the read) so streaming flow-control that lets the producer alias the consumer's slot FAILS
+  // in sim too -- otherwise the idealised array hides the real-HW collision corruption. The hazard spans the
+  // whole physical access overlap, not just one coincident edge, so cross the port-A write address into clkb and
+  // flag a read that hits an address written within a few clkb cycles (still never fires once a GUARD band keeps
+  // the producer/consumer slots apart).
+  logic [AW-1:0] wa0, wa1, wa2; logic wac0, wac1, wac2;
+  always_ff @(posedge clkb) begin
+    wa0<=addra; wa1<=wa0; wa2<=wa1;
+    wac0<=ena&(|wea); wac1<=wac0; wac2<=wac1;
+  end
+  wire collide = enb & ( (ena&(|wea)&(addrb==addra)) | (wac0&(addrb==wa0)) | (wac1&(addrb==wa1)) | (wac2&(addrb==wa2)) );
   logic [DW-1:0] rpipe [0:RDLAT-1];
   always_ff @(posedge clkb) if (enb) begin
-    rpipe[0] <= mem[addrb];
+    rpipe[0] <= collide ? (mem[addrb] ^ {(DW/32){32'hDEADC0DE}}) : mem[addrb];
     for (int i = 1; i < RDLAT; i++) rpipe[i] <= rpipe[i-1];
   end
   assign doutb = rpipe[RDLAT-1];
