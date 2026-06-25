@@ -120,7 +120,7 @@ module nvme_driver #(
   assign oculink_s_axi_bready   = 1;
   assign oculink_m_axi_arready  = 1;
   assign oculink_m_axi_awready  = 1;
-  assign oculink_m_axi_wready   = 1;
+  // oculink_m_axi_wready is driven by the read-payload overrun interlock (see rdpl_overrun, DDR4 section)
 
   logic is_sending_cmd;   // kept for ILA only (no longer a mux select)
 
@@ -783,6 +783,27 @@ module nvme_driver #(
   gray_cdc #(.W(20)) g_cons (.clk_in(oculink_axi_clk), .bin_in(cons_w),   .clk_out(cp_clk), .bin_out(cons_w_cp));
   gray_cdc #(.W(20)) g_ssdw (.clk_in(oculink_axi_clk), .bin_in(ssd_wr_w), .clk_out(cp_clk), .bin_out(ssd_wr_w_cp));
 
+  // ---- HARD producer/consumer interlock (the speed margin alone is NOT safe) --------------------
+  // The SSD-facing buffers must never be read-ahead-of-fill (refill) or overwritten-ahead-of-drain (drain).
+  // Export each engine's absolute progress, Gray-sync cp_clk->oculink, and gate the SSD side on it.
+  // A stale (lagging) progress only makes the gate MORE conservative -> safe-by-direction. Deadlock-free:
+  // whenever a gate stalls the SSD, the engine still has a full window of slack to make progress and clear it.
+  wire [31:0] refill_myp, drain_myp;
+  wire [19:0] refill_prog_o, drain_prog_o;
+  gray_cdc #(.W(20)) g_rfp (.clk_in(cp_clk), .bin_in(refill_myp[19:0]), .clk_out(oculink_axi_clk), .bin_out(refill_prog_o));
+  gray_cdc #(.W(20)) g_drp (.clk_in(cp_clk), .bin_in(drain_myp[19:0]),  .clk_out(oculink_axi_clk), .bin_out(drain_prog_o));
+  localparam [19:0] WIN_W = 20'd1 << DBUF_AW;        // on-chip window size in 256-b words (= 4096)
+  // READ overrun gate: stall accepting a read-payload W beat once the SSD is a full window ahead of the drain.
+  // CQE / command-payload bursts (wcap_cls[1]) are NEVER stalled (completions must always drain).
+  wire rdpl_overrun = (wcap_avail | w_same) & ~wcap_cls[1] & (ssd_wr_w >= (drain_prog_o + WIN_W));
+  assign oculink_m_axi_wready = ~rdpl_overrun;
+
+  // cp-domain recovery: fold the host sw_reset (rstn) into the engines' reset so a wedged engine ALWAYS clears
+  // on a soft reset (cal-only cp_rstn could not be cleared from software -> a hang needed a reprogram).
+  (* ASYNC_REG="true" *) logic [1:0] rstn_cps;
+  always_ff @(posedge cp_clk or negedge rstn) if (!rstn) rstn_cps<=2'b0; else rstn_cps<={rstn_cps[0],1'b1};
+  wire cp_rstn_i = cp_rstn & rstn_cps[1];
+
   // ddr4_engine shared bus + per-engine request/stream nets
   wire de_busy, de_wd_ready, de_rd_valid; wire [255:0] de_rd_data;
   wire co_rqv,co_rqwe; wire [31:0] co_rqa; wire [7:0] co_rql; wire [255:0] co_wd; wire co_wdv; wire co_rdr; wire co_busy;
@@ -793,22 +814,22 @@ module nvme_driver #(
   wire rf_ebusy=(owner==2)&de_busy; wire rf_wrdy=(owner==2)&de_wd_ready; wire rf_erdv=(owner==2)&de_rd_valid;
   wire dr_ebusy=(owner==3)&de_busy; wire dr_wrdy=(owner==3)&de_wd_ready; wire dr_erdv=(owner==3)&de_rd_valid;
 
-  copy_engine #(.AWORDS(DBUF_AW)) u_copy (.clk(cp_clk),.rstn(cp_rstn),.go(go_copy),.nwords(nw_s2[DBUF_AW:0]),
+  copy_engine #(.AWORDS(DBUF_AW)) u_copy (.clk(cp_clk),.rstn(cp_rstn_i),.go(go_copy),.nwords(nw_s2[DBUF_AW:0]),
     .ddr4_base({16'd0,bs_s2}),.mode(copy_mode),.busy(co_busy),
     .src_addr(cw_raddr),.src_en(cw_ren),.src_dout(cw_rdout),       // push: read wbuf
     .dst_addr(cr_waddr),.dst_we(cr_we),.dst_din(cr_wdin),          // pull: write rbuf2
     .e_req_valid(co_rqv),.e_req_we(co_rqwe),.e_req_addr(co_rqa),.e_req_len(co_rql),.e_busy(co_ebusy),
     .e_wd_data(co_wd),.e_wd_valid(co_wdv),.e_wd_ready(co_wrdy),
     .e_rd_data(de_rd_data),.e_rd_valid(co_erdv),.e_rd_ready(co_rdr));
-  stream_engine #(.AWORDS(DBUF_AW),.WIN(1<<DBUF_AW),.DIR(0)) u_refill (.clk(cp_clk),.rstn(cp_rstn),
-    .start(go_refill),.total_words({16'd0,nw_s2}),.peer_prog({12'd0,cons_w_cp}),.my_prog(),.busy(refill_busy),
+  stream_engine #(.AWORDS(DBUF_AW),.WIN(1<<DBUF_AW),.DIR(0)) u_refill (.clk(cp_clk),.rstn(cp_rstn_i),
+    .start(go_refill),.total_words({16'd0,nw_s2}),.peer_prog({12'd0,cons_w_cp}),.my_prog(refill_myp),.busy(refill_busy),
     .win_addr(cw_waddr),.win_we(cw_we),.win_din(cw_wdin),          // refill: write wbuf2
     .win_raddr(),.win_ren(),.win_dout(256'd0),
     .e_req_valid(rf_rqv),.e_req_we(rf_rqwe),.e_req_addr(rf_rqa),.e_req_len(rf_rql),.e_busy(rf_ebusy),
     .e_wd_data(rf_wd),.e_wd_valid(rf_wdv),.e_wd_ready(rf_wrdy),
     .e_rd_data(de_rd_data),.e_rd_valid(rf_erdv),.e_rd_ready(rf_rdr));
-  stream_engine #(.AWORDS(DBUF_AW),.WIN(1<<DBUF_AW),.DIR(1)) u_drain (.clk(cp_clk),.rstn(cp_rstn),
-    .start(go_drain),.total_words({16'd0,nw_s2}),.peer_prog({12'd0,ssd_wr_w_cp}),.my_prog(),.busy(drain_busy),
+  stream_engine #(.AWORDS(DBUF_AW),.WIN(1<<DBUF_AW),.DIR(1)) u_drain (.clk(cp_clk),.rstn(cp_rstn_i),
+    .start(go_drain),.total_words({16'd0,nw_s2}),.peer_prog({12'd0,ssd_wr_w_cp}),.my_prog(drain_myp),.busy(drain_busy),
     .win_addr(),.win_we(),.win_din(),
     .win_raddr(cr_raddr),.win_ren(cr_ren),.win_dout(cr_rdout),     // drain: read rbuf
     .e_req_valid(dr_rqv),.e_req_we(dr_rqwe),.e_req_addr(dr_rqa),.e_req_len(dr_rql),.e_busy(dr_ebusy),
@@ -817,7 +838,7 @@ module nvme_driver #(
   assign cp_busy = co_busy | refill_busy | drain_busy;
 
   // mux the active owner's request/stream onto the single ddr4_engine
-  ddr4_engine u_de (.clk(cp_clk), .rstn(cp_rstn),
+  ddr4_engine u_de (.clk(cp_clk), .rstn(cp_rstn_i),
     .req_valid((owner==1)?co_rqv:(owner==2)?rf_rqv:(owner==3)?dr_rqv:1'b0),
     .req_we   ((owner==1)?co_rqwe:(owner==2)?rf_rqwe:dr_rqwe),
     .req_addr ((owner==1)?co_rqa:(owner==2)?rf_rqa:dr_rqa),
@@ -892,8 +913,10 @@ module nvme_driver #(
   wire               ofifo_empty = (ofifo_wp == ofifo_rp);
   logic [OFIFO_AW:0] outstanding;               // issued reads not yet drained (credit)
 
+  logic [19:0] issue_abs;       // absolute write-payload read-issue position (across the whole transfer)
   wire req_start = rtag_sel_data & ~head_done & ~req_active;
-  wire can_issue = req_active & (outstanding < OFIFO_N[OFIFO_AW:0]);
+  // underrun interlock: never issue a wbuf2 read for an absolute word the refill has not filled yet.
+  wire can_issue = req_active & (outstanding < OFIFO_N[OFIFO_AW:0]) & (issue_abs < refill_prog_o);
   assign wbuf_rden   = can_issue;
   assign wbuf_rdaddr = req_addr;
 
@@ -904,8 +927,10 @@ module nvme_driver #(
   always_ff @(posedge oculink_axi_clk or negedge rstn) begin
     if (!rstn) begin
       req_addr<=0; req_rem<=0; req_active<=0; req_last<=0; head_done<=0;
-      ofifo_wp<=0; ofifo_rp<=0; outstanding<=0; pvalid_d<=0; plast_d<=0;
+      ofifo_wp<=0; ofifo_rp<=0; outstanding<=0; pvalid_d<=0; plast_d<=0; issue_abs<=0;
     end else begin
+      if (!rfb_o[1]) issue_abs <= 20'd0;            // reset the absolute read position between transfers
+      else if (can_issue) issue_abs <= issue_abs + 20'd1;
       if (req_start) begin
         req_addr   <= araddr_head;
         req_rem    <= rtag_head_arlen;

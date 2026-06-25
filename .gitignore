@@ -51,3 +51,4 @@ sw/nvme_driver_test/sw/nvme_rw_bench
 sw/nvme_driver_test/sw/nvme_linkspeed
 sw/nvme_driver_test/sw/nvme_autobringup
 sw/nvme_driver_test/sw/nvme_dmatest
+hw/rtl/sim/nvme_driver_noil.sv
