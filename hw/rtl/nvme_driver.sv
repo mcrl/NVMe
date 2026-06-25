@@ -45,6 +45,8 @@ module nvme_driver #(
   input  logic [15:0]   cp_nwords,      // 256-b words (copy chunk size, or stream total_words; stable before toggle)
   input  logic [15:0]   cp_base,        // DDR4 WORD base for the copy op (chunk i -> i*4096); stable before toggle
   output logic          cp_busy,        // cp_clk: OR of copy/refill/drain busy; host polls via CSR (synced there)
+  input  logic [5:0]    cap_idx,        // DIAG: index into the captured SSD data-page access order
+  output logic [31:0]   cap_val,        // DIAG: {ar_cnt[6:0], aw_cnt[6:0], ar_page[idx][5:0], aw_page[idx][5:0]}
   output logic [31:0]   ddr4_awaddr, output logic [7:0] ddr4_awlen, output logic ddr4_awvalid, input logic ddr4_awready,
   output logic [255:0]  ddr4_wdata,  output logic ddr4_wlast,  output logic ddr4_wvalid,  input logic ddr4_wready,
   input  logic [1:0]    ddr4_bresp,  input logic ddr4_bvalid,  output logic ddr4_bready,
@@ -834,8 +836,14 @@ module nvme_driver #(
     .e_req_valid(rf_rqv),.e_req_we(rf_rqwe),.e_req_addr(rf_rqa),.e_req_len(rf_rql),.e_busy(rf_ebusy),
     .e_wd_data(rf_wd),.e_wd_valid(rf_wdv),.e_wd_ready(rf_wrdy),
     .e_rd_data(de_rd_data),.e_rd_valid(rf_erdv),.e_rd_ready(rf_rdr));
+  // drain-all (cp_base[0] with op 3): run the drain AFTER the SSD read completes -- all read-payload pages have
+  // landed in the (>= chunk-size) window, so feed peer_prog = total to drain unconditionally. This is the RELIABLE
+  // read path: the SSD DMAs read-payload pages OUT OF ORDER, which the concurrent count-based drain cannot follow,
+  // but a post-completion drain of a fully-populated <=window chunk is order-independent.
+  wire        drain_all   = (op_s2==2'd3) & bs_s2[0];
+  wire [31:0] drain_peer  = drain_all ? {16'd0,nw_s2} : {12'd0,ssd_wr_w_cp};
   stream_engine #(.AWORDS(DBUF_AW),.WIN(1<<DBUF_AW),.DIR(1)) u_drain (.clk(cp_clk),.rstn(cp_rstn_i),
-    .start(go_drain),.total_words({16'd0,nw_s2}),.peer_prog({12'd0,ssd_wr_w_cp}),.my_prog(drain_myp),.busy(drain_busy),
+    .start(go_drain),.total_words({16'd0,nw_s2}),.peer_prog(drain_peer),.my_prog(drain_myp),.busy(drain_busy),
     .win_addr(),.win_we(),.win_din(),
     .win_raddr(cr_raddr),.win_ren(cr_ren),.win_dout(cr_rdout),     // drain: read rbuf
     .e_req_valid(dr_rqv),.e_req_we(dr_rqwe),.e_req_addr(dr_rqa),.e_req_len(dr_rql),.e_busy(dr_ebusy),
@@ -862,6 +870,22 @@ module nvme_driver #(
   // per-data-burst word offsets (addr-IORW_BAR)>>5, captured in order at AR/AW accept (oculink domain)
   wire [11:0]  ar_off = (oculink_m_axi_araddr - IORW_BAR) >> 5;   // write-payload read offset
   wire [11:0]  aw_off = (oculink_m_axi_awaddr - IORW_BAR) >> 5;   // read-payload  write offset
+
+  // DIAG: capture the SSD's data-page access ORDER (full page = addr>>12, not the wrapped window offset) to test
+  // whether the SSD DMAs pages out of order (which would break the count-based streaming flow control).
+  reg  [5:0] cap_aw_pg [0:63];      // READ-cmd: order the SSD WRITES read-payload pages
+  reg  [5:0] cap_ar_pg [0:63];      // WRITE-cmd: order the SSD READS  write-payload pages
+  reg  [6:0] cap_aw_wp, cap_ar_wp;
+  wire [5:0] awpg = (oculink_m_axi_awaddr - IORW_BAR) >> 12;
+  wire [5:0] arpg = (oculink_m_axi_araddr - IORW_BAR) >> 12;
+  always_ff @(posedge oculink_axi_clk or negedge rstn) begin
+    if (!rstn) begin cap_aw_wp<=0; cap_ar_wp<=0; end
+    else begin
+      if (oculink_m_axi_awvalid & ~aw_is_cqe        & ~cap_aw_wp[6]) begin cap_aw_pg[cap_aw_wp[5:0]]<=awpg; cap_aw_wp<=cap_aw_wp+1'b1; end
+      if (oculink_m_axi_arvalid & (ar_class==2'd0)  & ~cap_ar_wp[6]) begin cap_ar_pg[cap_ar_wp[5:0]]<=arpg; cap_ar_wp<=cap_ar_wp+1'b1; end
+    end
+  end
+  assign cap_val = {cap_ar_wp[6:0], cap_aw_wp[6:0], cap_ar_pg[cap_idx], cap_aw_pg[cap_idx]};
   logic [11:0] araddr_head, awaddr_head;
   logic        araddr_empty, awaddr_empty;
   wire         araddr_pop;     // popped when a write-payload (data) burst's rlast pops the rtag

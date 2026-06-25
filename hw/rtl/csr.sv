@@ -48,7 +48,9 @@ module csr(
   output logic [15:0] cp_nwords,             // 0x88: 256-b words (copy chunk size / stream total)
   output logic [15:0] cp_base,               // 0x8C: DDR4 word base for the copy op
   input  logic        cp_busy_raw,           // cp_clk; synced here
-  input  logic        cal_done_raw           // ui_clk; synced here
+  input  logic        cal_done_raw,          // ui_clk; synced here
+  output logic [5:0]  cap_idx,               // 0x90: DIAG capture index
+  input  logic [31:0] cap_val                // 0x94: DIAG captured page-order entry
 );
   // sync the DDR4 status bits into host_clk for the 0x80 read
   (* ASYNC_REG="true" *) logic [1:0] busy_s, cal_s;
@@ -89,6 +91,7 @@ module csr(
       cp_op                           <= 0;
       cp_nwords                       <= 16'd4096;   // default: one 128 KB window
       cp_base                         <= 0;
+      cap_idx                         <= 0;
     end
     else if (host_we && host_en) begin
       case(host_addr)
@@ -108,6 +111,7 @@ module csr(
         16'h0084: begin cp_go_tgl <= ~cp_go_tgl; cp_op <= host_din[1:0]; end     // trigger a DDR4 op
         16'h0088: cp_nwords                       <= host_din[15:0];             // words (chunk / stream total)
         16'h008C: cp_base                         <= host_din[15:0];             // DDR4 word base for the copy
+        16'h0090: cap_idx                         <= host_din[5:0];              // DIAG: page-order capture index
         16'h0050: oculink_0a_nvme_addr            <= host_din;
         16'h0054: oculink_0a_fpga_addr            <= host_din;
         16'h0058: oculink_0a_nlb                  <= host_din;
@@ -158,6 +162,7 @@ module csr(
         16'h0070: host_dout <= oculink_0a_raw_w_beats;  // DIAG: ALL accepted W beats (any class)
         16'h0074: host_dout <= oculink_0a_raw_w_bursts; // DIAG: read-data (non-CQE) W bursts
         16'h0080: host_dout <= {30'd0, cal_s[1], busy_s[1]};  // DDR4: bit1=cal_done, bit0=copy busy
+        16'h0094: host_dout <= cap_val;                       // DIAG: captured SSD page-access order
         16'h0100: host_dout <= oculink_0a_wrdata[0];
         16'h0104: host_dout <= oculink_0a_wrdata[1];
         16'h0108: host_dout <= oculink_0a_wrdata[2];
