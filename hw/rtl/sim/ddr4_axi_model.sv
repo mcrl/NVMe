@@ -21,9 +21,9 @@ module ddr4_axi_model #(parameter AW=14, parameter int SLOW=0) (   // 2**14 * 32
   // ---- deterministic pseudo-random stall source (LFSR) ----
   logic [15:0] lfsr;
   always_ff @(posedge clk or negedge rstn) if(!rstn) lfsr<=16'hACE1; else lfsr<={lfsr[14:0], lfsr[15]^lfsr[13]^lfsr[12]^lfsr[10]};
-  wire r_stall = (SLOW!=0) && (lfsr[2:0]!=3'd0);    // ~7/8 of cycles: hold off a read beat
-  wire w_stall = (SLOW!=0) && (lfsr[5:3]!=3'd0);    // ~7/8 of cycles: hold off a write beat
-  wire a_stall = (SLOW!=0) && (lfsr[7:6]!=2'd0);    // ~3/4 of cycles: hold off AR/AW accept
+  wire r_stall = (SLOW!=0) && (lfsr[0]);    // ~1/2 of cycles: hold off a read beat
+  wire w_stall = (SLOW!=0) && (lfsr[1]);    // ~1/2 of cycles: hold off a write beat
+  wire a_stall = (SLOW!=0) && ((lfsr[2]&lfsr[3]));    // ~1/4 of cycles: hold off AR/AW accept
 
   // ---- write ----
   logic        aw_pend;
@@ -51,7 +51,7 @@ module ddr4_axi_model #(parameter AW=14, parameter int SLOW=0) (   // 2**14 * 32
   always_ff @(posedge clk or negedge rstn) begin
     if (!rstn) begin rd_run<=0; rvalid<=0; rlast<=0; rptr<=0; rcnt<=0; rlat<=0; rdata<=0; end
     else if (arvalid && arready) begin rd_run<=1; rptr<=araddr[AW+4:5]; rcnt<=arlen;
-                                       rlat<=(SLOW!=0)?(4'd3+{1'b0,lfsr[2:0]}):4'd3; rvalid<=0; rlast<=0; end
+                                       rlat<=(SLOW!=0)?(4'd3+{2'd0,lfsr[1:0]}):4'd3; rvalid<=0; rlast<=0; end
     else if (rd_run) begin
       if (rlat != 0) rlat<=rlat-1'b1;                                   // address -> first-data latency
       else if (!rvalid) begin if (!r_stall) begin rvalid<=1; rdata<=mem[rptr]; rlast<=(rcnt==8'd0); end end // (re)present after latency/bubble

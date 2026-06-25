@@ -127,5 +127,5 @@ module tb_dram_stress;
     $display("[ST] READ 256KB SLOW-DDR4 streamed: %0d/%0d words bad => %s  (wr-stall cyc=%0d)", bad, WORDS, bad==0?"PASS":"FAIL", wr_stall);
     $finish;
   end
-  initial begin #400000000; $display("[ST] TIMEOUT"); $finish; end
+  initial begin #250000000; $display("[ST] TIMEOUT"); $finish; end
 endmodule

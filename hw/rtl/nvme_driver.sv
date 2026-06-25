@@ -205,7 +205,10 @@ module nvme_driver #(
   // class of the W burst now completing; same-cycle AW+W(wlast) (empty wtag) reads the live AW class
   wire        w_same     = oculink_m_axi_awvalid && (w_capp == w_awp);
   wire [1:0]  wcap_cls   = wcap_avail ? wtagmem[w_capp[WTAG_AW-1:0]] : {aw_is_cqe, aw_is_iocq};
-  wire        wburst_end = oculink_m_axi_wvalid && oculink_m_axi_wlast && (wcap_avail || w_same);
+  // a burst ends when its last beat is CONSUMED (wvalid&wready&wlast), not merely presented -- the read-payload
+  // overrun interlock can hold wready low on the wlast beat, so without &wready w_capp advanced early and the
+  // consumed wlast beat then missed its rdpl_beat count (drain stalled forever waiting on the lost beat).
+  wire        wburst_end = oculink_m_axi_wvalid && oculink_m_axi_wready && oculink_m_axi_wlast && (wcap_avail || w_same);
 
   assign oculink_m_axi_rdata  = rtag_sel_cmd  ? oculink_m_axi_rdata_cmd  :
                                 rtag_sel_list ? oculink_m_axi_rdata_lg   : oculink_m_axi_rdata_wr;
@@ -795,7 +798,9 @@ module nvme_driver #(
   localparam [19:0] WIN_W = 20'd1 << DBUF_AW;        // on-chip window size in 256-b words (= 4096)
   // READ overrun gate: stall accepting a read-payload W beat once the SSD is a full window ahead of the drain.
   // CQE / command-payload bursts (wcap_cls[1]) are NEVER stalled (completions must always drain).
-  wire rdpl_overrun = (wcap_avail | w_same) & ~wcap_cls[1] & (ssd_wr_w >= (drain_prog_o + WIN_W));
+  // gated only while the drain is actually running this read (drb_o); a read that does not stream through DDR4
+  // (e.g. the legacy direct-rbuf path) keeps the old free-running behaviour instead of stalling forever at WIN.
+  wire rdpl_overrun = drb_o[1] & (wcap_avail | w_same) & ~wcap_cls[1] & (ssd_wr_w >= (drain_prog_o + WIN_W));
   assign oculink_m_axi_wready = ~rdpl_overrun;
 
   // cp-domain recovery: fold the host sw_reset (rstn) into the engines' reset so a wedged engine ALWAYS clears
@@ -915,8 +920,9 @@ module nvme_driver #(
 
   logic [19:0] issue_abs;       // absolute write-payload read-issue position (across the whole transfer)
   wire req_start = rtag_sel_data & ~head_done & ~req_active;
-  // underrun interlock: never issue a wbuf2 read for an absolute word the refill has not filled yet.
-  wire can_issue = req_active & (outstanding < OFIFO_N[OFIFO_AW:0]) & (issue_abs < refill_prog_o);
+  // underrun interlock: while the refill is streaming (rfb_o), never issue a wbuf2 read for an absolute word it
+  // has not filled yet. A write not streamed through DDR4 (legacy direct-wbuf2) keeps the old free-running issue.
+  wire can_issue = req_active & (outstanding < OFIFO_N[OFIFO_AW:0]) & (~rfb_o[1] | (issue_abs < refill_prog_o));
   assign wbuf_rden   = can_issue;
   assign wbuf_rdaddr = req_addr;
 
